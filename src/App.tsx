@@ -1,11 +1,126 @@
-import "./App.css";
+import { useState } from 'react';
+import TopToolbar from './main-screen/top-toolbar/toolbar';
+import LeftBar from './main-screen/leftBar/FileManager';
+import CenterContainer from './main-screen/centerContainer/centerContainer';
+import Terminal from './main-screen/terminal/terminal';
+import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
+import './App.css';
 
 function App() {
+  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
+  const [terminalHeight, setTerminalHeight] = useState(200);
+  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
+  const [isTerminalVisible, setIsTerminalVisible] = useState(true);
+
+  const MIN_LEFT_PANEL_WIDTH = 150;
+  const COLLAPSE_THRESHOLD = 50;
+  const MAX_LEFT_PANEL_WIDTH = 400;
+  const MIN_TERMINAL_HEIGHT = 60;
+  const MAX_TERMINAL_HEIGHT = 500;
+
+  const handleHorizontalDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = startWidth + delta;
+
+      if (newWidth <= MIN_LEFT_PANEL_WIDTH - COLLAPSE_THRESHOLD) {
+        setIsLeftPanelVisible(false);
+        document.removeEventListener('mousemove', onMouseMove);
+      } else {
+        setLeftPanelWidth(
+          Math.min(Math.max(MIN_LEFT_PANEL_WIDTH, newWidth), MAX_LEFT_PANEL_WIDTH)
+        );
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleVerticalDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = terminalHeight;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startY - moveEvent.clientY;
+      let newHeight = startHeight + delta;
+
+      newHeight = Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, newHeight));
+      
+      if (newHeight <= MIN_TERMINAL_HEIGHT + COLLAPSE_THRESHOLD) {
+        setIsTerminalVisible(false);
+        document.removeEventListener('mousemove', onMouseMove);
+      } else {
+        setTerminalHeight(newHeight);
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleRestoreTerminal = () => {
+    setIsTerminalVisible(true);
+    setTerminalHeight(prev => 
+      Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, prev))
+    );
+  };
 
   return (
-    <main className="container">
-
-    </main>
+    <div className="app-container">
+      <TopToolbar />
+  
+      <div className="main-content">
+        {isLeftPanelVisible ? (
+          <div className="left-panel" style={{ width: leftPanelWidth }}>
+            <LeftBar />
+            <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
+          </div>
+        ) : (
+          <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
+            ➤
+          </button>
+        )}
+  
+        <div className="center-and-terminal">
+          {/* Оберточный контейнер для редактора */}
+          <div className="monaco-editor-container">
+            <CenterContainer />
+          </div>
+  
+          {isTerminalVisible ? (
+            <div className="terminal-container" style={{ height: terminalHeight }}>
+              <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
+              <Terminal />
+            </div>
+          ) : (
+            <button 
+              className="restore-button bottom" 
+              onClick={handleRestoreTerminal}
+            >
+              ▲
+            </button>
+          )}
+        </div>
+      </div>
+  
+      <BottomToolbar />
+    </div>
   );
 }
 

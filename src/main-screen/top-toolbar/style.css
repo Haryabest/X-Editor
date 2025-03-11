@@ -1,0 +1,59 @@
+.top-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 10px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #1a1a1a;
+    user-select: none;
+    -webkit-app-region: drag; /* Позволяет перетаскивать окно */
+}
+
+.draggable-area {
+    display: flex;
+    flex-grow: 1;
+    align-items: center;
+    gap: 15px;
+}
+
+.left-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.app-icon {
+    padding: 5px;
+}
+
+.search-bar input {
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    width: 400px;
+    -webkit-app-region: no-drag; /* Исключаем поле ввода из draggable-области */
+}
+
+.window-controls {
+    display: flex;
+    gap: 10px;
+    -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+}
+
+.control-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 5px 12px;
+}
+
+.control-btn:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.close-btn:hover {
+    background: #e81123;
+}
