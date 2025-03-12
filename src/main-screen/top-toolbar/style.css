@@ -1,59 +1,151 @@
 .top-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 10px;
-    background-color: #2d2d2d;
-    border-bottom: 1px solid #1a1a1a;
-    user-select: none;
-    -webkit-app-region: drag; /* Позволяет перетаскивать окно */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  background-color: #202020;
+  user-select: none;
+  -webkit-app-region: drag; /* Позволяет перетаскивать окно */
 }
 
 .draggable-area {
-    display: flex;
-    flex-grow: 1;
-    align-items: center;
-    gap: 15px;
+  display: flex;
+  flex-grow: 1;
+  align-items: center;
+
+  gap: 15px;
 }
 
 .left-section {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .app-icon {
-    padding: 5px;
+  padding: 5px;
+}
+
+.search-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%); /* Центрируем по горизонтали */
+  display: flex;
+  align-items: center;
 }
 
 .search-bar input {
-    background: #1e1e1e;
-    border: 1px solid #3c3c3c;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    width: 400px;
-    -webkit-app-region: no-drag; /* Исключаем поле ввода из draggable-области */
+  width: 400px;
+  padding: 6px 10px 6px 32px; /* Отступ слева для иконки */
+  border: 1px solid #3c3c3c;
+  background: #373737;
+  color: white;
+  border-radius: 40px;
+  outline: none;
+}
+
+.search-bar svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #aaa; /* Цвет иконки */
+  width: 16px;
+  height: 16px;
+  pointer-events: none; /* Чтобы клики проходили к инпуту */
 }
 
 .window-controls {
-    display: flex;
-    gap: 10px;
-    -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+  display: flex;
+  gap: 10px;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
 }
 
 .control-btn {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: 5px 12px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 5px 12px;
+  transition: 0.3s;
 }
 
 .control-btn:hover {
-    background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
+}
+.close-btn {
+  transition: 0.3s;
 }
 
 .close-btn:hover {
-    background: #e81123;
+  background: #e81123;
+}
+
+.menu-item {
+  background: none;
+  font-family: "Inter";
+  font-size: 14px;
+  color: #fff;
+  margin-right: 10px;
+  padding: 4px 6px; /* Отступы внутри кнопки */
+  border-radius: 6px; /* Закругление углов */
+  transition: background-color 0.3s ease;
+  border: none;
+}
+
+.menu-item:hover {
+  background: #8b8b8b;
+}
+
+.menu-container {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 312px;
+  height: 218px;
+  background: #353535;
+  border: 1px solid #666666;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  z-index: 100;
+  border-radius: 6px;
+}
+
+.dropdown-btn {
+  background: none;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dropdown-btn:hover {
+  background: #575757;
+}
+
+.menu-items {
+  display: flex;
+}
+
+.shortcut {
+  color: #686868;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.text {
+    font-size: 12px;
 }

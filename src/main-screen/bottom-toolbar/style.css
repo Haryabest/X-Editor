@@ -1,19 +1,53 @@
 .bottom-toolbar {
-    background-color: #007acc;
-    height: 25px;
-    display: flex;
-    align-items: center;
-    padding: 0 15px;
-    gap: 20px;
-    font-size: 0.9em;
-  }
-  
-  .status-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  
-  .status-icon {
-    font-size: 0.8em;
-  }
+  background-color: #252525;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Равномерное распределение */
+  padding: 0 15px;
+  font-size: 0.9em;
+}
+
+.error-item, .problems-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #505050;
+  position: relative; /* Для позиционирования всплывающих подсказок */
+}
+
+.error-item span,
+.problems-item span {
+  position: relative;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: 150%; /* Поднимаем над элементом */
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s;
+}
+
+.error-item:hover .tooltip,
+.problems-item:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.left-info {
+  display: flex;
+  gap: 5px;
+}
+
+.right-info {
+  display: flex;
+  gap: 5px;
+}
