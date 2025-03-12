@@ -32,6 +32,8 @@
   transform: translateX(-50%); /* Центрируем по горизонтали */
   display: flex;
   align-items: center;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+
 }
 
 .search-bar input {
@@ -41,6 +43,9 @@
   background: #373737;
   color: white;
   border-radius: 40px;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+
+  font-family: "Inter";
   outline: none;
 }
 
@@ -85,6 +90,8 @@
   background: none;
   font-family: "Inter";
   font-size: 14px;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+
   color: #fff;
   margin-right: 10px;
   padding: 4px 6px; /* Отступы внутри кнопки */
@@ -99,14 +106,19 @@
 
 .menu-container {
   position: relative;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+
 }
 
 .dropdown-menu {
   position: absolute;
-  top: 100%;
+  top: 120%;
   left: 0;
   width: 312px;
-  height: 218px;
+  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+
+  overflow-y: auto;
+  max-height: 4000px;
   background: #353535;
   border: 1px solid #666666;
   display: flex;
@@ -139,6 +151,11 @@
 .menu-items {
   display: flex;
 }
+
+.menu-item.active {
+  background: #8b8b8b;
+}
+
 
 .shortcut {
   color: #686868;

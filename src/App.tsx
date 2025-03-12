@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import TopToolbar from './main-screen/top-toolbar/toolbar';
-import LeftBar from './main-screen/leftBar/FileManager';
+import FileManager from './main-screen/leftBar/FileManager';
 import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
@@ -11,7 +11,7 @@ function App() {
   const [terminalHeight, setTerminalHeight] = useState(200);
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
   const [isTerminalVisible, setIsTerminalVisible] = useState(true);
-
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
   const MAX_LEFT_PANEL_WIDTH = 400;
@@ -84,11 +84,12 @@ function App() {
   return (
     <div className="app-container">
       <TopToolbar />
-  
+
       <div className="main-content">
         {isLeftPanelVisible ? (
           <div className="left-panel" style={{ width: leftPanelWidth }}>
-            <LeftBar />
+            {/* Передаем selectedFolder и setSelectedFolder в FileManager */}
+            <FileManager selectedFolder={selectedFolder} />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
           </div>
         ) : (
@@ -96,32 +97,29 @@ function App() {
             ➤
           </button>
         )}
-  
+
         <div className="center-and-terminal">
-          {/* Оберточный контейнер для редактора */}
           <div className="monaco-editor-container">
-            <CenterContainer />
+            <CenterContainer setSelectedFolder={setSelectedFolder} />
           </div>
-  
+
           {isTerminalVisible ? (
             <div className="terminal-container" style={{ height: terminalHeight }}>
               <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
               <Terminal />
             </div>
           ) : (
-            <button 
-              className="restore-button bottom" 
-              onClick={handleRestoreTerminal}
-            >
+            <button className="restore-button bottom" onClick={handleRestoreTerminal}>
               ▲
             </button>
           )}
         </div>
       </div>
-  
+
       <BottomToolbar />
     </div>
   );
+
 }
 
 export default App;

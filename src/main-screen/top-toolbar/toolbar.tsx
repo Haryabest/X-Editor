@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Square, X, Minus, Search } from "lucide-react";
 
@@ -14,6 +14,11 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "Новый файл", shortcut: "Ctrl + N" },
     { text: "Открыть", shortcut: "Ctrl + O" },
     { text: "Сохранить", shortcut: "Ctrl + S" },
+    { text: "Сохранить как", shortcut: "Ctrl + S" },
+    { text: "Сохранить все", shortcut: "Ctrl + S" },
+    { text: "Открыть новое окно", shortcut: "Ctrl + S" },
+    { text: "Последнее", shortcut: "" },
+    { text: "Настройки", shortcut: "" },
     { text: "Выход", shortcut: "Ctrl + Q" }
   ],
   "Выделение": [
@@ -50,6 +55,7 @@ const menuData: Record<string, MenuItem[]> = {
 
 const TopToolbar: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const handleMinimize = async () => {
     try {
@@ -75,9 +81,24 @@ const TopToolbar: React.FC = () => {
     }
   };
 
+  // Функция переключения активного меню
   const toggleMenu = (menu: string) => {
-    setActiveMenu(activeMenu === menu ? null : menu);
+    setActiveMenu((prevMenu) => (prevMenu === menu ? null : menu)); // Если меню уже открыто, закрыть его
   };
+
+  // Закрытие меню при клике вне
+  const closeDropdown = (e: MouseEvent) => {
+    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      setActiveMenu(null); // Закрыть активное меню при клике вне
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener('click', closeDropdown);
+    return () => {
+      document.removeEventListener('click', closeDropdown);
+    };
+  }, []);
 
   return (
     <div className="top-toolbar" data-tauri-drag-region>
@@ -86,11 +107,17 @@ const TopToolbar: React.FC = () => {
           <div className="menu-items">
             {Object.keys(menuData).map((item) => (
               <div key={item} className="menu-container">
-                <button className="menu-item" onClick={() => toggleMenu(item)}>
+                <button
+                  className={`menu-item ${activeMenu === item ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Останавливаем распространение события, чтобы не сработал клик на документе
+                    toggleMenu(item);
+                  }} // При клике открываем/закрываем меню
+                >
                   {item}
                 </button>
-                {activeMenu === item && (
-                  <div className="dropdown-menu">
+                {activeMenu === item && ( // Показываем дропдаун только для активного меню
+                  <div className="dropdown-menu" ref={menuRef}>
                     {menuData[item].map((option: MenuItem, index: number) => (
                       <button key={index} className="dropdown-btn">
                         {option.text} <span className="shortcut">{option.shortcut}</span>

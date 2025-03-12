@@ -51,7 +51,7 @@ const XTermTerminal: React.FC = () => {
         selectionBackground: 'rgba(255,255,255,0.1)'
       },
       fontFamily: '"Courier New", monospace',
-      scrollback: 1000,
+      scrollback: 100,
       convertEol: true
     });
 
