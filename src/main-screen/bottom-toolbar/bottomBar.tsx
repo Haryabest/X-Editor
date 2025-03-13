@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CircleX, CircleAlert, Bell, Search } from "lucide-react";
+import { CircleX, CircleAlert, Bell, Search, File, Database, Settings } from "lucide-react";
 
 import "devicon/devicon.min.css";
 import "./style.css";
@@ -99,15 +99,75 @@ const BottomToolbar: React.FC = () => {
       { name: 'TypeScript JSX', ext: '.tsx', icon: 
         <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" width="14"height="14"/>
        },
-      { name: 'CSS', ext: '.css', icon: 'devicon-css3-plain colored' },
-      { name: 'CSV', ext: '.csv', icon: 'devicon-csv-plain colored' }, // Иконка CSV отсутствует, используем общую
-      { name: 'Dart', ext: '.dart', icon: 'devicon-dart-plain colored' },
-      { name: 'XML', ext: '.xml', icon: 'devicon-xml-plain colored' }, // Иконка XML отсутствует
-      { name: 'Rust', ext: '.rs', icon: 'devicon-rust-plain colored' },
-      { name: 'SCSS', ext: '.scss', icon: 'devicon-sass-original colored' },
-      { name: 'Go', ext: '.go', icon: 'devicon-go-plain colored' },
-      { name: 'HTML', ext: '.html', icon: 'devicon-html5-plain colored' },
-      { name: 'JavaScript React', ext: '.jsx', icon: 'devicon-react-original colored' },
+      { name: 'CSS', ext: '.css', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/css3/css3-plain.svg" width="14"height="14"/>
+       },
+      { name: 'Batch', ext: '.bat', icon: <File width={14} height={14}/>}, // Иконка CSV отсутствует, используем общую
+      { name: 'BibTeX', ext: '.bibtex', icon: <File width={14} height={14}/>}, // Иконка CSV отсутствует, используем общую
+      { name: 'C', ext: '.c', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/c/c-plain.svg" width="14"height="14"/>
+       }, // Иконка CSV отсутствует, используем общую
+      { name: 'C#', ext: '.csharp', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/csharp/csharp-plain.svg"width="14"height="14"/>
+       }, // Иконка CSV отсутствует, используем общую
+      { name: 'C++', ext: '.cpp', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/cplusplus/cplusplus-plain.svg"  width="14"height="14"/>
+      }, // Иконка CSV отсутствует, используем общую
+      { name: 'CSV', ext: '.csv', icon: <File width={14} height={14}/>}, // Иконка CSV отсутствует, используем общую
+      { name: 'Dart', ext: '.dart', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dart/dart-plain.svg" width="14"height="14"/>
+       }, // Иконка CSV отсутствует, используем общую
+      { name: 'Databse', ext: '.db', icon: <Database width={14} height={14}/> }, // Иконка CSV отсутствует, используем общую
+      { name: 'F#', ext: '.fsharp', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/fsharp/fsharp-original.svg" width={14} height={14}/>
+       }, // Иконка CSV отсутствует, используем общую
+      { name: 'Git', ext: '.git', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/>
+       }, // Иконка CSV отсутствует, используем общую
+      { name: 'Go', ext: '.go', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original-wordmark.svg" width={14} height={14}/>
+      }, // Иконка CSV отсутствует, используем общую
+      { name: 'Gradle', ext: '.gradle', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/gradle/gradle-original.svg" width={14} height={14}/>
+      }, // Иконка CSV отсутствует, используем общую
+      { name: 'Gradle build', ext: '.gradle build', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/gradle/gradle-original.svg" width={14} height={14}/>
+       },
+      { name: 'Graphql', ext: '.graphql', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/graphql/graphql-plain.svg" width={14} height={14}/>
+       }, // Иконка XML отсутствует
+      { name: 'Groovy', ext: '.groovy', icon: <File width={14} height={14}/>},
+      { name: 'HLSL', ext: '.hlsl', icon: <File width={14} height={14}/> },
+      { name: 'HTML', ext: '.html', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/html5/html5-plain.svg" width={14} height={14}/>
+       },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ini', ext: '.ini', icon: <Settings width={14} height={14}/> },
+      { name: 'JavaScript React', ext: '.javascriptreact', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" width={14} height={14}/>
+      
+      },
+      { name: 'Jinja', ext: '.jinja', icon: <File width={14} height={14}/>},
+      { name: 'JSON', ext: '.json', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/json/json-plain.svg" width={14} height={14}/>
+       },
+      { name: 'Jsx', ext: '.Jsx', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" width={14} height={14}/>},
+      { name: 'Julia', ext: '.Julia', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/julia/julia-original.svg" width={14} height={14}/>
+       },
+      { name: 'Kotlin', ext: '.kotlin', icon: <File width={14} height={14}/> },
+      { name: 'Kotlin Script', ext: '.kotlinscript', icon: <File width={14} height={14}/> },
+      { name: 'LaTeX', ext: '.latex', icon: 
+        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/latex/latex-original.svg" width={14} height={14}/>
+      },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
+      { name: 'Ingnore', ext: '.ignore', icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"width={14} height={14}/> },
     ];
     const filteredLanguages = languages.filter(lang =>
       lang.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -130,7 +190,7 @@ const BottomToolbar: React.FC = () => {
             {filteredLanguages.map((lang) => (
         <li key={lang.name} className="language-item">
         <div className="language-content">
-          {lang.icon}
+          <span className="file-icons">{lang.icon}</span>
           {lang.name}
         </div>
         <span className="file-ext">{lang.ext}</span>

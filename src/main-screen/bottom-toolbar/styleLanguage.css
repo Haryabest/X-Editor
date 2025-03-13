@@ -92,8 +92,9 @@
 .language-item {
     width: calc(100% - 4px); /* Учитываем возможную тень/бордер */
     margin: 4px 0;
-    padding: 10px 12px;
-    font-size: 14px;
+    padding: 5px 12px;
+    font-size: 12px;
+    border-radius: 5px;
     box-sizing: border-box;
     transition: 0.3s;
     display: flex;
@@ -105,11 +106,14 @@
 
 /* Расширение файла */
 .file-ext {
-    font-size: 0.7em;
     color: #666;
     margin-left: 8px;
     font-weight: 300;
     opacity: 0.9;
+}
+
+.file-icons {
+    margin-right: 5px;
 }
 
 /* Кастомный скроллбар */
@@ -156,7 +160,7 @@
   
   .devicon {
     font-size: 1.2rem;
-    margin-right: 10px;
+    margin-right: 100px;
     min-width: 24px; /* Фиксированная ширина для выравнивания */
   }
   
