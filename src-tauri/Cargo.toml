@@ -23,3 +23,4 @@ tauri-plugin-fs = "2"
 encoding_rs = "0.8.35"
 winapi = { version = "0.3.9", features = ["consoleapi", "errhandlingapi", "wincon"] } # Исправлено здесь
 dirs = "6.0.0"
+dunce = "1.0.5"

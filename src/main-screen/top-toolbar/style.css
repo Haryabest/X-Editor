@@ -5,6 +5,7 @@
   padding: 5px 10px;
   background-color: #202020;
   user-select: none;
+  z-index: 999999999;
   -webkit-app-region: drag; /* Позволяет перетаскивать окно */
 }
 
@@ -165,4 +166,35 @@
 
 .text {
     font-size: 12px;
+}
+
+
+
+.hidden-menu-dropdown {
+  width: max-content;
+}
+
+.hidden-menu-item-container {
+  position: relative;
+}
+
+.submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: #353535;
+  border: 1px solid #666;
+  border-radius: 6px;
+  z-index: 101;
+  margin-left: 2px;
+}
+
+.menu-item.active {
+  background: #8b8b8b;
+}
+
+/* Адаптация иконки точек */
+.menu-item svg {
+  width: 16px;
+  height: 16px;
 }

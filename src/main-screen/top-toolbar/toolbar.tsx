@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Square, X, Minus, Search } from "lucide-react";
+import { Square, X, Minus, Search, MoreHorizontal } from "lucide-react";
 
 import './style.css';
 
@@ -55,6 +55,9 @@ const menuData: Record<string, MenuItem[]> = {
 
 const TopToolbar: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [showHiddenMenu, setShowHiddenMenu] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const handleMinimize = async () => {
@@ -80,7 +83,11 @@ const TopToolbar: React.FC = () => {
       console.error('Close error:', error);
     }
   };
-
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   // Функция переключения активного меню
   const toggleMenu = (menu: string) => {
     setActiveMenu((prevMenu) => (prevMenu === menu ? null : menu)); // Если меню уже открыто, закрыть его
@@ -100,25 +107,42 @@ const TopToolbar: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenu(null);
+      }
+      if (hiddenMenuRef.current && !hiddenMenuRef.current.contains(e.target as Node)) {
+        setShowHiddenMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const menuKeys = Object.keys(menuData);
+  const mainMenuKeys = windowWidth > 1000 ? menuKeys : menuKeys.slice(0, -3);
+  const hiddenMenuKeys = windowWidth > 1000 ? [] : menuKeys.slice(-3);
+
   return (
     <div className="top-toolbar" data-tauri-drag-region>
       <div className="draggable-area">
         <div className="left-section">
           <div className="menu-items">
-            {Object.keys(menuData).map((item) => (
+            {mainMenuKeys.map((item) => (
               <div key={item} className="menu-container">
                 <button
                   className={`menu-item ${activeMenu === item ? 'active' : ''}`}
                   onClick={(e) => {
-                    e.stopPropagation(); // Останавливаем распространение события, чтобы не сработал клик на документе
-                    toggleMenu(item);
-                  }} // При клике открываем/закрываем меню
+                    e.stopPropagation();
+                    setActiveMenu(activeMenu === item ? null : item);
+                  }}
                 >
                   {item}
                 </button>
-                {activeMenu === item && ( // Показываем дропдаун только для активного меню
+                {activeMenu === item && (
                   <div className="dropdown-menu" ref={menuRef}>
-                    {menuData[item].map((option: MenuItem, index: number) => (
+                    {menuData[item].map((option, index) => (
                       <button key={index} className="dropdown-btn">
                         {option.text} <span className="shortcut">{option.shortcut}</span>
                       </button>
@@ -127,24 +151,71 @@ const TopToolbar: React.FC = () => {
                 )}
               </div>
             ))}
+
+            {hiddenMenuKeys.length > 0 && (
+              <div className="menu-container" ref={hiddenMenuRef}>
+                <button
+                  className="menu-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowHiddenMenu(!showHiddenMenu);
+                  }}
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+                {showHiddenMenu && (
+                  <div className="dropdown-menu hidden-menu-dropdown">
+                    {hiddenMenuKeys.map((item) => (
+                      <div
+                        key={item}
+                        className="hidden-menu-item-container"
+                        onMouseEnter={() => setActiveMenu(item)}
+                        onMouseLeave={() => setActiveMenu(null)}
+                      >
+                        <button className="dropdown-btn">
+                          {item}
+                        </button>
+                        {activeMenu === item && (
+                          <div className="dropdown-menu submenu">
+                            {menuData[item].map((option, index) => (
+                              <button key={index} className="dropdown-btn">
+                                {option.text} <span className="shortcut">{option.shortcut}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="search-bar">
-          <Search />
-          <input type="text" />
+          <Search size={16} />
+          <input
+            type="text"
+            placeholder="Поиск..."
+            style={{
+              width: windowWidth < 800 ? '150px' : 
+              windowWidth < 1000 ? '200px' : 
+              windowWidth < 1200 ? '300px' : '400px'
+            }}
+          />
         </div>
       </div>
 
       <div className="window-controls">
-        <button className="control-btn" onClick={handleMinimize} aria-label="Minimize">
-          <Minus width={14} height={14} />
+        <button className="control-btn" onClick={handleMinimize}>
+          <Minus size={14} />
         </button>
-        <button className="control-btn" onClick={handleMaximize} aria-label="Maximize">
-          <Square width={14} height={14} />
+        <button className="control-btn" onClick={handleMaximize}>
+          <Square size={14} />
         </button>
-        <button className="control-btn close-btn" onClick={handleClose} aria-label="Close">
-          <X width={14} height={14} />
+        <button className="control-btn close-btn" onClick={handleClose}>
+          <X size={14} />
         </button>
       </div>
     </div>

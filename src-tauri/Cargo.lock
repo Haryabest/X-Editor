@@ -5418,6 +5418,7 @@ name = "xeditor"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "dunce",
  "encoding_rs",
  "serde",
  "serde_json",
