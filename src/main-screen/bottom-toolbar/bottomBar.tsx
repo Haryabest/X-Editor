@@ -23,6 +23,7 @@ const BottomToolbar: React.FC = () => {
   const [visibleTooltip, setVisibleTooltip] = useState<string | null>(null);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
 
   const [visibleElements, setVisibleElements] = useState<{
     encoding: boolean;
@@ -36,21 +37,39 @@ const BottomToolbar: React.FC = () => {
     notifications: true,
   });
 
-  // Handle ESC key press
+  // Обработчик ESC
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setActiveDropdown(null);
+        closeContextMenu();
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
-  // Handle outside click
-  const handleOutsideClick = () => {
-    setActiveDropdown(null);
+  // Закрытие контекстного меню
+  const closeContextMenu = () => {
+    const menu = document.getElementById("context-menu");
+    if (menu) {
+      menu.style.display = "none";
+      setContextMenuVisible(false);
+    }
   };
+
+  // Глобальный обработчик кликов
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const menu = document.getElementById("context-menu");
+      if (menu && !menu.contains(e.target as Node)) {
+        closeContextMenu();
+      }
+    };
+    
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, []);
 
   const handleMouseEnter = (tooltipKey: keyof typeof tooltips) => {
     const id = setTimeout(() => {
@@ -75,17 +94,18 @@ const BottomToolbar: React.FC = () => {
     event.preventDefault();
     const menu = document.getElementById("context-menu");
     if (menu) {
-      // Вычитаем 10px, чтобы разместить меню выше
-      menu.style.left = `${event.clientX}px`;
-      menu.style.top = `${event.clientY - 160}px`;  // смещение вверх на 10px
       menu.style.display = "block";
+      menu.style.left = `${event.clientX}px`;
+      menu.style.top = `${event.clientY - 150}px`;
+      setContextMenuVisible(true);
     }
   };
-  
-  const handleToggleVisibility = (key: VisibleElementKeys) => {
-    setVisibleElements((prevState) => ({
-      ...prevState,
-      [key]: !prevState[key],
+
+  const handleToggleVisibility = (key: VisibleElementKeys, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setVisibleElements(prev => ({
+      ...prev,
+      [key]: !prev[key]
     }));
   };
 
@@ -96,28 +116,52 @@ const BottomToolbar: React.FC = () => {
         id="context-menu"
         className="context-menu"
         style={{ display: "none" }}
-        onClick={handleOutsideClick}
       >
-        <div onClick={() => handleToggleVisibility("encoding")}>
-          <Check width={14} height={14} className={`check ${visibleElements.encoding ? "active" : ""}`} />
-          <span>Encoding</span>
+        <div onClick={(e) => handleToggleVisibility("encoding", e)}>
+          <span>Кодировка</span>
+          <Check
+          color="#fff"
+            width={14} 
+            height={14} 
+            className={`check ${visibleElements.encoding ? "active" : ""}`
+              
+            } 
+          />
         </div>
-        <div onClick={() => handleToggleVisibility("position")}>
-          <Check width={14} height={14} className={`check ${visibleElements.position ? "active" : ""}`} />
-          <span>Position</span>
+        <div onClick={(e) => handleToggleVisibility("position", e)}>
+          <span>Позиция</span>
+          <Check 
+                    color="#fff"
+
+            width={14} 
+            height={14} 
+            className={`check ${visibleElements.position ? "active" : ""}`} 
+          />
         </div>
-        <div onClick={() => handleToggleVisibility("language")}>
-          <Check width={14} height={14} className={`check ${visibleElements.language ? "active" : ""}`} />
-          <span>Language</span>
+        <div onClick={(e) => handleToggleVisibility("language", e)}>
+          <span>Выбор редактора</span>
+          <Check 
+                    color="#fff"
+
+            width={14} 
+            height={14} 
+            className={`check ${visibleElements.language ? "active" : ""}`} 
+          />
         </div>
-        <div onClick={() => handleToggleVisibility("notifications")}>
-          <Check width={14} height={14} className={`check ${visibleElements.notifications ? "active" : ""}`} />
-          <span>Notifications</span>
+        <div onClick={(e) => handleToggleVisibility("notifications", e)}>
+          <span>Уведомления</span>
+          <Check 
+                    color="#fff"
+
+            width={14} 
+            height={14} 
+            className={`check ${visibleElements.notifications ? "active" : ""}`} 
+          />
         </div>
       </div>
 
       {activeDropdown && (
-        <div className="dropdown-overlay" onClick={handleOutsideClick}>
+        <div className="dropdown-overlay" onClick={closeContextMenu}>
           <div className="dropdown-wrapper" onClick={(e) => e.stopPropagation()}>
             {activeDropdown === "encoding" && <EncodingDropdown />}
             {activeDropdown === "position" && <PositionDropdown />}

@@ -140,8 +140,7 @@
   justify-content: center;
   align-items: center;
   z-index: 10000001;
-  background: rgba(0, 0, 0, 0.3);
-}
+  }
 
 /* Обертка для центрирования */
 .dropdown-wrapper {
@@ -152,24 +151,27 @@
   max-height: 90vh;
 }
 
-/* Стили для контекстного меню */
 .context-menu {
   position: absolute;
-  background-color: #2d2d2d;
-  border-radius: 5px;
+  background-color: #353535;
+  border: 1px solid #666666;
+  border-radius: 6px;
   color: #fff;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
   z-index: 1000000;
   display: none;
   flex-direction: column;
-  padding: 10px 0;
-  width: 150px;
+  padding: 6px 0;
+  width: 220px;
+  font-family: 'Inter', sans-serif;
 }
 
 .context-menu div {
   padding: 8px 20px;
   cursor: pointer;
+  font-size: 12px;
+  transition: 0.3s;
   display: flex;
+  border-radius: 5px;
   align-items: center;
 }
 
