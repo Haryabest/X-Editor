@@ -121,8 +121,8 @@ const TopToolbar: React.FC = () => {
   }, []);
 
   const menuKeys = Object.keys(menuData);
-  const mainMenuKeys = windowWidth > 1000 ? menuKeys : menuKeys.slice(0, -3);
-  const hiddenMenuKeys = windowWidth > 1000 ? [] : menuKeys.slice(-3);
+  const mainMenuKeys = windowWidth > 1360 ? menuKeys : menuKeys.slice(0, -3);
+  const hiddenMenuKeys = windowWidth > 1360 ? [] : menuKeys.slice(-3);
 
   return (
     <div className="top-toolbar" data-tauri-drag-region>
