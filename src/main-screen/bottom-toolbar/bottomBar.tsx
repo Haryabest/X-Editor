@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { CircleX, CircleAlert, Bell, Check } from "lucide-react";
 
-import EncodingDropdown from "./modals/ModalEncoding";
-import LanguageDropdown from "./modals/ModalsLanguage";
-import PositionDropdown from "./modals/ModalsPosition";
-import NotificationsDropdown from "./modals/ModalsNotification";
+import EncodingDropdown from "./modals/Encoding/ModalEncoding";
+import LanguageDropdown from "./modals/Language/ModalsLanguage";
+import PositionDropdown from "./modals/Position/ModalsPosition";
+import NotificationsDropdown from "./modals/Notification/ModalsNotification";
 
 import "devicon/devicon.min.css";
 import "./style.css";

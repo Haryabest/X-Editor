@@ -21,6 +21,10 @@ window-shadows = "0.2.2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 encoding_rs = "0.8.35"
-winapi = { version = "0.3.9", features = ["consoleapi", "errhandlingapi", "wincon"] } # Исправлено здесь
+winapi = { version = "0.3.9", features = ["consoleapi", "handleapi", "minwindef", "minwinbase", "processthreadsapi", "winbase", "wincon", "wincontypes", "namedpipeapi", "winuser"] }
 dirs = "6.0.0"
 dunce = "1.0.5"
+lazy_static = "1.5.0"
+portable-pty = "0.9.0"
+tokio = { version = "1.44.1", features = ["full"] }
+chrono = "0.4.40"

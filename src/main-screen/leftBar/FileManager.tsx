@@ -1,162 +1,180 @@
 import React, { useEffect, useState } from 'react';
-import { readDir, DirEntry } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
+import { getFileIcon, FolderIcon } from './fileIcons';
+import { ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
+
+import "./style.css";
 
 interface FileItem {
   name: string;
-  isDirectory: boolean;
+  is_directory: boolean;
   path: string;
+  children?: FileItem[];
+  expanded?: boolean;
+  loaded?: boolean;
 }
 
 interface FileManagerProps {
   selectedFolder: string | null;
 }
-
 const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   useEffect(() => {
-    if (selectedFolder) {
-      fetchFolderContents(selectedFolder);
-    }
+    const loadTree = async () => {
+      if (selectedFolder) {
+        try {
+          const tree = await invoke<FileItem>("get_directory_tree", { 
+            path: selectedFolder 
+          });
+          setFileTree(tree.children || []);
+        } catch (error) {
+          console.error('Error loading directory:', error);
+        }
+      }
+    };
+    loadTree();
   }, [selectedFolder]);
+  const toggleDirectory = async (item: FileItem) => {
+    if (!item.loaded) {
+      try {
+        const result = await invoke<FileItem>("get_directory_tree", { 
+          path: item.path 
+        });
+        
+        const newChildren = result.children?.map(child => ({
+          ...child,
+          expanded: false,
+          loaded: false
+        })) || [];
 
-  // Загрузка файлов в папке
-  const fetchFolderContents = async (folderPath: string) => {
-    try {
-      const entries: DirEntry[] = await readDir(folderPath);
-      const parsedFiles: FileItem[] = entries.map(entry => ({
-        name: entry.name || '',
-        isDirectory: entry.isDirectory || false,
-        path: `${folderPath}/${entry.name}`,
-      }));
-      setFiles(parsedFiles);
-    } catch (error) {
-      console.error('Ошибка при чтении папки:', error);
+        setFileTree(prev => updateTree(prev, item.path, newChildren));
+      } catch (error) {
+        console.error('Error loading directory:', error);
+      }
+    } else {
+      setFileTree(prev => updateTree(prev, item.path, item.children || []));
     }
   };
-
-  // Переключение раскрытия папок
-  const toggleDirectory = async (path: string) => {
-    setExpandedDirs(prev => {
-      const newDirs = new Set(prev);
-      if (newDirs.has(path)) {
-        newDirs.delete(path);
-      } else {
-        newDirs.add(path);
-        fetchFolderContents(path);
+  const updateTree = (items: FileItem[], path: string, newChildren: FileItem[]): FileItem[] => {
+    return items.map(item => {
+      if (item.path === path) {
+        return { 
+          ...item, 
+          children: newChildren,
+          expanded: true,
+          loaded: true
+        };
       }
-      return newDirs;
+      if (item.children) {
+        return {
+          ...item,
+          children: updateTree(item.children, path, newChildren)
+        };
+      }
+      return item;
     });
   };
 
-  // Создание папки
   const createNewDirectory = async (path: string) => {
     const newFolderName = prompt('Введите имя новой папки:');
     if (newFolderName) {
-      const newFolderPath = `${path}/${newFolderName}`;
       try {
-        await invoke("create_folder", { path: newFolderPath });
-        alert('Папка создана!');
-        fetchFolderContents(path);
+        await invoke("create_folder", { path: `${path}/${newFolderName}` });
+        
+        // Обновляем только родительскую папку
+        const result = await invoke<FileItem>("get_directory_tree", { path });
+        const newChildren = result.children?.map(child => ({
+          ...child,
+          expanded: false,
+          loaded: false
+        })) || [];
+
+        setFileTree(prev => updateTree(prev, path, newChildren));
       } catch (error) {
-        console.error('Ошибка при создании папки:', error);
-        alert(error); // Показываем ошибку пользователю
+        console.error('Ошибка:', error);
+        alert(`Ошибка создания: ${error}`);
       }
     }
   };
-  
 
-  // Создание файла
   const createNewFile = async (path: string) => {
-    const newFileName = prompt('Введите имя нового файла (с расширением):');
+    const newFileName = prompt('Введите имя файла:');
     if (newFileName) {
-      const newFilePath = `${path}/${newFileName}`;
       try {
-        await invoke("create_file", { path: newFilePath });
-        alert('Файл создан!');
-        fetchFolderContents(path);
+        await invoke("create_file", { path: `${path}/${newFileName}` });
+        const parentPath = path.split('/').slice(0, -1).join('/');
+        const tree = await invoke<FileItem>("get_directory_tree", { path: parentPath });
+        setFileTree(tree.children || []);
       } catch (error) {
-        console.error('Ошибка при создании файла:', error);
+        console.error('Ошибка:', error);
+        alert(`Ошибка создания: ${error}`);
       }
     }
   };
 
-  // Обработчик ПКМ
-  const handleContextMenu = (event: React.MouseEvent, path: string) => {
-    event.preventDefault();
-    setContextMenu({ x: event.clientX, y: event.clientY, path });
-  };
-
-  // Закрытие контекстного меню
-  const closeContextMenu = () => setContextMenu(null);
+  const renderTree = (items: FileItem[]) => (
+    <ul className="file-tree">
+      {items.map((item) => (
+        <li key={item.path} className="tree-item" onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, path: item.path });
+        }}>
+          {item.is_directory ? (
+            <div className="directory">
+              <div onClick={() => toggleDirectory(item)} className="directory-item">
+                <span className="chevron">
+                  {item.expanded ? <ChevronDown width={14} height={14} /> : <ChevronRight width={14} height={14} />}
+                </span>
+                <span className="icon">
+                  {item.expanded ? <FolderOpen width={14} height={14}/> : <FolderIcon width={14} height={14}/>}
+                </span>
+                <span className="name">{item.name}</span>
+              </div>
+              {item.expanded && item.children && (
+                <div className="children-container">
+                  {renderTree(item.children)}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="file-item">
+              <span className="icon">{getFileIcon(item.name)}</span>
+              <span className="name">{item.name}</span>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
-    <div className="file-manager" onClick={closeContextMenu}>
-      <h3>ПРОВОДНИК</h3>
-      <ul className="file-tree">
-        {files.map((file) => (
-          <li key={file.path} onContextMenu={(e) => handleContextMenu(e, file.path)}>
-            {file.isDirectory ? (
-              <div>
-                <span onClick={() => toggleDirectory(file.path)}>
-                  {expandedDirs.has(file.path) ? '▼' : '▶'} {file.name}
-                </span>
-                {expandedDirs.has(file.path) && <ul></ul>}
-              </div>
-            ) : (
-              <span>{file.name}</span>
-            )}
-          </li>
-        ))}
-      </ul>
+    <div className="file-manager" onClick={() => setContextMenu(null)}>
+      <h5>ПРОВОДНИК</h5>
+      {renderTree(fileTree)}
 
       {contextMenu && (
-        <div
-          className="context-menu"
-          style={{ top: contextMenu.y, left: contextMenu.x, position: 'absolute' }}
-        >
-          <button onClick={() => createNewDirectory(contextMenu.path)}>Создать папку</button>
-          <button onClick={() => createNewFile(contextMenu.path)}>Создать файл</button>
+        <div className="context-menu" style={{ 
+          top: contextMenu.y, 
+          left: contextMenu.x,
+          position: 'fixed',
+          zIndex: 1000
+        }}>
+          <button onClick={() => {
+            createNewDirectory(contextMenu.path);
+            setContextMenu(null);
+          }}>
+            Новая папка
+          </button>
+          <button onClick={() => {
+            createNewFile(contextMenu.path);
+            setContextMenu(null);
+          }}>
+            Новый файл
+          </button>
         </div>
       )}
-
-      <style>{`
-        .file-manager {
-          padding: 10px;
-          background: #1e1e1e;
-          color: white;
-          width: 300px;
-        }
-        .file-tree {
-          list-style: none;
-          padding: 0;
-        }
-        .file-tree li {
-          padding: 5px;
-          cursor: pointer;
-        }
-        .context-menu {
-          background: #333;
-          padding: 5px;
-          border-radius: 5px;
-          box-shadow: 0px 0px 5px rgba(255, 255, 255, 0.2);
-        }
-        .context-menu button {
-          background: none;
-          border: none;
-          color: white;
-          cursor: pointer;
-          display: block;
-          width: 100%;
-          padding: 5px;
-        }
-        .context-menu button:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-      `}</style>
     </div>
   );
 };

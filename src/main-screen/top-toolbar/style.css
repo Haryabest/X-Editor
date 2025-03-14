@@ -198,3 +198,159 @@
   width: 16px;
   height: 16px;
 }
+
+
+
+
+
+
+
+/* Стили для кнопки поиска */
+.search-trigger {
+  position: relative;
+  padding: 6px 10px 6px 32px;
+  border: 1px solid #3c3c3c;
+  background: #373737;
+  color: #aaa;
+  border-radius: 40px;
+  cursor: pointer;
+  text-align: left;
+  font-family: "Inter";
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.search-trigger:hover {
+  border-color: #4a4a4a;
+}
+
+.search-trigger svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #aaa;
+}
+
+/* Стили дропдауна поиска */
+.search-dropdown {
+  position: absolute;
+  top: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 15px;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  animation: slideDown 0.2s ease-out;
+}
+
+.search-container {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-container input {
+  width: 100%;
+  padding: 8px 32px;
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Inter';
+}
+
+.search-container input:focus {
+  outline: none;
+  border-color: #666;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #777;
+}
+
+/* Список файлов */
+.file-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-item:hover {
+  background: #373737;
+}
+
+.file-icon {
+  margin-right: 12px;
+  font-size: 14px;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-name {
+  font-size: 13px;
+  color: #fff;
+}
+
+.file-path {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+/* Кастомный скроллбар */
+.file-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.file-list-container::-webkit-scrollbar-track {
+  background: #252525;
+  border-radius: 3px;
+}
+
+.file-list-container::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 3px;
+}
+
+/* Анимация */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Адаптивность */
+@media (max-width: 640px) {
+  .search-dropdown {
+    width: 90vw;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}

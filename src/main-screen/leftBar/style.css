@@ -1,0 +1,110 @@
+/* Base styles */
+.file-manager {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', Roboto, Oxygen, Ubuntu, Cantarell;
+    font-size: 12px;
+    color: #e8e8e8;
+    background: #252526;
+    padding: 8px;
+    user-select: none;
+  }
+  
+  /* Tree structure */
+  .file-tree {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+  
+  .tree-item {
+    padding: 4px 0;
+    margin: 2px 0;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+  }
+  
+  /* Hover effect for all items */
+  .tree-item:hover {
+    background: #2a2d2e;
+  }
+  
+  /* Directory item */
+  .directory-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0px 8px;
+    margin: 2px 0;
+  }
+  
+  /* File item */
+  .file-item {
+    display: flex;
+    align-items: center;
+    padding: 0px 8px;
+    margin: 2px 0;
+  }
+  
+  /* Icons and chevrons */
+  .icon {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 8px;
+  }
+  
+  .chevron {
+    width: 20px;
+    display: inline-flex;
+    align-items: center;
+    color: #858585;
+    margin-right: 4px;
+  }
+  
+  /* Name text */
+  .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 2px 0;
+  }
+  
+  /* Children container */
+  .children-container {
+    margin-left: 20px;
+    border-left: 1px solid #333;
+    padding-left: 12px;
+  }
+  
+  /* Context menu */
+  .context-menu {
+    background: #252526;
+    border: 1px solid #454545;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+    min-width: 160px;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  
+  .context-menu button {
+    color: #e8e8e8;
+    padding: 8px 16px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  .context-menu button:hover {
+    background: #094771;
+  }
+  
+  /* Additional spacing adjustments */
+  .directory-item,
+  .file-item {
+    gap: 6px;
+  }
+  
+  .children-container {
+    margin-top: 4px;
+  }

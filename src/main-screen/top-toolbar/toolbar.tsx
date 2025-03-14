@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Square, X, Minus, Search, MoreHorizontal } from "lucide-react";
+import { Square, X, Minus, MoreHorizontal } from "lucide-react";
+import { MenuItem, FileItem } from './types/types';
+
+import SearchTrigger from './components/SearchTrigger';
+import SearchDropdown from './components/SearchDropdown';
 
 import './style.css';
-
-interface MenuItem {
-  text: string;
-  shortcut: string;
-}
 
 const menuData: Record<string, MenuItem[]> = {
   "Файл": [
@@ -53,60 +52,48 @@ const menuData: Record<string, MenuItem[]> = {
   ]
 };
 
+const fileList: FileItem[] = [
+  { name: 'style.css', path: 'src/main-screen/top-toolbar', icon: '📄' },
+  { name: 'toolbar.tsx', path: 'src/main-screen/top-toolbar', icon: '📄' },
+  { name: 'file_operations.rs', path: 'src-taur/src/commands', icon: '📄' },
+  { name: 'ModalsPosition.tsx', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
+  { name: 'main.rs', path: 'src-taur/src', icon: '📄' },
+  { name: 'bottomBar.tsx', path: 'src/main-screen/bottom-toolbar', icon: '📄' },
+  { name: 'styleEncoding.css', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
+];
+
 const TopToolbar: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
   const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
+  // Window controls handlers
   const handleMinimize = async () => {
-    try {
-      await invoke('minimize_window');
-    } catch (error) {
-      console.error('Minimize error:', error);
-    }
+    try { await invoke('minimize_window'); } catch (error) { console.error('Minimize error:', error); }
   };
 
   const handleMaximize = async () => {
-    try {
-      await invoke('toggle_maximize');
-    } catch (error) {
-      console.error('Maximize error:', error);
-    }
+    try { await invoke('toggle_maximize'); } catch (error) { console.error('Maximize error:', error); }
   };
 
   const handleClose = async () => {
-    try {
-      await invoke('close_window');
-    } catch (error) {
-      console.error('Close error:', error);
-    }
+    try { await invoke('close_window'); } catch (error) { console.error('Close error:', error); }
   };
+
+  // Resize handler
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  // Функция переключения активного меню
-  const toggleMenu = (menu: string) => {
-    setActiveMenu((prevMenu) => (prevMenu === menu ? null : menu)); // Если меню уже открыто, закрыть его
-  };
 
-  // Закрытие меню при клике вне
-  const closeDropdown = (e: MouseEvent) => {
-    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-      setActiveMenu(null); // Закрыть активное меню при клике вне
-    }
-  };
-
-  useEffect(() => {
-    document.addEventListener('click', closeDropdown);
-    return () => {
-      document.removeEventListener('click', closeDropdown);
-    };
-  }, []);
-
+  // Click outside handlers
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -115,11 +102,15 @@ const TopToolbar: React.FC = () => {
       if (hiddenMenuRef.current && !hiddenMenuRef.current.contains(e.target as Node)) {
         setShowHiddenMenu(false);
       }
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSearchDropdown(false);
+      }
     };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
+  // Menu configuration
   const menuKeys = Object.keys(menuData);
   const mainMenuKeys = windowWidth > 1360 ? menuKeys : menuKeys.slice(0, -3);
   const hiddenMenuKeys = windowWidth > 1360 ? [] : menuKeys.slice(-3);
@@ -193,17 +184,26 @@ const TopToolbar: React.FC = () => {
           </div>
         </div>
 
-        <div className="search-bar">
-          <Search size={16} />
-          <input
-            type="text"
-            placeholder="Поиск..."
-            style={{
-              width: windowWidth < 800 ? '150px' : 
+        <div className="search-bar" ref={searchRef}>
+          <SearchTrigger
+            width={
+              windowWidth < 800 ? '150px' : 
               windowWidth < 1000 ? '200px' : 
               windowWidth < 1200 ? '300px' : '400px'
-            }}
+            }
+            onClick={() => setShowSearchDropdown(true)}
           />
+          
+          {showSearchDropdown && (
+            <SearchDropdown
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              files={fileList.filter(file =>
+                file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                file.path.toLowerCase().includes(searchQuery.toLowerCase())
+              )}
+            />
+          )}
         </div>
       </div>
 
