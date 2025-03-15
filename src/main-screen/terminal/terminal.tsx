@@ -70,7 +70,6 @@ const XTermTerminal: React.FC = () => {
     try {
         const active = await invoke<boolean>("has_active_process");
         // Добавим логирование состояний
-        console.log("Active process check:", active);
         setHasActiveProcess(active);
         return active;
     } catch (error) {

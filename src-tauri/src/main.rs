@@ -2,7 +2,7 @@
 
 mod commands;
 mod terminal;
-
+mod types;
 use commands::{window_commands, file_operations};
 use terminal::{execute_command, get_current_dir, send_input, has_active_process};
 use tauri::Manager;
@@ -35,6 +35,8 @@ fn main() {
           window_commands::toggle_maximize,
           file_operations::create_file,
           file_operations::create_folder,
+          types::get_directory_tree,
+          types::get_subdirectory,
           execute_command,
           get_current_dir,
           send_input,

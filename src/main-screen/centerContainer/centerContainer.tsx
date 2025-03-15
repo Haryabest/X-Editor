@@ -9,7 +9,6 @@ interface CenterContainerProps {
   setSelectedFolder: (folderPath: string | null) => void; // Проп для обновления selectedFolder
 }
 
-
 const CenterContainer: React.FC<CenterContainerProps> = ({ style, setSelectedFolder }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('// Начните писать код здесь...');
@@ -17,10 +16,16 @@ const CenterContainer: React.FC<CenterContainerProps> = ({ style, setSelectedFol
   const handleOpenFolder = async () => {
     try {
       const folderPath = await open({ directory: true, multiple: false });
-      console.log('Выбранная папка:', folderPath);
-      setSelectedFolder(folderPath as string); // Устанавливаем путь выбранной папки
+      if (folderPath) {
+        console.log('Выбранная папка:', folderPath);
+        setSelectedFolder(folderPath as string); // Устанавливаем путь выбранной папки
+      } else {
+        console.log('Выбор папки отменен');
+        setSelectedFolder(null);
+      }
     } catch (error) {
       console.error('Ошибка при открытии папки:', error);
+      alert(`Не удалось открыть папку: ${error}`);
     }
   };
 

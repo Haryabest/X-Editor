@@ -1,0 +1,23 @@
+.context-menu {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    padding: 5px 0;
+    min-width: 150px; /* Устанавливаем минимальную ширину для видимости */
+    z-index: 1000; /* Должно быть выше других элементов */
+  }
+  
+  .context-menu button {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+  
+  .context-menu button:hover {
+    background: #f0f0f0;
+  }

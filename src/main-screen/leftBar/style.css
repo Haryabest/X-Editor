@@ -4,8 +4,12 @@
     font-size: 12px;
     color: #e8e8e8;
     background: #252526;
+    height: calc(100vh - 50px); /* Оставляем место для заголовка */
+
     padding: 8px;
     user-select: none;
+    overflow-y: auto; /* Добавляем вертикальную прокрутку */
+
   }
   
   /* Tree structure */

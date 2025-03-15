@@ -1,4 +1,6 @@
-import { File, Database, FileText, Settings, Folder } from 'lucide-react';
+import { File, Database, FileText, Settings, Folder, FileAudio, FileVideo, FileImage } from 'lucide-react';
+import { GifIcon } from '@heroicons/react/16/solid';
+import { FaRegFileWord, FaRegFilePdf, FaRegFilePowerpoint } from "react-icons/fa";
 
 export interface FileIconConfig {
   name: string;
@@ -55,7 +57,14 @@ export const fileIcons: FileIconConfig[] = [
   { name: "Yaml", ext: ".yaml", icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/yaml/yaml-original.svg" width="14" height="14" /> },
   { name: "XML", ext: ".xml", icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/xml/xml-original.svg" width="14" height="14" /> },
   { name: "Простой текст", ext: ".plaintext", icon: <FileText width={14} height={14} /> },
-  { name: "XSL", ext: ".xsl", icon: <File width={14} height={14} /> },
+  { name: "GIF", ext: ".gif", icon: <GifIcon width={14} height={14} /> },
+  { name: "mp4", ext: ".mp4", icon: <FileVideo width={14} height={14} /> },
+  { name: "mp3", ext: ".mp3", icon: <FileAudio width={14} height={14} /> },
+  { name: "AVI", ext: ".avi", icon: <FileVideo width={14} height={14} /> },
+  { name: "PNG", ext: ".png", icon: <FileImage width={14} height={14} /> },
+  { name: "WORD", ext: ".docx", icon: <FaRegFileWord width={14} height={14} /> },
+  { name: "PDF", ext: ".pdf", icon: <FaRegFilePdf width={14} height={14} /> },
+  { name: "PowerPoint", ext: ".pptx", icon: <FaRegFilePowerpoint width={14} height={14} /> },
 ];
 
 const iconMap = fileIcons.reduce((acc, curr) => {
