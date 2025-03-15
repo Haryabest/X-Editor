@@ -1,0 +1,93 @@
+.te-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #333;
+  }
+  
+  .te-file-tabs {
+    display: flex;
+    height: 40px;
+    overflow-x: auto; /* Включаем горизонтальный скролл */
+    padding: 0 10px;
+    gap: 5px;
+  }
+  
+  .te-file-tab {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    background-color: #2a2a2a;
+    border-radius: 4px 4px 0 0;
+    min-width: 120px;
+    max-width: 200px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition: background-color 0.2s ease;
+  }
+  
+  .te-file-tab.te-active {
+    background-color: #3c3c3c;
+    border-bottom: 2px solid #0078d4;
+  }
+  
+  .te-file-icon {
+    margin-right: 6px;
+    font-size: 14px;
+  }
+  
+  .te-file-name-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #d4d4d4;
+    font-size: 13px;
+    font-family: 'Segoe UI', sans-serif;
+    cursor: pointer;
+    flex-grow: 1; /* Растягиваем кнопку на доступное пространство */
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  
+  .te-close-btn {
+    display: none;
+    margin-left: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: #999;
+  }
+  
+  .te-file-tab:hover .te-close-btn {
+    display: block;
+  }
+  
+  .te-close-btn:hover {
+    color: #fff;
+  }
+  
+  .te-file-tabs::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  .te-file-tabs::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 2px;
+  }
+  
+  .te-file-tabs::-webkit-scrollbar-track {
+    background: #2a2a2a;
+  }
+  
+  .te-file-path {
+    padding: 5px 10px;
+    color: #999;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #252526;
+    border-top: 1px solid #333;
+  }

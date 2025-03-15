@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::Window;
 use tokio::fs;
+use std::pin::Pin;
+use futures::future::FutureExt;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileItem {
@@ -12,34 +14,30 @@ pub struct FileItem {
     pub children: Option<Vec<FileItem>>,
 }
 
-async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileItem> {
+async fn read_directory(path: PathBuf, _shallow: bool) -> std::io::Result<FileItem> {
     let metadata = fs::metadata(&path).await?;
     let is_directory = metadata.is_dir();
     let mut children = None;
-  
-    if is_directory && !shallow {
-      let mut dir_entries = Vec::new();
-      let mut read_dir = fs::read_dir(&path).await?;
-  
-      while let Some(entry) = read_dir.next_entry().await? {
-        let child_path = entry.path();
-        dir_entries.push(FileItem {
-          name: child_path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
-          is_directory: child_path.is_dir(), // Здесь определяется для вложенных элементов
-          path: child_path.to_string_lossy().into_owned(),
-          children: None,
-        });
-      }
-      children = Some(dir_entries);
+
+    if is_directory {
+        let mut dir_entries = Vec::new();
+        let mut read_dir = fs::read_dir(&path).await?;
+        while let Some(entry) = read_dir.next_entry().await? {
+            let child_path = entry.path();
+            // Оборачиваем рекурсивный вызов в Box::pin
+            let child = Box::pin(read_directory(child_path, false)).await?;
+            dir_entries.push(child);
+        }
+        children = Some(dir_entries);
     }
-  
+
     Ok(FileItem {
-      name: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
-      is_directory,
-      path: path.to_string_lossy().into_owned(),
-      children,
+        name: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+        is_directory,
+        path: path.to_string_lossy().into_owned(),
+        children,
     })
-  }
+}
 
 #[tauri::command]
 pub async fn get_directory_tree(path: String, _window: Window) -> Result<FileItem, String> {

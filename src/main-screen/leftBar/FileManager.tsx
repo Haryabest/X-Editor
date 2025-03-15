@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getFileIcon, FolderIcon } from './fileIcons';
-import { ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
+import { FolderPlusIcon } from "@heroicons/react/24/outline";
+import { ChevronRight, ChevronDown, FolderOpen, FilePlus, RefreshCcw } from 'lucide-react';
+
 import FileContextMenu from './context/FileContextMenu';
 import FolderContextMenu from './context/FolderContextMenu';
 
@@ -14,14 +16,14 @@ interface FileItem {
   children?: FileItem[];
   expanded: boolean;
   loaded: boolean;
+  icon?: React.ReactNode;
 }
 
 interface FileManagerProps {
   selectedFolder: string | null;
   setSelectedFile: (filePath: string | null) => void;
-  setCurrentFiles: (files: FileItem[]) => void; // Добавляем новый пропс
+  setCurrentFiles: (files: FileItem[]) => void;
 }
-
 
 const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles }) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
@@ -32,35 +34,51 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     isDirectory: boolean;
   } | null>(null);
 
+  // Рекурсивная функция для сбора всех файлов
+  const collectAllFiles = (items: FileItem[]): FileItem[] => {
+    let allFiles: FileItem[] = [];
+    items.forEach(item => {
+      if (!item.is_directory) {
+        allFiles.push({
+          name: item.name,
+          path: item.path,
+          icon: getFileIcon(item.name),
+          is_directory: false,
+          expanded: false,
+          loaded: true,
+        });
+      }
+      if (item.children) {
+        allFiles = allFiles.concat(collectAllFiles(item.children));
+      }
+    });
+    return allFiles;
+  };
+
+  // Загружаем начальное дерево
   useEffect(() => {
     const loadTree = async () => {
       if (selectedFolder) {
         try {
           const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
+          console.log('Loaded tree:', JSON.stringify(tree, null, 2));
           const processed = processTree(tree);
-          
-          // Собираем все файлы из корневой директории
-          const rootFiles = processed.children?.filter(item => !item.is_directory) || [];
-          setCurrentFiles(rootFiles.map(file => ({
-            name: file.name,
-            path: file.path,
-            icon: getFileIcon(file.name),
-            is_directory: false, // Указываем, что это не директория
-            expanded: false,
-            loaded: true, // Файл считается "загруженным" сразу
-          })));
-
+          console.log('Processed tree:', JSON.stringify(processed, null, 2));
           setFileTree([{ ...processed, expanded: true, loaded: true }]);
+          const allFiles = collectAllFiles([processed]);
+          console.log('All files at startup:', allFiles);
+          setCurrentFiles(allFiles);
         } catch (error) {
           console.error('Ошибка загрузки директории:', error);
           alert(`Не удалось загрузить директорию: ${error}`);
         }
       } else {
         setFileTree([]);
+        setCurrentFiles([]);
       }
     };
     loadTree();
-  }, [selectedFolder]);
+  }, [selectedFolder]); // Убрали setCurrentFiles из зависимостей
 
   const processTree = (item: FileItem): FileItem => ({
     ...item,
@@ -82,23 +100,37 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
   };
 
   const toggleDirectory = async (item: FileItem) => {
+    console.log('Toggling directory:', item.path, 'Loaded:', item.loaded);
     if (!item.loaded && item.is_directory) {
       try {
         const result = await invoke<FileItem>("get_subdirectory", { path: item.path });
+        console.log('Subdirectory result:', JSON.stringify(result, null, 2));
         const processed = processTree(result);
-        setFileTree((prev) => prev.map((root) => updateTree([root], item.path, processed)[0]));
+        setFileTree((prev) => {
+          const updated = prev.map((root) => updateTree([root], item.path, processed)[0]);
+          console.log('Updated fileTree after toggle:', JSON.stringify(updated, null, 2));
+          const allFiles = collectAllFiles(updated);
+          console.log('Updated all files:', allFiles);
+          setCurrentFiles(allFiles);
+          return updated;
+        });
       } catch (error) {
         console.error('Ошибка загрузки поддиректории:', error);
         alert(`Не удалось загрузить поддиректорию: ${error}`);
       }
     } else {
-      setFileTree((prev) =>
-        prev.map((root) => ({
+      setFileTree((prev) => {
+        const updated = prev.map((root) => ({
           ...root,
           expanded: root.path === item.path ? !root.expanded : root.expanded,
           children: root.children ? toggleExpanded(root.children, item.path) : undefined,
-        }))
-      );
+        }));
+        console.log('Updated fileTree (no load):', JSON.stringify(updated, null, 2));
+        const allFiles = collectAllFiles(updated);
+        console.log('Updated all files:', allFiles);
+        setCurrentFiles(allFiles);
+        return updated;
+      });
     }
   };
 
@@ -122,7 +154,12 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
       try {
         await invoke("create_folder", { path: `${path}/${newFolderName}` });
         const result = await invoke<FileItem>("get_subdirectory", { path });
-        setFileTree((prev) => prev.map((root) => updateTree([root], path, processTree(result))[0]));
+        setFileTree((prev) => {
+          const updated = [updateTree(prev, path, processTree(result))[0]];
+          const allFiles = collectAllFiles(updated);
+          setCurrentFiles(allFiles);
+          return updated;
+        });
       } catch (error) {
         console.error('Ошибка создания папки:', error);
         alert(`Не удалось создать папку: ${error}`);
@@ -137,9 +174,12 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
         await invoke("create_file", { path: `${path}/${newFileName}` });
         const parentPath = path.split('/').slice(0, -1).join('/') || path;
         const tree = await invoke<FileItem>("get_subdirectory", { path: parentPath });
-        setFileTree((prev) =>
-          prev.map((root) => updateTree([root], parentPath, processTree(tree))[0])
-        );
+        setFileTree((prev) => {
+          const updated = [updateTree(prev, parentPath, processTree(tree))[0]];
+          const allFiles = collectAllFiles(updated);
+          setCurrentFiles(allFiles);
+          return updated;
+        });
       } catch (error) {
         console.error('Ошибка создания файла:', error);
         alert(`Не удалось создать файл: ${error}`);
@@ -150,7 +190,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
   const handleFileClick = (path: string, isDirectory: boolean) => {
     if (!isDirectory) {
       console.log('Selected file:', path);
-      setSelectedFile(path); // Устанавливаем выбранный файл
+      setSelectedFile(path);
     }
   };
 
@@ -173,7 +213,11 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
         >
           {item.is_directory ? (
             <div className="directory">
-              <div onClick={() => toggleDirectory(item)} className="directory-item">
+              <div
+                onClick={() => toggleDirectory(item)}
+                className="directory-item"
+                style={{ cursor: 'pointer' }} // Добавляем визуальную подсказку
+              >
                 <span className="chevron">
                   {item.expanded ? (
                     <ChevronDown width={14} height={14} />
@@ -197,7 +241,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
           ) : (
             <div
               className="file-item"
-              onClick={() => handleFileClick(item.path, item.is_directory)} // Обработчик ЛКМ для файлов
+              onClick={() => handleFileClick(item.path, item.is_directory)}
             >
               <span className="icon">{getFileIcon(item.name)}</span>
               <span className="name">{item.name}</span>
@@ -210,8 +254,15 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
 
   return (
     <div className="file-manager" onClick={() => setContextMenu(null)}>
-      <h5>ПРОВОДНИК</h5>
-      {renderTree(fileTree)}
+      <div className="file-manager-header">
+        <h4>ПРОВОДНИК</h4>
+        <div className="header-buttons">
+          <FilePlus className="file-icons" width={18} height={18} />
+          <FolderPlusIcon className="file-icons" width={20} height={20} />
+          <RefreshCcw className="file-icons" width={18} height={18} />
+        </div>
+      </div>
+      {fileTree.length > 0 ? renderTree(fileTree) : <p>Выберите папку</p>}
       {contextMenu && (
         <>
           {console.log('Rendering context menu:', contextMenu)}

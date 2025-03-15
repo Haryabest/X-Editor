@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { FileItem } from './types';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
 import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
+import TopbarEditor from './main-screen/topbar-editor/TopbarEditor'; // Добавляем новый компонент
+
 import './App.css';
-import { FileItem } from './types';
 
 function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(250);
@@ -16,12 +18,36 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
+  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]); // Список открытых файлов
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
   const MAX_LEFT_PANEL_WIDTH = 400;
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
+
+  // Обработчик переключения файлов
+  const handleSetSelectedFile = (filePath: string | null) => {
+    if (filePath && !openedFiles.some(file => file.path === filePath)) {
+      const file = currentFiles.find(f => f.path === filePath);
+      if (file) {
+        console.log('Adding file to openedFiles:', file); // Отладка
+        setOpenedFiles(prev => [...prev, { ...file, is_directory: false, expanded: false, loaded: true }]);
+      } else {
+        console.log('File not found in currentFiles:', filePath); // Отладка
+      }
+    }
+    setSelectedFile(filePath);
+  };
+
+  // Обработчик закрытия файла
+  const handleCloseFile = (filePath: string) => {
+    const updatedFiles = openedFiles.filter(file => file.path !== filePath);
+    setOpenedFiles(updatedFiles);
+    if (selectedFile === filePath) {
+      setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
+    }
+  };
 
   const handleHorizontalDrag = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -88,15 +114,15 @@ function App() {
 
   return (
     <div className="app-container">
-      <TopToolbar currentFiles={currentFiles} setSelectedFile={setSelectedFile} />
+      <TopToolbar currentFiles={currentFiles} setSelectedFile={handleSetSelectedFile} />
 
       <div className="main-content">
         {isLeftPanelVisible ? (
           <div className="left-panel" style={{ width: leftPanelWidth }}>
-            {/* Передаем selectedFolder и setSelectedFolder в FileManager */}
-            <FileManager selectedFolder={selectedFolder} setSelectedFile={setSelectedFile}     setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
- // Приводим к нужному типу
-
+            <FileManager
+              selectedFolder={selectedFolder}
+              setSelectedFile={handleSetSelectedFile} // Используем обновлённый обработчик
+              setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
             />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
           </div>
@@ -107,6 +133,14 @@ function App() {
         )}
 
         <div className="center-and-terminal">
+          {openedFiles.length > 0 && (
+            <TopbarEditor
+              openedFiles={openedFiles}
+              activeFile={selectedFile}
+              setSelectedFile={handleSetSelectedFile}
+              closeFile={handleCloseFile}
+            />
+          )}
           <div className="monaco-editor-container">
             <CenterContainer setSelectedFolder={setSelectedFolder} selectedFile={selectedFile} />
           </div>
@@ -127,7 +161,6 @@ function App() {
       <BottomToolbar />
     </div>
   );
-
 }
 
 export default App;
