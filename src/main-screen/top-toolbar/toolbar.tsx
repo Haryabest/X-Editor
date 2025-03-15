@@ -8,6 +8,11 @@ import SearchDropdown from './components/SearchDropdown';
 
 import './style.css';
 
+interface TopToolbarProps {
+  currentFiles: FileItem[];
+  setSelectedFile: (path: string | null) => void;
+}
+
 const menuData: Record<string, MenuItem[]> = {
   "Файл": [
     { text: "Новый файл", shortcut: "Ctrl + N" },
@@ -62,7 +67,7 @@ const fileList: FileItem[] = [
   { name: 'styleEncoding.css', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
 ];
 
-const TopToolbar: React.FC = () => {
+const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -196,13 +201,14 @@ const TopToolbar: React.FC = () => {
           
           {showSearchDropdown && (
             <SearchDropdown
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              files={fileList.filter(file =>
-                file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                file.path.toLowerCase().includes(searchQuery.toLowerCase())
-              )}
-            />
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            files={currentFiles.filter(file =>
+              file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              file.path.toLowerCase().includes(searchQuery.toLowerCase())
+            )}
+            onFileSelect={setSelectedFile}
+          />
           )}
         </div>
       </div>

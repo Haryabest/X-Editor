@@ -18,9 +18,12 @@ interface FileItem {
 
 interface FileManagerProps {
   selectedFolder: string | null;
+  setSelectedFile: (filePath: string | null) => void;
+  setCurrentFiles: (files: FileItem[]) => void; // Добавляем новый пропс
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
+
+const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles }) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -34,12 +37,20 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
       if (selectedFolder) {
         try {
           const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
-          const processed = {
-            ...processTree(tree),
-            expanded: true,
-            loaded: true,
-          };
-          setFileTree([processed]);
+          const processed = processTree(tree);
+          
+          // Собираем все файлы из корневой директории
+          const rootFiles = processed.children?.filter(item => !item.is_directory) || [];
+          setCurrentFiles(rootFiles.map(file => ({
+            name: file.name,
+            path: file.path,
+            icon: getFileIcon(file.name),
+            is_directory: false, // Указываем, что это не директория
+            expanded: false,
+            loaded: true, // Файл считается "загруженным" сразу
+          })));
+
+          setFileTree([{ ...processed, expanded: true, loaded: true }]);
         } catch (error) {
           console.error('Ошибка загрузки директории:', error);
           alert(`Не удалось загрузить директорию: ${error}`);
@@ -136,6 +147,13 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
     }
   };
 
+  const handleFileClick = (path: string, isDirectory: boolean) => {
+    if (!isDirectory) {
+      console.log('Selected file:', path);
+      setSelectedFile(path); // Устанавливаем выбранный файл
+    }
+  };
+
   const renderTree = (items: FileItem[]) => (
     <ul className="file-tree">
       {items.map((item) => (
@@ -144,7 +162,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
           className="tree-item"
           onContextMenu={(e) => {
             e.preventDefault();
-            console.log('Context menu opened at:', { x: e.clientX, y: e.clientY, path: item.path, isDirectory: item.is_directory });
+            e.stopPropagation();
             setContextMenu({
               x: e.clientX,
               y: e.clientY,
@@ -177,7 +195,10 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
               )}
             </div>
           ) : (
-            <div className="file-item">
+            <div
+              className="file-item"
+              onClick={() => handleFileClick(item.path, item.is_directory)} // Обработчик ЛКМ для файлов
+            >
               <span className="icon">{getFileIcon(item.name)}</span>
               <span className="name">{item.name}</span>
             </div>
@@ -193,6 +214,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder }) => {
       {renderTree(fileTree)}
       {contextMenu && (
         <>
+          {console.log('Rendering context menu:', contextMenu)}
           {contextMenu.isDirectory ? (
             <FolderContextMenu
               x={contextMenu.x}

@@ -1,10 +1,12 @@
 import { useState } from 'react';
+
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
 import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
 import './App.css';
+import { FileItem } from './types';
 
 function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(250);
@@ -12,6 +14,9 @@ function App() {
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
   const [isTerminalVisible, setIsTerminalVisible] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
+
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
   const MAX_LEFT_PANEL_WIDTH = 400;
@@ -83,13 +88,16 @@ function App() {
 
   return (
     <div className="app-container">
-      <TopToolbar />
+      <TopToolbar currentFiles={currentFiles} setSelectedFile={setSelectedFile} />
 
       <div className="main-content">
         {isLeftPanelVisible ? (
           <div className="left-panel" style={{ width: leftPanelWidth }}>
             {/* Передаем selectedFolder и setSelectedFolder в FileManager */}
-            <FileManager selectedFolder={selectedFolder} />
+            <FileManager selectedFolder={selectedFolder} setSelectedFile={setSelectedFile}     setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
+ // Приводим к нужному типу
+
+            />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
           </div>
         ) : (
@@ -100,7 +108,7 @@ function App() {
 
         <div className="center-and-terminal">
           <div className="monaco-editor-container">
-            <CenterContainer setSelectedFolder={setSelectedFolder} />
+            <CenterContainer setSelectedFolder={setSelectedFolder} selectedFile={selectedFile} />
           </div>
 
           {isTerminalVisible ? (

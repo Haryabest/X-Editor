@@ -11,9 +11,10 @@ interface SearchDropdownProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   files: FileItem[];
+  onFileSelect: (path: string) => void;
 }
 
-const SearchDropdown: React.FC<SearchDropdownProps> = ({ searchQuery, onSearchChange, files }) => (
+const SearchDropdown: React.FC<SearchDropdownProps> = ({ searchQuery, onSearchChange, files, onFileSelect }) => (
   <div className="search-dropdown">
     <div className="search-container">
       <Search size={16} className="search-icon" />
@@ -27,15 +28,23 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({ searchQuery, onSearchCh
     </div>
     
     <div className="file-list-container">
-      {files.map((file, index) => (
-        <div key={index} className="file-item">
-          <span className="file-icon">{file.icon}</span>
-          <div className="file-info">
-            <span className="file-name">{file.name}</span>
-            <span className="file-path">{file.path}</span>
+      {files
+        .filter(file =>
+          file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          file.path.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        .map((file, index) => (
+          <div 
+            key={index} 
+            className="file-item"
+            onClick={() => onFileSelect(file.path)}
+          >
+            <div className="file-info">
+              <span className="file-name">{file.name}</span>
+              <span className="file-path">{file.path}</span>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
     </div>
   </div>
 );

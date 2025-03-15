@@ -3,6 +3,8 @@
 mod commands;
 mod terminal;
 mod types;
+mod reading;
+
 use commands::{window_commands, file_operations};
 use terminal::{execute_command, get_current_dir, send_input, has_active_process};
 use tauri::Manager;
@@ -37,6 +39,9 @@ fn main() {
           file_operations::create_folder,
           types::get_directory_tree,
           types::get_subdirectory,
+          reading::read_text_file,
+          reading::read_binary_file,
+          reading::stream_video,
           execute_command,
           get_current_dir,
           send_input,

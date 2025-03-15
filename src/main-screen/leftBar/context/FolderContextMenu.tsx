@@ -21,26 +21,47 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
 }) => {
   return (
     <div
-      className="context-menu"
+      className="context-menu-left"
       style={{ top: y, left: x, position: 'fixed', zIndex: 1000 }}
       onClick={onClose}
     >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCreateFolder(path);
-        }}
-      >
+      <button onClick={(e) => {e.stopPropagation();onCreateFolder(path);}}>
         Новая папка
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCreateFile(path);
-        }}
-      >
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Новый файл
       </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Открыть в проводнике
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Открыть в терминале
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Найти в папке
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Вырезать
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Копировать
+      </button>     
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Вставить
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Скопировать путь
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Скопировать относительный путь
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Переименовать
+      </button>
+      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
+        Удалить
+      </button>
+
       {/* Добавьте свои дополнительные пункты меню здесь */}
     </div>
   );
