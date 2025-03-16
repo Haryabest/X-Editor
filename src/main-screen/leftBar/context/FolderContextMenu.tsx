@@ -31,12 +31,15 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Новый файл
       </button>
+      <div className="seperator"></div>
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Открыть в проводнике
       </button>
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Открыть в терминале
       </button>
+      <div className="seperator"></div>
+
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Найти в папке
       </button>
@@ -49,12 +52,16 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Вставить
       </button>
+      <div className="seperator"></div>
+
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Скопировать путь
       </button>
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Скопировать относительный путь
       </button>
+      <div className="seperator"></div>
+
       <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
         Переименовать
       </button>

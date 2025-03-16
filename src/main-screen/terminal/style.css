@@ -1,0 +1,103 @@
+/* Основные стили для контейнера */
+.terminal-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Занимает всю высоту окна */
+    width: 100vw; /* Занимает всю ширину окна */
+    background-color: #1e1e1e; /* Темный фон */
+    color: #d4d4d4; /* Светлый текст */
+  }
+  
+  /* Стили для панели с кнопками */
+  .tab-buttons {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    background-color: #2d2d2d; /* Темный фон для панели */
+  }
+  
+  /* Стили для кнопок */
+  .tab-button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  .tab-button.active {
+    background-color: #2563eb; /* Синий цвет для активной кнопки */
+    color: white;
+  }
+  
+  .tab-button.inactive {
+    background-color: #374151; /* Серый цвет для неактивной кнопки */
+    color: #9ca3af;
+  }
+  
+  /* Контейнер для терминала и других вкладок */
+  .tab-content {
+    flex: 1; /* Занимает оставшееся пространство */
+    position: relative;
+    overflow: hidden; /* Скрываем лишнее содержимое */
+  }
+  
+  /* Стили для терминала */
+  .terminal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 8px;
+    box-sizing: border-box;
+    overflow-y: auto; /* Добавляем вертикальный скролл */
+  }
+  
+  /* Стили для скролла */
+  .terminal::-webkit-scrollbar {
+    width: 10px; /* Ширина скролла */
+  }
+  
+  .terminal::-webkit-scrollbar-track {
+    background: #2d2d2d; /* Цвет трека скролла */
+  }
+  
+  .terminal::-webkit-scrollbar-thumb {
+    background: #555; /* Цвет ползунка скролла */
+    border-radius: 5px;
+  }
+  
+  .terminal::-webkit-scrollbar-thumb:hover {
+    background: #777; /* Цвет ползунка при наведении */
+  }
+  
+  /* Стили для вкладки "Проблемы" */
+  .issues-tab {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 16px;
+    color: white;
+    overflow-y: auto; /* Добавляем скролл для вкладки "Проблемы" */
+  }
+  
+  /* Индикатор состояния процесса */
+  .status-indicator {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  
+  .status-indicator.running {
+    background-color: #10b981; /* Зеленый цвет для работающего процесса */
+  }
+  
+  .status-indicator.stopped {
+    background-color: #ef4444; /* Красный цвет для остановленного процесса */
+  }
