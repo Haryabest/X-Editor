@@ -10,9 +10,9 @@ import "devicon/devicon.min.css";
 import "./style.css";
 
 const tooltips = {
-  encoding: "Кодировку",
+  encoding: "Кодировка",
   indent: "Настройки отступа",
-  position: "Позиция курсора: Строка 1, Столбец 1",
+  position: "Позиция курсора",
   language: "Выбрать язык",
   notifications: "Уведомления"
 };
@@ -120,19 +120,16 @@ const BottomToolbar: React.FC = () => {
         <div onClick={(e) => handleToggleVisibility("encoding", e)}>
           <span>Кодировка</span>
           <Check
-          color="#fff"
+            color="#fff"
             width={14} 
             height={14} 
-            className={`check ${visibleElements.encoding ? "active" : ""}`
-              
-            } 
+            className={`check ${visibleElements.encoding ? "active" : ""}`} 
           />
         </div>
         <div onClick={(e) => handleToggleVisibility("position", e)}>
           <span>Позиция</span>
           <Check 
-                    color="#fff"
-
+            color="#fff"
             width={14} 
             height={14} 
             className={`check ${visibleElements.position ? "active" : ""}`} 
@@ -141,8 +138,7 @@ const BottomToolbar: React.FC = () => {
         <div onClick={(e) => handleToggleVisibility("language", e)}>
           <span>Выбор редактора</span>
           <Check 
-                    color="#fff"
-
+            color="#fff"
             width={14} 
             height={14} 
             className={`check ${visibleElements.language ? "active" : ""}`} 
@@ -151,8 +147,7 @@ const BottomToolbar: React.FC = () => {
         <div onClick={(e) => handleToggleVisibility("notifications", e)}>
           <span>Уведомления</span>
           <Check 
-                    color="#fff"
-
+            color="#fff"
             width={14} 
             height={14} 
             className={`check ${visibleElements.notifications ? "active" : ""}`} 

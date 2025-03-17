@@ -25,51 +25,46 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
       style={{ top: y, left: x, position: 'fixed', zIndex: 1000 }}
       onClick={onClose}
     >
-      <button onClick={(e) => {e.stopPropagation();onCreateFolder(path);}}>
-        Новая папка
+      <button onClick={(e) => { e.stopPropagation(); onCreateFolder(path); }}>
+        Новая папка <span className="shortcut">Ctrl+Shift+N</span>
       </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Новый файл
-      </button>
-      <div className="seperator"></div>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Открыть в проводнике
-      </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Открыть в терминале
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Новый файл <span className="shortcut">Ctrl+N</span>
       </button>
       <div className="seperator"></div>
-
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Найти в папке
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Открыть в проводнике <span className="shortcut">Ctrl+E</span>
       </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Вырезать
-      </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Копировать
-      </button>     
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Вставить
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Открыть в терминале <span className="shortcut">Ctrl+T</span>
       </button>
       <div className="seperator"></div>
-
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Скопировать путь
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Найти в папке <span className="shortcut">Ctrl+F</span>
       </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Скопировать относительный путь
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Вырезать <span className="shortcut">Ctrl+X</span>
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Копировать <span className="shortcut">Ctrl+C</span>
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Вставить <span className="shortcut">Ctrl+V</span>
       </button>
       <div className="seperator"></div>
-
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Переименовать
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Скопировать путь <span className="shortcut">Ctrl+Shift+C</span>
       </button>
-      <button onClick={(e) => {e.stopPropagation();onCreateFile(path);}}>
-        Удалить
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Скопировать относительный путь <span className="shortcut">Ctrl+Alt+C</span>
       </button>
-
-      {/* Добавьте свои дополнительные пункты меню здесь */}
+      <div className="seperator"></div>
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Переименовать <span className="shortcut">F2</span>
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+        Удалить <span className="shortcut">Del</span>
+      </button>
     </div>
   );
 };

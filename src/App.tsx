@@ -6,7 +6,7 @@ import FileManager from './main-screen/leftBar/FileManager';
 import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
-import TopbarEditor from './main-screen/topbar-editor/TopbarEditor'; // Добавляем новый компонент
+import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 
 import './App.css';
 
@@ -18,7 +18,7 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
-  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]); // Список открытых файлов
+  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
@@ -26,27 +26,35 @@ function App() {
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
 
-  // Обработчик переключения файлов
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {
       const file = currentFiles.find(f => f.path === filePath);
       if (file) {
-        console.log('Adding file to openedFiles:', file); // Отладка
+        console.log('Adding file to openedFiles:', file);
         setOpenedFiles(prev => [...prev, { ...file, is_directory: false, expanded: false, loaded: true }]);
       } else {
-        console.log('File not found in currentFiles:', filePath); // Отладка
+        console.log('File not found in currentFiles:', filePath);
       }
     }
     setSelectedFile(filePath);
   };
 
-  // Обработчик закрытия файла
   const handleCloseFile = (filePath: string) => {
     const updatedFiles = openedFiles.filter(file => file.path !== filePath);
     setOpenedFiles(updatedFiles);
     if (selectedFile === filePath) {
       setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
     }
+  };
+
+  const handleCreateFile = () => {
+    const newFile: FileItem = {
+      name: 'Без названия 1',
+      path: `untitled-${Date.now()}`,
+      icon: 'file',
+    };
+    setOpenedFiles(prev => [...prev, newFile]);
+    setSelectedFile(newFile.path);
   };
 
   const handleHorizontalDrag = (e: React.MouseEvent) => {
@@ -121,7 +129,7 @@ function App() {
           <div className="left-panel" style={{ width: leftPanelWidth }}>
             <FileManager
               selectedFolder={selectedFolder}
-              setSelectedFile={handleSetSelectedFile} // Используем обновлённый обработчик
+              setSelectedFile={handleSetSelectedFile}
               setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
             />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
@@ -142,7 +150,14 @@ function App() {
             />
           )}
           <div className="monaco-editor-container">
-            <CenterContainer setSelectedFolder={setSelectedFolder} selectedFile={selectedFile} />
+            <CenterContainer 
+              setSelectedFolder={setSelectedFolder} 
+              selectedFile={selectedFile}
+              openedFiles={openedFiles}
+              setOpenedFiles={setOpenedFiles}
+              handleCreateFile={handleCreateFile}
+              selectedFolder={selectedFolder} // Передаём selectedFolder
+            />
           </div>
 
           {isTerminalVisible ? (

@@ -23,6 +23,7 @@ fn main() {
             commands::window_commands::toggle_maximize,
             commands::file_operations::create_file,
             commands::file_operations::create_folder,
+            commands::file_operations::save_file,
             types::get_directory_tree,
             types::get_subdirectory,
             reading::read_text_file,

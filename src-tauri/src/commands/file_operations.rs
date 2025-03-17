@@ -22,3 +22,12 @@ pub fn create_folder(path: String) -> Result<(), String> {
         Err(e) => Err(format!("Ошибка при создании папки: {}", e)),
     }
 }
+
+#[command]
+pub fn save_file(path: String, content: String) -> Result<(), String> {
+    let file_path = Path::new(&path);
+    match fs::write(file_path, content) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Ошибка при сохранении файла: {}", e)),
+    }
+}

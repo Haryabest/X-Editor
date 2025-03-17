@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use tauri::Window;
 use tokio::fs;
-use std::pin::Pin;
-use futures::future::FutureExt;
+use futures::future::join_all;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileItem {
@@ -14,7 +12,7 @@ pub struct FileItem {
     pub children: Option<Vec<FileItem>>,
 }
 
-async fn read_directory(path: PathBuf, _shallow: bool) -> std::io::Result<FileItem> {
+async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileItem> {
     let metadata = fs::metadata(&path).await?;
     let is_directory = metadata.is_dir();
     let mut children = None;
@@ -22,13 +20,42 @@ async fn read_directory(path: PathBuf, _shallow: bool) -> std::io::Result<FileIt
     if is_directory {
         let mut dir_entries = Vec::new();
         let mut read_dir = fs::read_dir(&path).await?;
+
+        // Collect all directory entries
         while let Some(entry) = read_dir.next_entry().await? {
-            let child_path = entry.path();
-            // Оборачиваем рекурсивный вызов в Box::pin
-            let child = Box::pin(read_directory(child_path, false)).await?;
-            dir_entries.push(child);
+            dir_entries.push(entry);
         }
-        children = Some(dir_entries);
+
+        println!("Found {} entries in directory: {:?}", dir_entries.len(), path);
+
+        if !shallow {
+            // Process all entries in parallel
+            let futures = dir_entries.into_iter().map(|entry| {
+                let child_path = entry.path();
+                let child_path_clone = child_path.clone(); // Клонируем PathBuf
+                println!("Processing entry: {:?}", child_path);
+                async move {
+                    let result = read_directory(child_path_clone, shallow).await;
+                    if let Err(e) = &result {
+                        eprintln!("Error processing entry {:?}: {}", child_path, e);
+                    }
+                    result
+                }
+            });
+
+            let results: Vec<std::io::Result<FileItem>> = join_all(futures).await;
+            let mut processed_children = Vec::new();
+            for result in results {
+                match result {
+                    Ok(child) => processed_children.push(child),
+                    Err(e) => eprintln!("Error reading directory entry: {}", e),
+                }
+            }
+            children = Some(processed_children);
+        } else {
+            // For shallow loading, indicate that there are children without loading them
+            children = Some(Vec::new());
+        }
     }
 
     Ok(FileItem {
@@ -38,15 +65,27 @@ async fn read_directory(path: PathBuf, _shallow: bool) -> std::io::Result<FileIt
         children,
     })
 }
-
 #[tauri::command]
-pub async fn get_directory_tree(path: String, _window: Window) -> Result<FileItem, String> {
+pub async fn get_directory_tree(path: String) -> Result<FileItem, String> {
     let root_path = PathBuf::from(path);
-    read_directory(root_path, false).await.map_err(|e| e.to_string())
+    println!("Starting get_directory_tree for {:?}", root_path);
+    // Измените shallow на false, чтобы загрузить всё содержимое
+    let result = read_directory(root_path, false).await.map_err(|e| {
+        println!("Error in get_directory_tree: {}", e);
+        e.to_string()
+    });
+    println!("Finished get_directory_tree");
+    result
 }
 
 #[tauri::command]
 pub async fn get_subdirectory(path: String) -> Result<FileItem, String> {
     let subdir_path = PathBuf::from(path);
-    read_directory(subdir_path, false).await.map_err(|e| e.to_string())
+    println!("Loading subdirectory for {:?}", subdir_path);
+    let result = read_directory(subdir_path, false).await.map_err(|e| {
+        println!("Error loading subdirectory: {}", e);
+        e.to_string()
+    });
+    println!("Finished loading subdirectory");
+    result
 }

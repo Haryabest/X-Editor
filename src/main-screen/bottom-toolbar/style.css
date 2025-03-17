@@ -9,7 +9,7 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  z-index: 100000;
+  z-index: 100000; /* Убедимся, что тулбар выше других элементов */
   width: 100%;
 }
 
@@ -45,6 +45,7 @@
   font-family: "Inter";
   align-items: center;
   transition: 0.3s;
+  position: relative; /* Добавляем позиционирование для тултипа */
 }
 
 .right-item:hover {
@@ -54,7 +55,7 @@
 /* Стили для тултипов */
 .tooltip {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 5px); /* Смещаем тултип выше кнопки с небольшим отступом */
   left: 50%;
   transform: translateX(-50%);
   background: #373737;
@@ -65,8 +66,9 @@
   white-space: nowrap;
   font-family: "Inter";
   pointer-events: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   animation: tooltipFade 0.3s ease;
+  z-index: 100001; /* Устанавливаем z-index выше тулбара */
 }
 
 .tooltip::after {
@@ -140,7 +142,7 @@
   justify-content: center;
   align-items: center;
   z-index: 10000001;
-  }
+}
 
 /* Обертка для центрирования */
 .dropdown-wrapper {

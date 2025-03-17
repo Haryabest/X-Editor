@@ -6,6 +6,7 @@ use tauri::AppHandle;
 use tiny_http::{Server, Response, Header};
 use std::thread;
 use std::net::{SocketAddr, Ipv4Addr};
+use std::sync::{Arc, Mutex};
 
 #[command]
 pub async fn read_text_file(path: String) -> Result<String, String> {
@@ -43,36 +44,39 @@ pub async fn stream_video(app: AppHandle, path: String) -> Result<String, String
         return Err(format!("File does not exist: {:?}", path));
     }
 
-    // Пробуем найти свободный порт в диапазоне
-    let mut port = 50000;
+    // Use an Arc<Mutex<>> to safely share the port state across threads
+    let port_state = Arc::new(Mutex::new(50000));
     let server = loop {
-        let addr = format!("127.0.0.1:{}", port);
+        let addr = format!("127.0.0.1:{}", *port_state.lock().unwrap());
         println!("Trying to bind server to: {}", addr); // Отладка
         match Server::http(&addr) {
             Ok(server) => {
-                println!("Server bound successfully to port: {}", port);
+                println!("Server bound successfully to port: {}", *port_state.lock().unwrap());
                 break server;
             },
-            Err(_) if port < 51000 => {
-                port += 1;
-                continue;
-            },
-            Err(e) => {
-                println!("Failed to start server: {}", e);
-                return Err(format!("Failed to start server: {}", e));
+            Err(_) => {
+                let mut port = port_state.lock().unwrap();
+                if *port < 51000 {
+                    *port += 1;
+                } else {
+                    return Err("Failed to find an available port".to_string());
+                }
             },
         }
     };
 
-    let url = format!("http://127.0.0.1:{}", port);
+    let url = format!("http://127.0.0.1:{}", *port_state.lock().unwrap());
     println!("Streaming URL: {}", url); // Отладка
+
+    // Clone the path for use in the thread
+    let path_clone = path.clone();
 
     // Запускаем сервер в отдельном потоке
     thread::spawn(move || {
-        println!("Server thread started for: {:?}", path); // Отладка
+        println!("Server thread started for: {:?}", path_clone); // Отладка
         for request in server.incoming_requests() {
             println!("Received request: {:?}", request); // Отладка
-            let file = match fs::File::open(&path) {
+            let file = match fs::File::open(&path_clone) {
                 Ok(file) => file,
                 Err(e) => {
                     println!("Failed to open file in thread: {}", e);
@@ -83,7 +87,7 @@ pub async fn stream_video(app: AppHandle, path: String) -> Result<String, String
                 }
             };
 
-            let content_type = match path.extension().and_then(|s| s.to_str()) {
+            let content_type = match path_clone.extension().and_then(|s| s.to_str()) {
                 Some("mp4") => "video/mp4",
                 Some("avi") => "video/x-msvideo",
                 Some("mov") => "video/quicktime",
