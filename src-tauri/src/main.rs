@@ -32,6 +32,11 @@ fn main() {
             commands::terminal::start_process,
             commands::terminal::send_input,
             commands::terminal::resize_pty,
+            // commands::language_server::get_python_completions,
+            // commands::language_server::get_rust_completions,
+            // commands::language_server::get_typescript_completions,
+            // commands::language_server::get_go_completions,
+
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

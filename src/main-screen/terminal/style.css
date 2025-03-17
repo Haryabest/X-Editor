@@ -29,22 +29,19 @@
 
 .tab-button {
   padding: 8px 16px;
-  border-radius: 4px;
   font-size: 14px;
   cursor: pointer;
+  font-family: "Inter";
   color: #fff;
-  border: 1px solid #fff;
-  background-color: #5E5C5C;
-  transition: background-color 0.3s ease;
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.3s ease;
 }
 
 .tab-button.active {
-  color: white;
-}
-
-.tab-button.inactive {
-  background-color: #374151;
-  color: #9ca3af;
+  border-bottom: 1px solid #45fce4;
+  color: #45fce4;
 }
 
 .action-button {

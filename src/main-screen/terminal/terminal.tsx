@@ -145,15 +145,15 @@ const XTermTerminal: React.FC = () => {
         <div className="left-tabs">
           <button
             onClick={() => setActiveTab("terminal")}
-            className={`tab-button ${activeTab === "terminal" ? "active" : "inactive"}`}
+            className={`tab-button ${activeTab === "terminal" ? "active" : ""}`}
           >
             Терминал
           </button>
           <button
             onClick={() => setActiveTab("issues")}
-            className={`tab-button ${activeTab === "issues" ? "active" : "inactive"}`}
+            className={`tab-button ${activeTab === "issues" ? "active" : ""}`}
           >
-            Проблемы
+            Ошибки
           </button>
         </div>
         
