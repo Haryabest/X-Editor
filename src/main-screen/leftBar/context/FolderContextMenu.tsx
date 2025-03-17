@@ -42,6 +42,7 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
       <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
         Найти в папке <span className="shortcut">Ctrl+F</span>
       </button>
+      <div className="seperator"></div>
       <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
         Вырезать <span className="shortcut">Ctrl+X</span>
       </button>

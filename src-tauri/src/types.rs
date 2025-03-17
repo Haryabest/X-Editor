@@ -17,45 +17,40 @@ async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileIte
     let is_directory = metadata.is_dir();
     let mut children = None;
 
-    if is_directory {
+    if is_directory && !shallow {
         let mut dir_entries = Vec::new();
         let mut read_dir = fs::read_dir(&path).await?;
 
-        // Collect all directory entries
+        // Собираем все записи в директории
         while let Some(entry) = read_dir.next_entry().await? {
             dir_entries.push(entry);
         }
 
         println!("Found {} entries in directory: {:?}", dir_entries.len(), path);
 
-        if !shallow {
-            // Process all entries in parallel
-            let futures = dir_entries.into_iter().map(|entry| {
-                let child_path = entry.path();
-                let child_path_clone = child_path.clone(); // Клонируем PathBuf
-                println!("Processing entry: {:?}", child_path);
-                async move {
-                    let result = read_directory(child_path_clone, shallow).await;
-                    if let Err(e) = &result {
-                        eprintln!("Error processing entry {:?}: {}", child_path, e);
-                    }
-                    result
+        // Обрабатываем только первый уровень вложенности
+        let futures = dir_entries.into_iter().map(|entry| {
+            let child_path = entry.path();
+            let child_path_clone = child_path.clone();
+            println!("Processing entry: {:?}", child_path);
+            async move {
+                let result = read_directory(child_path_clone, true).await; // shallow = true для вложенных
+                if let Err(e) = &result {
+                    eprintln!("Error processing entry {:?}: {}", child_path, e);
                 }
-            });
-
-            let results: Vec<std::io::Result<FileItem>> = join_all(futures).await;
-            let mut processed_children = Vec::new();
-            for result in results {
-                match result {
-                    Ok(child) => processed_children.push(child),
-                    Err(e) => eprintln!("Error reading directory entry: {}", e),
-                }
+                result
             }
-            children = Some(processed_children);
-        } else {
-            // For shallow loading, indicate that there are children without loading them
-            children = Some(Vec::new());
+        });
+
+        let results: Vec<std::io::Result<FileItem>> = join_all(futures).await;
+        let mut processed_children = Vec::new();
+        for result in results {
+            match result {
+                Ok(child) => processed_children.push(child),
+                Err(e) => eprintln!("Error reading directory entry: {}", e),
+            }
         }
+        children = Some(processed_children);
     }
 
     Ok(FileItem {
@@ -65,11 +60,11 @@ async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileIte
         children,
     })
 }
+
 #[tauri::command]
 pub async fn get_directory_tree(path: String) -> Result<FileItem, String> {
     let root_path = PathBuf::from(path);
     println!("Starting get_directory_tree for {:?}", root_path);
-    // Измените shallow на false, чтобы загрузить всё содержимое
     let result = read_directory(root_path, false).await.map_err(|e| {
         println!("Error in get_directory_tree: {}", e);
         e.to_string()

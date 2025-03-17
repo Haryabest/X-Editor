@@ -2,7 +2,7 @@
   position: fixed;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
   padding: 5px 0;
-  min-width: 220px; /* Увеличиваем ширину, чтобы уместить текст и горячие клавиши */
+  min-width: 300px; /* Увеличиваем ширину, чтобы уместить текст и горячие клавиши */
   z-index: 1000;
   background: #353535;
   border: 1px solid #666666;
@@ -18,7 +18,7 @@
   width: 100%;
   color: #fff;
   font-family: "Inter";
-  font-size: 12px;
+  font-size: 10px;
   border-radius: 5px;
   transition: 0.3s;
   padding: 5px 10px;
@@ -39,7 +39,7 @@
 }
 
 .seperator {
-  height: 1px;
+  height: 0.1px;
   background-color: #666666; /* Исправляем color на background-color */
   width: 100%;
   margin: 5px 0; /* Добавляем отступы для разделителя */

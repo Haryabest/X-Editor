@@ -39,12 +39,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     let allFiles: FileItem[] = [];
     items.forEach(item => {
       if (!item.is_directory) {
-        allFiles.push({
-          ...item,
-          icon: getFileIcon(item.name),
-          expanded: false,
-          loaded: true,
-        });
+        allFiles.push({ ...item, icon: getFileIcon(item.name), expanded: false, loaded: true });
       }
       if (item.children) {
         allFiles = allFiles.concat(collectAllFiles(item.children));
@@ -53,26 +48,23 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     return allFiles;
   };
 
-  // Function to process the tree for rendering
+  // Process tree for rendering
   const processTree = (item: FileItem): FileItem => ({
     ...item,
     expanded: false,
-    loaded: item.is_directory ? false : true,
+    loaded: item.children !== undefined, // loaded = true, если дети уже загружены
     children: item.children?.map(processTree),
   });
 
-  // Load the initial tree
+  // Load initial tree
   useEffect(() => {
     const loadTree = async () => {
       if (selectedFolder) {
         try {
           const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
-          console.log('Loaded tree:', JSON.stringify(tree, null, 2));
           const processed = processTree(tree);
-          console.log('Processed tree:', JSON.stringify(processed, null, 2));
           setFileTree([{ ...processed, expanded: true, loaded: true }]);
           const allFiles = collectAllFiles([processed]);
-          console.log('All files at startup:', allFiles);
           setCurrentFiles(allFiles);
         } catch (error) {
           console.error('Error loading directory:', error);
@@ -86,32 +78,33 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     loadTree();
   }, [selectedFolder]);
 
-  // Function to toggle directory expansion
+  // Toggle directory expansion and load children if needed
   const toggleDirectory = async (item: FileItem) => {
-    if (!item.loaded && item.is_directory) {
+    if (item.is_directory && !item.loaded) {
       try {
         console.log(`Fetching subdirectory for: ${item.path}`);
         const result = await invoke<FileItem>("get_subdirectory", { path: item.path });
         setFileTree((prev) => {
           const updated = prev.map((root) => updateTree([root], item.path, result)[0]);
+          const allFiles = collectAllFiles(updated);
+          setCurrentFiles(allFiles);
           return updated;
         });
       } catch (error) {
         console.error('Error loading subdirectory:', error);
       }
     } else {
-      setFileTree((prev) => {
-        return prev.map(root => ({
+      setFileTree((prev) =>
+        prev.map((root) => ({
           ...root,
           expanded: root.path === item.path ? !root.expanded : root.expanded,
           children: root.children ? toggleExpanded(root.children, item.path) : undefined,
-        }));
-      });
+        }))
+      );
     }
   };
-  
 
-  // Function to toggle expansion of subdirectories
+  // Toggle expansion of subdirectories
   const toggleExpanded = (items: FileItem[], path: string): FileItem[] => {
     return items.map((item) => {
       if (item.path === path) {
@@ -124,7 +117,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     });
   };
 
-  // Function to update the tree with new data
+  // Update tree with new data
   const updateTree = (items: FileItem[], path: string, newData: FileItem): FileItem[] => {
     return items.map((item) => {
       const normalizedPath = item.path.replace(/\\/g, '/');
@@ -139,7 +132,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     });
   };
 
-  // Function to create a new directory
+  // Create new directory
   const createNewDirectory = async (path: string) => {
     const newFolderName = prompt('Enter the new folder name:');
     if (newFolderName) {
@@ -159,7 +152,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     }
   };
 
-  // Function to create a new file
+  // Create new file
   const createNewFile = async (path: string) => {
     const newFileName = prompt('Enter the new file name:');
     if (newFileName) {
@@ -180,7 +173,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     }
   };
 
-  // Function to handle file click
+  // Handle file click
   const handleFileClick = (path: string, isDirectory: boolean) => {
     if (!isDirectory) {
       console.log('Selected file:', path);
@@ -229,7 +222,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
                 </span>
                 <span className="name">{item.name}</span>
               </div>
-              {item.expanded && item.children && (
+              {item.expanded && item.loaded && item.children && (
                 <div className="children-container">{renderTree(item.children)}</div>
               )}
             </div>
@@ -260,7 +253,6 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
       {fileTree.length > 0 ? renderTree(fileTree) : <p>Select a folder</p>}
       {contextMenu && (
         <>
-          {console.log('Rendering context menu:', contextMenu)}
           {contextMenu.isDirectory ? (
             <FolderContextMenu
               x={contextMenu.x}
@@ -272,10 +264,11 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
             />
           ) : (
             <FileContextMenu
-                x={contextMenu.x}
-                y={contextMenu.y} path={''} onClose={function (): void {
-                  throw new Error('Function not implemented.');
-                } }            />
+              x={contextMenu.x}
+              y={contextMenu.y}
+              path={contextMenu.path}
+              onClose={() => setContextMenu(null)}
+            />
           )}
         </>
       )}

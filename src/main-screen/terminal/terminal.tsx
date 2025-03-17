@@ -7,7 +7,7 @@ import { WebglAddon } from "xterm-addon-webgl";
 import "xterm/css/xterm.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import "./style.css"; // Импортируем стили
+import "./style.css";
 
 const XTermTerminal: React.FC = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -18,7 +18,6 @@ const XTermTerminal: React.FC = () => {
   const [isProcessRunning, setIsProcessRunning] = useState(false);
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
 
-  // Function to resize the terminal and notify the backend
   const resizeTerminal = async () => {
     if (fitAddon.current && terminal.current) {
       try {
@@ -33,7 +32,6 @@ const XTermTerminal: React.FC = () => {
     }
   };
 
-  // Function to start the terminal process
   const startTerminalProcess = async () => {
     if (!terminal.current || isProcessRunning) return;
 
@@ -69,7 +67,7 @@ const XTermTerminal: React.FC = () => {
           cursor: "#45fce4",
           selectionBackground: "rgba(255,255,255,0.3)",
         },
-        scrollback: 5000, // Увеличиваем буфер скролла
+        scrollback: 5000,
         convertEol: true,
         allowTransparency: true,
         windowsMode: true,
@@ -143,23 +141,61 @@ const XTermTerminal: React.FC = () => {
 
   return (
     <div className="terminal-container">
-      {/* Кнопки переключения */}
       <div className="tab-buttons">
-        <button
-          onClick={() => setActiveTab("terminal")}
-          className={`tab-button ${activeTab === "terminal" ? "active" : "inactive"}`}
-        >
-          Терминал
-        </button>
-        <button
-          onClick={() => setActiveTab("issues")}
-          className={`tab-button ${activeTab === "issues" ? "active" : "inactive"}`}
-        >
-          Проблемы
-        </button>
+        <div className="left-tabs">
+          <button
+            onClick={() => setActiveTab("terminal")}
+            className={`tab-button ${activeTab === "terminal" ? "active" : "inactive"}`}
+          >
+            Терминал
+          </button>
+          <button
+            onClick={() => setActiveTab("issues")}
+            className={`tab-button ${activeTab === "issues" ? "active" : "inactive"}`}
+          >
+            Проблемы
+          </button>
+        </div>
+        
+        <div className="right-actions">
+          {activeTab === "terminal" ? (
+            <>
+              <button
+                className="action-button"
+                onClick={() => terminal.current?.clear()}
+                title="Очистить терминал"
+              >
+                🧹 Очистить
+              </button>
+              <button
+                className="action-button"
+                onClick={startTerminalProcess}
+                title="Перезапустить процесс"
+              >
+                🔄 Перезапустить
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="action-button"
+                onClick={() => console.log("Обновить проблемы")}
+                title="Обновить список проблем"
+              >
+                🔄 Обновить
+              </button>
+              <button
+                className="action-button"
+                onClick={() => console.log("Фильтровать проблемы")}
+                title="Фильтровать проблемы"
+              >
+                ⚙️ Фильтры
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Контейнер терминала */}
       <div className="tab-content">
         <div
           ref={terminalRef}
@@ -173,7 +209,6 @@ const XTermTerminal: React.FC = () => {
         )}
       </div>
 
-      {/* Индикатор состояния процесса */}
       <div
         className={`status-indicator ${isProcessRunning ? "running" : "stopped"}`}
         title={isProcessRunning ? "Process running" : "Process not running"}

@@ -143,19 +143,94 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     if (selectedFile && selectedFile.startsWith('untitled-')) {
       try {
         const filePath = await save({
-          filters: [{ name: 'Text', extensions: ['txt', 'js', 'ts', 'json', 'html', 'css', 'py'] }],
+          filters: [
+            { name: 'Простой текст', extensions: ['txt'] },
+            { name: 'Babel JavaScript', extensions: ['js', 'es6', 'babel', 'jsx', 'flow', 'mjs', 'cjs', 'pac'] },
+            { name: 'Batch', extensions: ['bat', 'cmd'] },
+            { name: 'BibTeX', extensions: ['bib'] },
+            { name: 'C', extensions: ['c', 'i'] },
+            { name: 'C#', extensions: ['cs', 'csx', 'cake'] },
+            { name: 'C++', extensions: ['cppt', 'cppm', 'cc', 'ccm', 'cxx', 'ccxm', 'c++', 'c++m', 'hppt', 'hh'] },
+            { name: 'Clojure', extensions: ['clj', 'cljs', 'cljc', 'cljv', 'clojure', 'sein'] },
+            { name: 'Code Snipped', extensions: ['code-snippets'] },
+            { name: 'CoffeeScript', extensions: ['coffee', 'cson', 'icen'] },
+            { name: 'CSS', extensions: ['css'] },
+            { name: 'CUDA C++', extensions: ['cu', 'cuh'] },
+            { name: 'Dat', extensions: ['dat'] },
+            { name: 'Database', extensions: ['db', 'db3', 'sdb', 's3db', 'sqlite', 'sqlite3'] },
+            { name: 'Diff', extensions: ['diff', 'patch', 're'] },
+            { name: 'Disassembly', extensions: ['disasm'] },
+            { name: 'Docker', extensions: ['dockerfile', 'containerfile'] },
+            { name: 'EditorConfig', extensions: ['editorconfig'] },
+            { name: 'F#', extensions: ['fs', 'fsr', 'fsx', 'fsscript'] },
+            { name: 'Go', extensions: ['go'] },
+            { name: 'Gradle', extensions: ['gradle'] },
+            { name: 'GraphQL', extensions: ['graphql'] },
+            { name: 'Groovy', extensions: ['groovy', 'gvy', 'jenkinsfile', 'nf'] },
+            { name: 'Handlebars', extensions: ['handlebars', 'hbs', 'hjs'] },
+            { name: 'HLSL', extensions: ['hlsl', 'fr', 'frh', 'vsh', 'psh', 'cginc', 'compute'] },
+            { name: 'HTML', extensions: ['html', 'htm', 'shtml', 'mdoc', 'jsp', 'asp', 'aspx', 'jshtm'] },
+            { name: 'Ignore', extensions: ['gitignore', 'git-blame-ignore-revs', 'npmignore', 'eslintignore'] },
+            { name: 'Java', extensions: ['java'] },
+            { name: 'JavaScript React', extensions: ['jsx'] },
+            { name: 'Jinja', extensions: ['j2', 'jinja2'] },
+            { name: 'JSON', extensions: ['json', 'bowerrc', 'jscsrc', 'webmanifest', 'js.map', 'css.map', 'ts.map', 'har', 'jslintrc', 'jsonld'] },
+            { name: 'JSON Lines', extensions: ['jsonl', 'ndjson'] },
+            { name: 'JSON with Comments', extensions: ['jsonc', 'eslintrc', 'jsfmtrc', 'jshintrc', 'swcrc', 'hintrc', 'babelrc', 'code-workspace', 'language-configuration.json'] },
+            { name: 'Julia', extensions: ['jl'] },
+            { name: 'Julia Markdown', extensions: ['jmd'] },
+            { name: 'Kotlin', extensions: ['kt', 'kts'] },
+            { name: 'LaTeX', extensions: ['tex', 'ltx', 'ctx'] },
+            { name: 'Less', extensions: ['less'] },
+            { name: 'Log', extensions: ['log'] },
+            { name: 'Lua', extensions: ['lua'] },
+            { name: 'Makefile', extensions: ['make', 'mk'] },
+            { name: 'Markdown', extensions: ['md', 'mdt', 'mkdt', 'mdown', 'markdown', 'markdn'] },
+            { name: 'MS SQL', extensions: ['sql', 'dsql'] },
+            { name: 'Objective-C', extensions: ['m'] },
+            { name: 'Objective-C++', extensions: ['mm'] },
+            { name: 'Perl', extensions: ['pl', 'pm', 'pod', 't', 'PL'] },
+            { name: 'PHP', extensions: ['php', 'php4', 'php5', 'phtml', 'ctp'] },
+            { name: 'PowerShell', extensions: ['ps1', 'psm1', 'psd1', 'pssc', 'psrc'] },
+            { name: 'Properties', extensions: ['conf', 'properties', 'cfg', 'gitattributes', 'gitconfig', 'gitmodules', 'npmrc'] },
+            { name: 'Pug', extensions: ['pug', 'jade'] },
+            { name: 'Python', extensions: ['py', 'ipy', 'pyw', 'cpy', 'gyp', 'gypi', 'pyi'] },
+            { name: 'R', extensions: ['r', 'rhistory', 'rprofile'] },
+            { name: 'Raku', extensions: ['raku', 'rakumod', 'rakutest', 'rakudoc', 'nqp', 'p6', 'pl6', 'pm6'] },
+            { name: 'Razor', extensions: ['cshtml', 'razor'] },
+            { name: 'reStructuredText', extensions: ['rst'] },
+            { name: 'Ruby', extensions: ['rb', 'rbx', 'gemspec', 'rake', 'ru', 'erb', 'podspec'] },
+            { name: 'Rust', extensions: ['rs'] },
+            { name: 'SCSS', extensions: ['scss'] },
+            { name: 'Shell Script', extensions: ['sh', 'bash', 'bashrc', 'bash_profile', 'ebuild', 'eclass'] },
+            { name: 'Svelte', extensions: ['svelte'] },
+            { name: 'Swift', extensions: ['swift'] },
+            { name: 'TypeScript', extensions: ['ts', 'cts', 'mts'] },
+            { name: 'TypeScript JSX', extensions: ['tsx'] },
+            { name: 'Visual Basic', extensions: ['vb', 'bas'] },
+            { name: 'Vue', extensions: ['vue'] },
+            { name: 'WebAssembly', extensions: ['wat', 'wasm'] },
+            { name: 'XML', extensions: ['xml', 'xsd', 'atom', 'axml', 'bpmn', 'cpt', 'csproj'] },
+            { name: 'XSL', extensions: ['xsl', 'xslt'] },
+            { name: 'YAML', extensions: ['yaml', 'yml', 'eyaml', 'eyml'] },
+            { name: 'All Files', extensions: ['*'] }
+          ],
           defaultPath: selectedFolder || undefined,
           title: 'Сохранить файл как...',
         });
-
+  
         if (filePath) {
           await invoke('save_file', { path: filePath as string, content: code });
           console.log('Файл сохранён:', filePath);
-
+  
           setOpenedFiles((prev: FileItem[]) => {
             return prev.map((file: FileItem) =>
               file.path === selectedFile
-                ? { ...file, name: (filePath as string).split(/[\\/]/).pop() || 'Без названия', path: filePath as string }
+                ? { 
+                    ...file, 
+                    name: (filePath as string).split(/[\\/]/).pop() || 'Без названия', 
+                    path: filePath as string 
+                  }
                 : file
             );
           });
@@ -224,6 +299,10 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         <div className="card-container">
           <button className="start-card" onClick={handleCreateFile}>
             <p>Создать проект</p>
+            <span className="hotkey">CTRL + SHIFT + A</span>
+          </button>
+          <button className="start-card" onClick={handleCreateFile}>
+            <p>Создать папку</p>
             <span className="hotkey">CTRL + SHIFT + A</span>
           </button>
           <button className="start-card" onClick={handleOpenFolder}>
