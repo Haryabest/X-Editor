@@ -41,7 +41,11 @@ pub async fn start_process(state: State<'_, PtyState>, app: AppHandle) -> Result
         .map_err(|e| e.to_string())?;
 
     let mut cmd = CommandBuilder::new("powershell.exe");
-    cmd.args(["-NoExit", "-Command", "chcp 65001; Set-Location C:\\Users; "]); // Устанавливаем начальную директорию
+    cmd.args([
+        "-NoExit",
+        "-Command",
+        "chcp 65001; Set-Location C:\\Users; ",
+    ]); // Устанавливаем начальную директорию
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
 
     let master = pair.master;

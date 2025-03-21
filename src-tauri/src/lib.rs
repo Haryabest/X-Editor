@@ -8,6 +8,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())  // Используем generate_context вместо runtime
+        .run(tauri::generate_context!()) // Используем generate_context вместо runtime
         .expect("error while running tauri application");
 }

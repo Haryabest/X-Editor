@@ -1,190 +1,59 @@
-// use std::path::Path;
-// use serde::{Deserialize, Serialize};
-// use tauri::State;
-// use tower_lsp::lsp_types::{
-//     CompletionItem, Position, TextDocumentIdentifier, TextDocumentPositionParams,
-//     CompletionParams, CompletionContext, WorkDoneProgressParams, PartialResultParams,
-// };
-// use std::sync::Mutex;
+// use std::process::{Command, Stdio};
+// use std::io::{self, BufRead, BufReader};
+// use tauri::{Emitter, Manager};
 
-// #[derive(Debug, Serialize, Deserialize)]
-// pub struct CompletionPosition {
-//     line: u32,
-//     character: u32,
-// }
-
-// #[derive(Debug, Serialize, Deserialize)]
-// pub struct CompletionResponse {
-//     label: String,
-//     kind: u32,
-//     insert_text: String,
-// }
-
-// impl From<CompletionItem> for CompletionResponse {
-//     fn from(item: CompletionItem) -> Self {
-//         CompletionResponse {
-//             label: item.label,
-//             kind: item.kind.map(|k| k.into()).unwrap_or(1),
-//             insert_text: item.insert_text.unwrap_or_else(|| item.label.clone()),
-//         }
-//     }
-// }
-
-// pub struct LanguageServerState {
-//     typescript_client: Mutex<Option<tower_lsp::Client>>,
-//     rust_client: Mutex<Option<tower_lsp::Client>>,
-//     python_client: Mutex<Option<tower_lsp::Client>>,
-//     go_client: Mutex<Option<tower_lsp::Client>>,
+// #[tauri::command]
+// pub fn file_exists(path: String) -> bool {
+//     std::path::Path::new(&path).exists()
 // }
 
 // #[tauri::command]
-// pub async fn get_typescript_completions(
-//     state: State<'_, LanguageServerState>,
-//     path: String,
-//     position: CompletionPosition,
-// ) -> Result<Vec<CompletionResponse>, String> {
-//     if let Some(client) = state.typescript_client.lock().unwrap().as_ref() {
-//         let text_document_position = TextDocumentPositionParams {
-//             text_document: TextDocumentIdentifier {
-//                 uri: tower_lsp::lsp_types::Url::from_file_path(Path::new(&path))
-//                     .map_err(|_| "Invalid path")?,
-//             },
-//             position: Position::new(position.line, position.character),
-//         };
+// pub async fn run_command(
+//     command: String,
+//     args: Vec<String>,
+//     cwd: String,
+//     window: tauri::Window,
+// ) -> Result<(), String> {
+//     let mut cmd = Command::new(&command);
+//     cmd.args(&args).current_dir(&cwd);
 
-//         let params = CompletionParams {
-//             text_document_position,
-//             work_done_progress_params: WorkDoneProgressParams::default(),
-//             partial_result_params: PartialResultParams::default(),
-//             context: None,
-//         };
+//     // Захватываем stdout и stderr
+//     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-//         match client.request::<tower_lsp::lsp_types::request::Completion>(params).await {
-//             Ok(Some(completion_response)) => {
-//                 let items = match completion_response {
-//                     tower_lsp::lsp_types::CompletionResponse::Array(items) => items,
-//                     tower_lsp::lsp_types::CompletionResponse::List(list) => list.items,
-//                 };
-//                 Ok(items.into_iter().map(CompletionResponse::from).collect())
+//     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+
+//     // Чтение stdout в реальном времени
+//     let stdout = child.stdout.take().unwrap();
+//     let stdout_reader = BufReader::new(stdout);
+//     let stdout_handle = tokio::spawn(async move {
+//         for line in stdout_reader.lines() {
+//             if let Ok(line) = line {
+//                 let _ = window.emit("command_output", line);
 //             }
-//             Ok(None) => Ok(vec![]),
-//             Err(e) => Err(e.to_string()),
 //         }
-//     } else {
-//         Ok(vec![])
-//     }
-// }
+//     });
 
-// #[tauri::command]
-// pub async fn get_rust_completions(
-//     state: State<'_, LanguageServerState>,
-//     path: String,
-//     position: CompletionPosition,
-// ) -> Result<Vec<CompletionResponse>, String> {
-//     if let Some(client) = state.rust_client.lock().unwrap().as_ref() {
-//         let text_document_position = TextDocumentPositionParams {
-//             text_document: TextDocumentIdentifier {
-//                 uri: tower_lsp::lsp_types::Url::from_file_path(Path::new(&path))
-//                     .map_err(|_| "Invalid path")?,
-//             },
-//             position: Position::new(position.line, position.character),
-//         };
-
-//         let params = CompletionParams {
-//             text_document_position,
-//             work_done_progress_params: WorkDoneProgressParams::default(),
-//             partial_result_params: PartialResultParams::default(),
-//             context: None,
-//         };
-
-//         match client.request::<tower_lsp::lsp_types::request::Completion>(params).await {
-//             Ok(Some(completion_response)) => {
-//                 let items = match completion_response {
-//                     tower_lsp::lsp_types::CompletionResponse::Array(items) => items,
-//                     tower_lsp::lsp_types::CompletionResponse::List(list) => list.items,
-//                 };
-//                 Ok(items.into_iter().map(CompletionResponse::from).collect())
+//     // Чтение stderr в реальном времени
+//     let stderr = child.stderr.take().unwrap();
+//     let stderr_reader = BufReader::new(stderr);
+//     let stderr_handle = tokio::spawn(async move {
+//         for line in stderr_reader.lines() {
+//             if let Ok(line) = line {
+//                 let _ = window.emit("command_error", line);
 //             }
-//             Ok(None) => Ok(vec![]),
-//             Err(e) => Err(e.to_string()),
 //         }
+//     });
+
+//     // Ожидание завершения команды
+//     let status = child.wait().map_err(|e| e.to_string())?;
+
+//     // Ожидание завершения потоков чтения
+//     let _ = stdout_handle.await;
+//     let _ = stderr_handle.await;
+
+//     if status.success() {
+//         Ok(())
 //     } else {
-//         Ok(vec![])
-//     }
-// }
-
-// #[tauri::command]
-// pub async fn get_python_completions(
-//     state: State<'_, LanguageServerState>,
-//     path: String,
-//     position: CompletionPosition,
-// ) -> Result<Vec<CompletionResponse>, String> {
-//     if let Some(client) = state.python_client.lock().unwrap().as_ref() {
-//         let text_document_position = TextDocumentPositionParams {
-//             text_document: TextDocumentIdentifier {
-//                 uri: tower_lsp::lsp_types::Url::from_file_path(Path::new(&path))
-//                     .map_err(|_| "Invalid path")?,
-//             },
-//             position: Position::new(position.line, position.character),
-//         };
-
-//         let params = CompletionParams {
-//             text_document_position,
-//             work_done_progress_params: WorkDoneProgressParams::default(),
-//             partial_result_params: PartialResultParams::default(),
-//             context: None,
-//         };
-
-//         match client.request::<tower_lsp::lsp_types::request::Completion>(params).await {
-//             Ok(Some(completion_response)) => {
-//                 let items = match completion_response {
-//                     tower_lsp::lsp_types::CompletionResponse::Array(items) => items,
-//                     tower_lsp::lsp_types::CompletionResponse::List(list) => list.items,
-//                 };
-//                 Ok(items.into_iter().map(CompletionResponse::from).collect())
-//             }
-//             Ok(None) => Ok(vec![]),
-//             Err(e) => Err(e.to_string()),
-//         }
-//     } else {
-//         Ok(vec![])
-//     }
-// }
-
-// #[tauri::command]
-// pub async fn get_go_completions(
-//     state: State<'_, LanguageServerState>,
-//     path: String,
-//     position: CompletionPosition,
-// ) -> Result<Vec<CompletionResponse>, String> {
-//     if let Some(client) = state.go_client.lock().unwrap().as_ref() {
-//         let text_document_position = TextDocumentPositionParams {
-//             text_document: TextDocumentIdentifier {
-//                 uri: tower_lsp::lsp_types::Url::from_file_path(Path::new(&path))
-//                     .map_err(|_| "Invalid path")?,
-//             },
-//             position: Position::new(position.line, position.character),
-//         };
-
-//         let params = CompletionParams {
-//             text_document_position,
-//             work_done_progress_params: WorkDoneProgressParams::default(),
-//             partial_result_params: PartialResultParams::default(),
-//             context: None,
-//         };
-
-//         match client.request::<tower_lsp::lsp_types::request::Completion>(params).await {
-//             Ok(Some(completion_response)) => {
-//                 let items = match completion_response {
-//                     tower_lsp::lsp_types::CompletionResponse::Array(items) => items,
-//                     tower_lsp::lsp_types::CompletionResponse::List(list) => list.items,
-//                 };
-//                 Ok(items.into_iter().map(CompletionResponse::from).collect())
-//             }
-//             Ok(None) => Ok(vec![]),
-//             Err(e) => Err(e.to_string()),
-//         }
-//     } else {
-//         Ok(vec![])
+//         Err(format!("Command failed with status: {}", status))
 //     }
 // }

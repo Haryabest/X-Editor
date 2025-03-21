@@ -11,12 +11,24 @@
     "dialog:default",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+      "allow": [
+        {
+          "path": "$APPDATA"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
     },
     "fs:default",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$APPDATA/*" }]
-    }
+      "allow": [
+        {
+          "path": "$APPDATA/*"
+        }
+      ]
+    },
+    "shell:default"
   ]
 }

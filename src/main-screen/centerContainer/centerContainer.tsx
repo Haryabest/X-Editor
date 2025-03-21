@@ -1,14 +1,47 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ReactPlayer from 'react-player';
 import { FileItem } from '../../types';
-import { analyzeProject, ProjectInfo, installDependencies } from './utils/projectManager';
-import { Loader2, Save, RefreshCw } from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 import { editor } from 'monaco-editor';
+import * as monaco from 'monaco-editor';
+import path from 'path-browserify';
+import { MonacoLanguageClient } from 'monaco-languageclient';
+import { toSocket, WebSocketMessageReader, WebSocketMessageWriter } from 'vscode-ws-jsonrpc';
+import { createMessageConnection } from 'vscode-jsonrpc';
+import { configureMonaco } from './monacoConfig';
 
-import "./style.css";
+self.MonacoEnvironment = {
+  getWorker: function (_, label) {
+    const workerBasePath = '/node_modules/monaco-editor/esm/vs/';
+    const getWorkerModule = (moduleUrl: string, label: string) => {
+      return new Worker(moduleUrl, {
+        name: label,
+        type: 'module',
+      });
+    };
+
+    switch (label) {
+      case 'typescript':
+      case 'javascript':
+        return getWorkerModule(`${workerBasePath}language/typescript/ts.worker.js`, label);
+      default:
+        return getWorkerModule(`${workerBasePath}editor/editor.worker.js`, label);
+    }
+  },
+};
+
+import './style.css';
+
+interface ProjectInfo {
+  hasPackageJson: boolean;
+  hasCargoToml: boolean;
+  dependencies: string[];
+  devDependencies: string[];
+  path: string;
+}
 
 interface CenterContainerProps {
   style?: React.CSSProperties;
@@ -27,9 +60,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   openedFiles,
   setOpenedFiles,
   handleCreateFile,
-  selectedFolder
+  selectedFolder,
 }) => {
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('// Start coding here...');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -37,18 +69,103 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
   const [isInstalling, setIsInstalling] = useState(false);
   const [editorTheme, setEditorTheme] = useState('vs-dark');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isMonacoConfigured = useRef(false);
+  const languageClient = useRef<MonacoLanguageClient | null>(null);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
-  const supportedTextExtensions = useMemo(() => [
-    '.txt', '.js', '.ts', '.jsx', '.tsx', '.json', '.html', '.css', '.scss',
-    '.py', '.java', '.cpp', '.c', '.md', '.dart', '.rs', '.toml', '.yaml', '.yml'
-  ], []);
+  // Инициализация LSP клиента с messageTransports
+  useEffect(() => {
+    const initializeLanguageClient = () => {
+      const socket = new WebSocket('ws://localhost:3000');
 
-  const supportedImageExtensions = useMemo(() => ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'], []);
+      socket.onopen = () => {
+        console.log('WebSocket connection established');
+        const socketWrapper = toSocket(socket);
+        const reader = new WebSocketMessageReader(socketWrapper);
+        const writer = new WebSocketMessageWriter(socketWrapper);
+        const connection = createMessageConnection(reader, writer);
+
+        const client = new MonacoLanguageClient({
+          name: 'TypeScript Language Client',
+          clientOptions: {
+            documentSelector: ['typescript', 'javascript'],
+            synchronize: {
+              configurationSection: ['typescript', 'javascript'],
+            },
+            initializationOptions: {
+              typescript: {
+                tsserverPath: 'node_modules/typescript/lib/tsserver.js',
+              },
+            },
+          },
+          messageTransports: {
+            reader,
+            writer,
+          },
+        });
+
+        client.start();
+        connection.listen();
+
+        languageClient.current = client;
+
+        connection.onClose(() => {
+          client.stop();
+          console.log('Language client connection closed');
+        });
+      };
+
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setErrorMessage('Failed to connect to LSP server');
+      };
+
+      socket.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
+    };
+
+    if (editorRef.current) {
+      initializeLanguageClient();
+    }
+
+    return () => {
+      if (languageClient.current) {
+        languageClient.current.stop();
+      }
+    };
+  }, []);
+
+  const supportedTextExtensions = useMemo(
+    () => [
+      '.ts',
+      '.tsx',
+      '.js',
+      '.jsx',
+      '.json',
+      '.html',
+      '.css',
+      '.scss',
+      '.py',
+      '.java',
+      '.cpp',
+      '.c',
+      '.md',
+      '.rs',
+      '.toml',
+      '.yaml',
+      '.yml',
+    ],
+    []
+  );
+
+  const supportedImageExtensions = useMemo(() => ['.png', '.jpg', '.jpeg', '.gif', '.webp'], []);
   const supportedVideoExtensions = useMemo(() => ['.mp4', '.webm', '.ogg', '.mov'], []);
 
-  const getLanguageFromExtension = useCallback((filePath: string): string => {
-    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
-    const languageMap: { [key: string]: string } = {
+  const getLanguageFromExtension = useCallback((filePath: string) => {
+    const ext = path.extname(filePath).toLowerCase();
+    const languageMap: Record<string, string> = {
       '.js': 'javascript',
       '.jsx': 'javascript',
       '.ts': 'typescript',
@@ -62,125 +179,109 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       '.cpp': 'cpp',
       '.c': 'cpp',
       '.md': 'markdown',
-      '.dart': 'dart',
       '.rs': 'rust',
       '.toml': 'toml',
       '.yaml': 'yaml',
       '.yml': 'yaml',
-      '.txt': 'plaintext'
     };
     return languageMap[ext] || 'plaintext';
   }, []);
 
-const editorOptions: editor.IStandaloneEditorConstructionOptions = {
-  automaticLayout: true,
-  fontSize: 14,
-  fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
-  minimap: { enabled: true },
-  scrollBeyondLastLine: false,
-  wordWrap: 'on',
-  lineNumbers: 'on',
-  renderWhitespace: 'selection',
-  quickSuggestions: true,
-  snippetSuggestions: 'top',
-  suggestOnTriggerCharacters: true,
-  acceptSuggestionOnEnter: 'smart',
-  tabCompletion: 'on',
-  wordBasedSuggestions: 'currentDocument', // Исправлено здесь
-  parameterHints: { enabled: true },
-  formatOnPaste: true,
-  formatOnType: true,
-  autoClosingBrackets: 'always',
-  autoClosingQuotes: 'always',
-  autoIndent: 'full',
-  suggest: {
-    showMethods: true,
-    showFunctions: true,
-    showConstructors: true,
-    showDeprecated: false,
-    showFields: true,
-    showVariables: true,
-    showClasses: true,
-    showStructs: true,
-    showInterfaces: true,
-    showModules: true,
-    showProperties: true,
-    showEvents: true,
-    showOperators: true,
-    showUnits: true,
-    showValues: true,
-    showConstants: true,
-    showEnums: true,
-    showEnumMembers: true,
-    showKeywords: true,
-    showWords: true,
-    showColors: true,
-    showFiles: true,
-    showReferences: true,
-    showFolders: true,
-    showTypeParameters: true,
-    showSnippets: true
-  }
-};
+  const editorOptions: editor.IStandaloneEditorConstructionOptions = useMemo(
+    () => ({
+      automaticLayout: true,
+      fontSize: 14,
+      fontFamily: "'JetBrains Mono', monospace",
+      minimap: { enabled: true },
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      lineNumbers: 'on',
+      renderWhitespace: 'all',
+      quickSuggestions: true,
+      suggest: {
+        preview: true,
+        showStatusBar: true,
+        showIcons: true,
+        localityBonus: true,
+        snippetsPreventQuickSuggestions: false,
+      },
+      hover: {
+        enabled: true,
+        delay: 100,
+        sticky: true,
+      },
+      inlayHints: {
+        enabled: 'on',
+      },
+      parameterHints: { enabled: true },
+      formatOnPaste: true,
+      formatOnType: true,
+      autoClosingBrackets: 'always',
+      autoClosingQuotes: 'always',
+      autoIndent: 'full',
+      suggestSelection: 'first',
+      tabCompletion: 'on',
+      wordBasedSuggestions: 'allDocuments',
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (selectedFolder) {
+      console.log('Configuring Monaco with selected folder:', selectedFolder);
+      configureMonaco(monaco, selectedFolder); // Передаем monaco и selectedFolder
+    }
+  }, [selectedFolder]);
 
   useEffect(() => {
     const loadProjectInfo = async () => {
       if (selectedFolder) {
         try {
-          const info = await analyzeProject(selectedFolder);
+          console.log('Loading project info for folder:', selectedFolder);
+          const info = await invoke<ProjectInfo>('analyze_project', { folderPath: selectedFolder });
           setProjectInfo(info);
-          
+
           if (info.hasPackageJson && !isInstalling) {
             setIsInstalling(true);
-            await installDependencies(selectedFolder);
-            setIsInstalling(false);
+            try {
+              console.log('Installing dependencies for folder:', selectedFolder);
+              await invoke('install_dependencies', { folderPath: selectedFolder });
+            } catch (error) {
+              setErrorMessage(`Failed to install dependencies: ${error}`);
+            } finally {
+              setIsInstalling(false);
+            }
           }
         } catch (error) {
-          console.error('Error loading project info:', error);
-          setIsInstalling(false);
+          setErrorMessage(`Failed to load project info: ${error}`);
         }
       }
     };
     loadProjectInfo();
-  }, [selectedFolder]);
+  }, [selectedFolder, isInstalling]);
 
   useEffect(() => {
     const loadFileContent = async () => {
       if (selectedFile) {
-        const ext = selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase();
+        const ext = path.extname(selectedFile).toLowerCase();
 
         try {
           if (supportedTextExtensions.includes(ext)) {
-            const content: string = await invoke('read_text_file', { path: selectedFile });
+            console.log('Loading text file:', selectedFile);
+            const content = await invoke<string>('read_text_file', { path: selectedFile });
             setFileContent(content);
             setCode(content);
-            setImageSrc(null);
-            setVideoSrc(null);
           } else if (supportedImageExtensions.includes(ext)) {
-            const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
+            console.log('Loading image file:', selectedFile);
+            const base64Content = await invoke<string>('read_binary_file', { path: selectedFile });
             setImageSrc(`data:image/${ext.slice(1)};base64,${base64Content}`);
-            setFileContent(null);
-            setVideoSrc(null);
           } else if (supportedVideoExtensions.includes(ext)) {
-            const videoUrl: string = await invoke('stream_video', { path: selectedFile });
+            console.log('Loading video file:', selectedFile);
+            const videoUrl = await invoke<string>('stream_video', { path: selectedFile });
             setVideoSrc(videoUrl);
-            setFileContent(null);
-            setImageSrc(null);
-          } else if (selectedFile.startsWith('untitled-')) {
-            setFileContent('');
-            setCode('');
-            setImageSrc(null);
-            setVideoSrc(null);
-          } else {
-            setFileContent(null);
-            setImageSrc(null);
-            setVideoSrc(null);
           }
         } catch (error) {
-          console.error('Error reading file:', error);
-          setFileContent(null);
-          setImageSrc(null);
-          setVideoSrc(null);
+          setErrorMessage(`Failed to read file: ${error}`);
         }
       }
     };
@@ -189,14 +290,14 @@ const editorOptions: editor.IStandaloneEditorConstructionOptions = {
 
   const handleOpenFolder = useCallback(async () => {
     try {
+      console.log('Opening folder...');
       const folderPath = await open({ directory: true, multiple: false });
       if (folderPath) {
         setSelectedFolder(folderPath as string);
-        setIsEditorOpen(false);
+        setErrorMessage(null);
       }
     } catch (error) {
-      console.error('Error opening folder:', error);
-      alert(`Failed to open folder: ${error}`);
+      setErrorMessage(`Failed to open folder: ${error}`);
     }
   }, [setSelectedFolder]);
 
@@ -205,137 +306,114 @@ const editorOptions: editor.IStandaloneEditorConstructionOptions = {
 
     try {
       if (selectedFile.startsWith('untitled-')) {
+        console.log('Saving new file...');
         const filePath = await save({
           filters: [
             { name: 'All Files', extensions: ['*'] },
             { name: 'Text', extensions: ['txt'] },
             { name: 'JavaScript', extensions: ['js', 'jsx'] },
             { name: 'TypeScript', extensions: ['ts', 'tsx'] },
-            { name: 'HTML', extensions: ['html', 'htm'] },
-            { name: 'CSS', extensions: ['css', 'scss'] },
-            { name: 'JSON', extensions: ['json'] },
-            { name: 'Markdown', extensions: ['md'] },
-            { name: 'Python', extensions: ['py'] },
-            { name: 'Rust', extensions: ['rs'] }
           ],
-          defaultPath: selectedFolder || undefined
+          defaultPath: selectedFolder || undefined,
         });
 
         if (filePath) {
           await invoke('save_file', { path: filePath as string, content: code });
-          
-          setOpenedFiles((prev) => prev.map((file) =>
-            file.path === selectedFile
-              ? { 
-                  ...file, 
-                  name: (filePath as string).split(/[\\/]/).pop() || 'Untitled', 
-                  path: filePath as string 
-                }
-              : file
-          ));
+          setOpenedFiles((prev) =>
+            prev.map((file) =>
+              file.path === selectedFile
+                ? { ...file, name: filePath.split(/[\\/]/).pop() || 'Untitled', path: filePath }
+                : file
+            )
+          );
         }
       } else {
+        console.log('Saving existing file:', selectedFile);
         await invoke('save_file', { path: selectedFile, content: code });
       }
     } catch (error) {
-      console.error('Error saving file:', error);
-      alert(`Failed to save file: ${error}`);
+      setErrorMessage(`Failed to save file: ${error}`);
     }
   }, [selectedFile, selectedFolder, code, setOpenedFiles]);
 
-  const isEditableFile = useCallback((filePath: string) => {
-    return supportedTextExtensions.some((ext) => filePath.toLowerCase().endsWith(ext)) || 
-           filePath.startsWith('untitled-');
-  }, [supportedTextExtensions]);
+  const isEditableFile = useCallback(
+    (filePath: string) => supportedTextExtensions.some((ext) => filePath.toLowerCase().endsWith(ext)),
+    [supportedTextExtensions]
+  );
 
-  const isImageFile = useCallback((filePath: string) => {
-    return supportedImageExtensions.some((ext) => filePath.toLowerCase().endsWith(ext));
-  }, [supportedImageExtensions]);
+  const isImageFile = useCallback(
+    (filePath: string) => supportedImageExtensions.some((ext) => filePath.toLowerCase().endsWith(ext)),
+    [supportedImageExtensions]
+  );
 
-  const isVideoFile = useCallback((filePath: string) => {
-    return supportedVideoExtensions.some((ext) => filePath.toLowerCase().endsWith(ext));
-  }, [supportedVideoExtensions]);
+  const isVideoFile = useCallback(
+    (filePath: string) => supportedVideoExtensions.some((ext) => filePath.toLowerCase().endsWith(ext)),
+    [supportedVideoExtensions]
+  );
 
   return (
     <div className="center-container" style={style}>
-      {isEditorOpen || selectedFile ? (
+      {errorMessage && <div className="error-message">{errorMessage}</div>}
+
+      {isInstalling && (
+        <div className="installation-indicator">
+          <Loader2 className="animate-spin" />
+          Installing dependencies...
+        </div>
+      )}
+
+      {selectedFile ? (
         <>
-          {isEditableFile(selectedFile || '') ? (
+          {isEditableFile(selectedFile) ? (
             <div className="editor-wrapper">
               <div className="editor-header">
-                <div className="editor-controls">
-                  <button 
-                    onClick={handleSaveFile} 
-                    className="control-btn save-btn"
-                    title="Save file"
-                  >
-                    <Save size={16} />
-                    <span>Save</span>
-                  </button>
-                  {isInstalling && (
-                    <div className="installing-indicator">
-                      <Loader2 size={16} className="animate-spin" />
-                      <span>Installing dependencies...</span>
-                    </div>
-                  )}
-                </div>
+                <button onClick={handleSaveFile} className="control-btn save-btn">
+                  <Save size={16} />
+                  <span>Save</span>
+                </button>
+
                 {projectInfo && (
                   <div className="project-info">
-                    {projectInfo.hasPackageJson && (
-                      <span className="badge node-badge">Node.js</span>
-                    )}
-                    {projectInfo.hasCargoToml && (
-                      <span className="badge rust-badge">Rust</span>
-                    )}
-                    <span className="deps-count">
-                      Dependencies: {projectInfo.dependencies.length + projectInfo.devDependencies.length}
-                    </span>
+                    {projectInfo.hasPackageJson && <span className="badge node-badge">Node.js</span>}
+                    {projectInfo.hasCargoToml && <span className="badge rust-badge">Rust</span>}
                   </div>
                 )}
-                <div className="editor-actions">
-                  <button
-                    onClick={() => setEditorTheme(editorTheme === 'vs-dark' ? 'light' : 'vs-dark')}
-                    className="theme-toggle"
-                    title="Toggle theme"
-                  >
-                    {editorTheme === 'vs-dark' ? '☀️' : '🌙'}
-                  </button>
-                </div>
+
+                <button
+                  onClick={() => setEditorTheme((theme) => (theme === 'vs-dark' ? 'light' : 'vs-dark'))}
+                  className="theme-toggle"
+                >
+                  {editorTheme === 'vs-dark' ? '☀️' : '🌙'}
+                </button>
               </div>
+
               <MonacoEditor
                 height="calc(100% - 40px)"
-                // language={getLanguageFromExtension(selectedFile || 'untitled-1')}
-                language="rust"
+                language={getLanguageFromExtension(selectedFile)}
                 theme={editorTheme}
-                value={fileContent || code}
-                onChange={(value) => setCode(value ?? '')}
+                value={fileContent ?? code}
+                onChange={(value) => {
+                  setCode(value ?? '');
+                  setFileContent(value ?? '');
+                }}
                 options={editorOptions}
                 loading={<div className="editor-loading">Loading editor...</div>}
+                beforeMount={(monaco) => configureMonaco(monaco, selectedFolder || '')} // Передаем monaco и selectedFolder
+                onMount={(editor) => {
+                  editorRef.current = editor;
+                }}
               />
             </div>
-          ) : imageSrc !== null && isImageFile(selectedFile || '') ? (
+          ) : isImageFile(selectedFile) && imageSrc ? (
             <div className="media-viewer image-viewer">
               <img src={imageSrc} alt="Preview" />
             </div>
-          ) : videoSrc !== null && isVideoFile(selectedFile || '') ? (
+          ) : isVideoFile(selectedFile) && videoSrc ? (
             <div className="media-viewer video-viewer">
-              <ReactPlayer
-                url={videoSrc}
-                controls
-                width="100%"
-                height="100%"
-                playing={false}
-                onError={(e) => console.error('Video playback error:', e)}
-              />
+              <ReactPlayer url={videoSrc} controls width="100%" height="100%" />
             </div>
           ) : (
-            <div className="unsupported-file">
-              <p>
-                File {selectedFile} {fileContent === null && imageSrc === null && videoSrc === null 
-                  ? 'could not be loaded' 
-                  : 'is not supported for viewing'}.
-              </p>
-            </div>
+            <div className="unsupported-file">Unsupported file format</div>
           )}
         </>
       ) : (
@@ -344,10 +422,6 @@ const editorOptions: editor.IStandaloneEditorConstructionOptions = {
             <button className="start-card" onClick={handleCreateFile}>
               <p>Create New File</p>
               <span className="hotkey">Ctrl + N</span>
-            </button>
-            <button className="start-card" onClick={handleCreateFile}>
-              <p>Create New Folder</p>
-              <span className="hotkey">Ctrl + Shift + N</span>
             </button>
             <button className="start-card" onClick={handleOpenFolder}>
               <p>Open Folder</p>

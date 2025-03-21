@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
 use futures::future::join_all;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use tokio::fs;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileItem {
@@ -26,7 +26,11 @@ async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileIte
             dir_entries.push(entry);
         }
 
-        println!("Found {} entries in directory: {:?}", dir_entries.len(), path);
+        println!(
+            "Found {} entries in directory: {:?}",
+            dir_entries.len(),
+            path
+        );
 
         // Обрабатываем только первый уровень вложенности
         let futures = dir_entries.into_iter().map(|entry| {
@@ -54,7 +58,11 @@ async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileIte
     }
 
     Ok(FileItem {
-        name: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
         is_directory,
         path: path.to_string_lossy().into_owned(),
         children,
