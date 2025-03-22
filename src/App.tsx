@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react'; // Добавляем useCallback
 import { FileItem } from './types';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
@@ -6,9 +6,13 @@ import FileManager from './main-screen/leftBar/FileManager';
 import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
-import TopbarEditor from './main-screen/topbar-editor/TopbarEditor'; // Добавляем новый компонент
+import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 
 import './App.css';
+
+interface DependencyMetadata {
+  dependencies: string[]; // Упрощаем до единого поля
+}
 
 function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(250);
@@ -18,7 +22,10 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
-  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]); // Список открытых файлов
+  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]);
+  const [dependencyMetadata, setDependencyMetadata] = useState<DependencyMetadata>({
+    dependencies: [],
+  });
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
@@ -26,21 +33,19 @@ function App() {
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
 
-  // Обработчик переключения файлов
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {
       const file = currentFiles.find(f => f.path === filePath);
       if (file) {
-        console.log('Adding file to openedFiles:', file); // Отладка
+        console.log('Adding file to openedFiles:', file);
         setOpenedFiles(prev => [...prev, { ...file, is_directory: false, expanded: false, loaded: true }]);
       } else {
-        console.log('File not found in currentFiles:', filePath); // Отладка
+        console.log('File not found in currentFiles:', filePath);
       }
     }
     setSelectedFile(filePath);
   };
 
-  // Обработчик закрытия файла
   const handleCloseFile = (filePath: string) => {
     const updatedFiles = openedFiles.filter(file => file.path !== filePath);
     setOpenedFiles(updatedFiles);
@@ -87,7 +92,7 @@ function App() {
       let newHeight = startHeight + delta;
 
       newHeight = Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, newHeight));
-      
+
       if (newHeight <= MIN_TERMINAL_HEIGHT + COLLAPSE_THRESHOLD) {
         setIsTerminalVisible(false);
         document.removeEventListener('mousemove', onMouseMove);
@@ -107,10 +112,15 @@ function App() {
 
   const handleRestoreTerminal = () => {
     setIsTerminalVisible(true);
-    setTerminalHeight(prev => 
+    setTerminalHeight(prev =>
       Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, prev))
     );
   };
+
+  // Мемоизируем onDependenciesDetected
+  const onDependenciesDetected = useCallback((metadata: DependencyMetadata) => {
+    setDependencyMetadata(metadata);
+  }, [setDependencyMetadata]);
 
   return (
     <div className="app-container">
@@ -121,8 +131,9 @@ function App() {
           <div className="left-panel" style={{ width: leftPanelWidth }}>
             <FileManager
               selectedFolder={selectedFolder}
-              setSelectedFile={handleSetSelectedFile} // Используем обновлённый обработчик
-              setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
+              setSelectedFile={handleSetSelectedFile}
+              setCurrentFiles={setCurrentFiles} // Убрали приведение типов
+              onDependenciesDetected={onDependenciesDetected} // Используем мемоизированную функцию
             />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
           </div>
@@ -142,7 +153,15 @@ function App() {
             />
           )}
           <div className="monaco-editor-container">
-            <CenterContainer setSelectedFolder={setSelectedFolder} selectedFile={selectedFile} />
+            <CenterContainer
+              style={{ flex: 1 }}
+              setSelectedFolder={setSelectedFolder}
+              selectedFolder={selectedFolder} // Добавляем selectedFolder для автодополнения
+              selectedFile={selectedFile}
+              dependencyMetadata={dependencyMetadata}
+              setDependencyMetadata={setDependencyMetadata}
+              currentFiles={currentFiles}
+            />
           </div>
 
           {isTerminalVisible ? (

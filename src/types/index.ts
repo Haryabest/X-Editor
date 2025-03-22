@@ -1,9 +1,11 @@
+import { ReactNode } from 'react';
+
 export interface FileItem {
   name: string;
+  is_directory: boolean;
   path: string;
-  icon: string;
-  is_directory?: boolean;
-  expanded?: boolean;
-  loaded?: boolean;
   children?: FileItem[];
+  expanded: boolean;
+  loaded: boolean;
+  icon?: ReactNode; // Унифицируем тип с FileManager.tsx
 }

@@ -1,13 +1,8 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { FileItem } from '../../types'; // Импортируем из общего типа
 
 import './TopbarEditor.css';
-
-interface FileItem {
-  name: string;
-  path: string;
-  icon: string;
-}
 
 interface TopbarEditorProps {
   openedFiles: FileItem[];
@@ -27,7 +22,9 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({ openedFiles, activeFile, se
             key={file.path}
             className={`te-file-tab ${activeFile === file.path ? 'te-active' : ''}`}
           >
-            <span className="te-file-icon">{file.icon}</span>
+            <span className="te-file-icon">
+              {file.icon || '📄'} {/* Используем ReactNode или дефолтный символ */}
+            </span>
             <button
               className="te-file-name-btn"
               onClick={() => setSelectedFile(file.path)}

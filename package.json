@@ -21,6 +21,9 @@
     "@xterm/xterm": "^5.5.0",
     "devicon": "^2.16.0",
     "lucide-react": "^0.479.0",
+    "monaco-editor": "^0.52.2",
+    "monaco-editor-workers": "^0.45.0",
+    "monaco-languageclient": "^9.5.0",
     "plyr": "^3.7.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -28,6 +31,7 @@
     "react-player": "^2.16.0",
     "simple-icons": "^14.10.0",
     "video.js": "^8.22.0",
+    "vscode-languageserver-types": "^3.17.5",
     "xeditor": "file:",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
@@ -42,6 +46,8 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "typescript-language-server": "^4.3.4",
+    "vite": "^6.0.3",
+    "ws": "^8.18.1"
   }
 }

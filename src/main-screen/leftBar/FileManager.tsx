@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getFileIcon, FolderIcon } from './fileIcons';
 import { FolderPlusIcon } from "@heroicons/react/24/outline";
@@ -19,13 +19,23 @@ interface FileItem {
   icon?: React.ReactNode;
 }
 
+interface DependencyMetadata {
+  dependencies: string[];
+}
+
 interface FileManagerProps {
   selectedFolder: string | null;
   setSelectedFile: (filePath: string | null) => void;
   setCurrentFiles: (files: FileItem[]) => void;
+  onDependenciesDetected: (metadata: DependencyMetadata) => void;
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles }) => {
+const FileManager: React.FC<FileManagerProps> = ({
+  selectedFolder,
+  setSelectedFile,
+  setCurrentFiles,
+  onDependenciesDetected,
+}) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -34,7 +44,6 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     isDirectory: boolean;
   } | null>(null);
 
-  // Рекурсивная функция для сбора всех файлов
   const collectAllFiles = (items: FileItem[]): FileItem[] => {
     let allFiles: FileItem[] = [];
     items.forEach(item => {
@@ -55,30 +64,65 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     return allFiles;
   };
 
-  // Загружаем начальное дерево
   useEffect(() => {
-    const loadTree = async () => {
+    const loadTreeAndDependencies = async () => {
       if (selectedFolder) {
         try {
+          // Загружаем дерево директорий
           const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
           console.log('Loaded tree:', JSON.stringify(tree, null, 2));
           const processed = processTree(tree);
-          console.log('Processed tree:', JSON.stringify(processed, null, 2));
           setFileTree([{ ...processed, expanded: true, loaded: true }]);
           const allFiles = collectAllFiles([processed]);
           console.log('All files at startup:', allFiles);
           setCurrentFiles(allFiles);
+
+          // Сканируем node_modules для зависимостей
+          const nodeModulesPath = `${selectedFolder}\\node_modules`;
+          let dependencies: string[] = [];
+          try {
+            const nodeModulesTree = await invoke<FileItem>("get_directory_tree", { path: nodeModulesPath });
+            dependencies = nodeModulesTree.children
+              ?.filter(item => item.is_directory && !item.name.startsWith('.'))
+              .map(item => item.name) || [];
+            console.log('Dependencies from node_modules:', dependencies);
+            onDependenciesDetected({ dependencies });
+          } catch (error) {
+            console.log('node_modules not found in root, trying subdirectories:', error);
+            const subDirs = ['frontend', 'backend'];
+            for (const subDir of subDirs) {
+              try {
+                const subNodeModulesPath = `${selectedFolder}\\${subDir}\\node_modules`;
+                const nodeModulesTree = await invoke<FileItem>("get_directory_tree", { path: subNodeModulesPath });
+                dependencies = nodeModulesTree.children
+                  ?.filter(item => item.is_directory && !item.name.startsWith('.'))
+                  .map(item => item.name) || [];
+                console.log(`Dependencies from ${subDir}/node_modules:`, dependencies);
+                onDependenciesDetected({ dependencies });
+                break;
+              } catch (subError) {
+                console.error(`${subDir}/node_modules not found:`, subError);
+              }
+            }
+            if (dependencies.length === 0) {
+              onDependenciesDetected({ dependencies: [] });
+            }
+          }
         } catch (error) {
           console.error('Ошибка загрузки директории:', error);
           alert(`Не удалось загрузить директорию: ${error}`);
+          setFileTree([]);
+          setCurrentFiles([]);
+          onDependenciesDetected({ dependencies: [] });
         }
       } else {
         setFileTree([]);
         setCurrentFiles([]);
+        onDependenciesDetected({ dependencies: [] });
       }
     };
-    loadTree();
-  }, [selectedFolder]); // Убрали setCurrentFiles из зависимостей
+    loadTreeAndDependencies();
+  }, [selectedFolder, onDependenciesDetected, setCurrentFiles]);
 
   const processTree = (item: FileItem): FileItem => ({
     ...item,
@@ -216,7 +260,7 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
               <div
                 onClick={() => toggleDirectory(item)}
                 className="directory-item"
-                style={{ cursor: 'pointer' }} // Добавляем визуальную подсказку
+                style={{ cursor: 'pointer' }}
               >
                 <span className="chevron">
                   {item.expanded ? (

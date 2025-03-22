@@ -4,6 +4,7 @@
 mod commands;
 mod types;
 mod reading;
+mod language_server;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -31,6 +32,7 @@ fn main() {
             commands::terminal::start_process,
             commands::terminal::send_input,
             commands::terminal::resize_pty,
+            language_server::start_language_server,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

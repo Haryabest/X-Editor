@@ -57,15 +57,6 @@ const menuData: Record<string, MenuItem[]> = {
   ]
 };
 
-const fileList: FileItem[] = [
-  { name: 'style.css', path: 'src/main-screen/top-toolbar', icon: '📄' },
-  { name: 'toolbar.tsx', path: 'src/main-screen/top-toolbar', icon: '📄' },
-  { name: 'file_operations.rs', path: 'src-taur/src/commands', icon: '📄' },
-  { name: 'ModalsPosition.tsx', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
-  { name: 'main.rs', path: 'src-taur/src', icon: '📄' },
-  { name: 'bottomBar.tsx', path: 'src/main-screen/bottom-toolbar', icon: '📄' },
-  { name: 'styleEncoding.css', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
-];
 
 const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
