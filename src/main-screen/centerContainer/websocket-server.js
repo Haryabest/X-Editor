@@ -1,51 +1,87 @@
-import { WebSocketServer } from 'ws';
-import { spawn } from 'child_process';
+import { WebSocketServer } from "ws"
+import { spawn } from "child_process"
 
-// Запуск typescript-language-server через stdio
-const serverProcess = spawn('npx', [
-  'tsserver',
-  '--logVerbosity', 'verbose'
-], {
+// Start TypeScript Language Server process
+const serverProcess = spawn("npx", ["typescript-language-server", "--stdio"], {
   shell: true,
-  stdio: ['pipe', 'pipe', 'pipe']
-});
+  stdio: ["pipe", "pipe", "pipe"],
+})
 
-// Логирование для serverProcess
-serverProcess.stdout.on('data', (data) => {
-  console.log('TypeScript Language Server stdout:', data.toString());
-});
+// Logging for serverProcess
+serverProcess.stdout.on("data", (data) => {
+  console.log("TypeScript Language Server stdout:", data.toString())
+})
 
-serverProcess.stderr.on('data', (data) => {
-  console.error('TypeScript Language Server stderr:', data.toString());
-});
+serverProcess.stderr.on("data", (data) => {
+  console.error("TypeScript Language Server stderr:", data.toString())
+})
 
-serverProcess.on('close', (code) => {
-  console.log(`TypeScript Language Server process exited with code ${code}`);
-});
+serverProcess.on("close", (code) => {
+  console.log(`TypeScript Language Server process exited with code ${code}`)
+})
 
-// Создание WebSocket сервера
-const wss = new WebSocketServer({ port: 3000 });
+// Create WebSocket server
+const wss = new WebSocketServer({ port: 3000 })
 
-wss.on('connection', (ws) => {
-  console.log('WebSocket connection established');
+wss.on("connection", (ws) => {
+  console.log("WebSocket connection established")
 
-  ws.on('message', (message) => {
-    console.log('Received message from client:', message.toString());
-    serverProcess.stdin.write(message + '\n'); // Добавляем символ новой строки
-  });
+  ws.on("message", (message) => {
+    try {
+      const parsedMessage = JSON.parse(message.toString())
+      console.log("Received message from client:", JSON.stringify(parsedMessage, null, 2))
 
-  serverProcess.stdout.on('data', (data) => {
-    console.log('Received message from server:', data.toString());
-    ws.send(data.toString());
-  });
+      // Forward message to TypeScript Language Server
+      const messageString = JSON.stringify(parsedMessage) + "\r\n"
+      serverProcess.stdin.write(messageString)
+    } catch (error) {
+      console.error("Error processing message:", error)
+    }
+  })
 
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
+  // Forward TypeScript Language Server responses to client
+  const responseHandler = (data) => {
+    try {
+      const messages = data.toString().split("\r\n").filter(Boolean)
 
-  ws.on('close', () => {
-    console.log('WebSocket connection closed');
-  });
-});
+      for (const message of messages) {
+        try {
+          const parsedMessage = JSON.parse(message)
+          console.log("Sending message to client:", JSON.stringify(parsedMessage, null, 2))
 
-console.log('WebSocket server is running on ws://localhost:3000');
+          // Only send if the connection is still open
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify(parsedMessage))
+          }
+        } catch (error) {
+          console.error("Error parsing server message:", error, message)
+        }
+      }
+    } catch (error) {
+      console.error("Error processing server response:", error)
+    }
+  }
+
+  serverProcess.stdout.on("data", responseHandler)
+
+  ws.on("error", (error) => {
+    console.error("WebSocket error:", error)
+  })
+
+  ws.on("close", () => {
+    console.log("WebSocket connection closed")
+    // Remove the response handler when the connection is closed
+    serverProcess.stdout.removeListener("data", responseHandler)
+  })
+})
+
+// Handle server shutdown
+process.on("SIGINT", () => {
+  console.log("Shutting down server...")
+  serverProcess.kill()
+  wss.close()
+  process.exit(0)
+})
+
+console.log("WebSocket server is running on ws://localhost:3000")
+

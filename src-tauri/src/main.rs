@@ -2,17 +2,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
-mod reading;
 mod types;
-// mod language_server;
+mod reading;
 
-use commands::terminal::PtyState;
-use std::sync::Arc;
 use tauri::Manager;
+use std::sync::Arc;
+use commands::terminal::PtyState;
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState {
@@ -31,10 +29,6 @@ fn main() {
             reading::read_text_file,
             reading::read_binary_file,
             reading::stream_video,
-            reading::run_command,
-            reading::install_dependencies,
-            reading::analyze_project,
-            reading::file_exists,
             commands::terminal::start_process,
             commands::terminal::send_input,
             commands::terminal::resize_pty,
@@ -50,3 +44,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
