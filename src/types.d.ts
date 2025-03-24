@@ -5,6 +5,7 @@ declare module "monaco-editor" {
   }
   
   export interface FileItem {
+    isDirectory: any
     name: string
     path: string
   }

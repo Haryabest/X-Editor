@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileItem } from './types';
+import { configureMonaco } from './monaco-config';
+import { getLanguageFromExtension } from './monaco-config/language-detector';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
@@ -19,12 +21,27 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
   const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]);
+  const [monaco, setMonaco] = useState<any>(null);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
   const MAX_LEFT_PANEL_WIDTH = 400;
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
+
+  const supportedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.json'];
+
+  useEffect(() => {
+    if (monaco) {
+      configureMonaco(
+        monaco,
+        openedFiles,
+        selectedFolder,
+        supportedExtensions,
+        getLanguageFromExtension
+      );
+    }
+  }, [monaco]);
 
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {

@@ -87,7 +87,9 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         selectedFolder || null,
         supportedTextExtensions, 
         getLanguageFromExtension
-      );
+      ).catch(error => {
+        console.error("Error during Monaco configuration:", error);
+      });
     }
   }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
 
@@ -260,70 +262,143 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                 }}
                 beforeMount={(monaco) => {
                   window.monaco = monaco;
+                  
+                  // Настраиваем Monaco заранее
+                  if (selectedFile) {
+                    try {
+                      // Отключаем ошибки на старте
+                      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                        noSemanticValidation: true,
+                        noSyntaxValidation: true,
+                        diagnosticCodesToIgnore: [2669, 1046, 2307]
+                      });
+                      
+                      // Проверяем, является ли файл JSX или TSX
+                      if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
+                        // Устанавливаем специфические настройки для JSX/TSX
+                        monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                          jsx: monaco.languages.typescript.JsxEmit.React,
+                          jsxFactory: 'React.createElement',
+                          jsxFragmentFactory: 'React.Fragment',
+                          allowNonTsExtensions: true,
+                          allowJs: true
+                        });
+                        
+                        // Добавляем базовое определение для React.createElement чтобы JSX заработал
+                        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+                          `declare namespace React {
+                            function createElement(type: any, props?: any, ...children: any[]): any;
+                            const Fragment: any;
+                          }`,
+                          'file:///node_modules/@types/react-core/index.d.ts'
+                        );
+                      }
+                    } catch (error) {
+                      console.error("Error in beforeMount:", error);
+                    }
+                  }
                 }}
                 onMount={(editor, monaco) => {
-                  // Настройка редактора для текущего файла
-                  if (selectedFile) {
-                    const normalizedPath = selectedFile.replace(/\\/g, '/');
-                    const uri = monaco.Uri.parse(`file:///${normalizedPath}`);
-                    
-                    // Проверяем, существует ли уже модель для этого файла
-                    let model = monaco.editor.getModel(uri);
-                    
-                    // Если модель не существует, создаем новую
-                    if (!model) {
-                      model = monaco.editor.createModel(
-                        fileContent || code,
-                        getLanguageFromExtension(selectedFile),
-                        uri
-                      );
-                    } else {
-                      // Если модель существует, но содержимое изменилось, обновляем его
-                      if (model.getValue() !== (fileContent || code)) {
-                        model.setValue(fileContent || code);
-                      }
-                    }
-                    
-                    // Устанавливаем модель для редактора
-                    editor.setModel(model);
-                    
-                    // Для TypeScript/JavaScript файлов добавляем дополнительную настройку
-                    const ext = selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase();
-                    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-                      // Добавляем текущий файл в виртуальную файловую систему
-                      if (selectedFolder) {
-                        const relativePath = normalizedPath.replace(selectedFolder.replace(/\\/g, '/'), '');
+                  try {
+                    // Настройка редактора для текущего файла
+                    if (selectedFile) {
+                      const normalizedPath = selectedFile.replace(/\\/g, '/');
+                      const uri = monaco.Uri.parse(`file:///${normalizedPath}`);
+                      
+                      // Проверяем, существует ли уже модель для этого файла
+                      let model = monaco.editor.getModel(uri);
+                      
+                      // Если модель не существует или имеет неправильное содержимое, пересоздаем ее
+                      if (!model || model.getValue() !== (fileContent || code)) {
+                        // Если модель существует, удаляем ее
+                        if (model) {
+                          try {
+                            model.dispose();
+                          } catch (e) {
+                            console.error("Error disposing model:", e);
+                          }
+                        }
                         
-                        // Создаем виртуальные пути для импортов
-                        if (relativePath.startsWith('/')) {
-                          monaco.editor.createModel(
-                            fileContent || code,
-                            getLanguageFromExtension(selectedFile),
-                            monaco.Uri.parse(`file:///src${relativePath}`)
-                          );
+                        // Определяем язык на основе расширения файла
+                        const language = getLanguageFromExtension(selectedFile);
+                        
+                        // Создаем новую модель с корректным содержимым
+                        model = monaco.editor.createModel(
+                          fileContent || code || "",
+                          language,
+                          uri
+                        );
+                        
+                        // Если это JSX/TSX файл, настраиваем специальные параметры
+                        if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
+                          monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                            ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
+                            jsx: monaco.languages.typescript.JsxEmit.React,
+                            jsxFactory: 'React.createElement',
+                            jsxFragmentFactory: 'React.Fragment',
+                            allowNonTsExtensions: true,
+                            allowJs: true,
+                            target: monaco.languages.typescript.ScriptTarget.ESNext,
+                            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                            esModuleInterop: true
+                          });
                           
-                          // Добавляем также путь без префикса src
-                          monaco.editor.createModel(
-                            fileContent || code,
-                            getLanguageFromExtension(selectedFile),
-                            monaco.Uri.parse(`file:///${relativePath.substring(1)}`)
-                          );
-                        } else {
-                          monaco.editor.createModel(
-                            fileContent || code,
-                            getLanguageFromExtension(selectedFile),
-                            monaco.Uri.parse(`file:///src/${relativePath}`)
-                          );
+                          // Дополнительно настраиваем диагностику для JSX/TSX
+                          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                            noSemanticValidation: false,
+                            noSyntaxValidation: false,
+                            noSuggestionDiagnostics: true,
+                            diagnosticCodesToIgnore: [
+                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+                              2740, 2339, 2531, 2786, 2605
+                            ]
+                          });
                           
-                          // Добавляем также путь без префикса src
-                          monaco.editor.createModel(
-                            fileContent || code,
-                            getLanguageFromExtension(selectedFile),
-                            monaco.Uri.parse(`file:///${relativePath}`)
-                          );
+                          // Для JavaScript/JSX также настраиваем
+                          monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+                            ...monaco.languages.typescript.javascriptDefaults.getCompilerOptions(),
+                            jsx: monaco.languages.typescript.JsxEmit.React,
+                            jsxFactory: 'React.createElement',
+                            jsxFragmentFactory: 'React.Fragment',
+                            allowNonTsExtensions: true,
+                            allowJs: true
+                          });
+                          
+                          monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+                            noSemanticValidation: false,
+                            noSyntaxValidation: false,
+                            noSuggestionDiagnostics: true,
+                            diagnosticCodesToIgnore: [
+                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+                              2740, 2339, 2531, 2786, 2605
+                            ]
+                          });
                         }
                       }
+                      
+                      // Убеждаемся, что модель существует перед использованием
+                      if (model) {
+                        // Устанавливаем модель для редактора
+                        editor.setModel(model);
+                        
+                        // Повторно включаем проверки
+                        setTimeout(() => {
+                          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                            noSemanticValidation: false,
+                            noSyntaxValidation: false,
+                            noSuggestionDiagnostics: true,
+                            diagnosticCodesToIgnore: [
+                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+                              2740, 2339, 2531, 2786, 2605
+                            ]
+                          });
+                        }, 500);
+                      } else {
+                        console.error("Failed to create model for", selectedFile);
+                      }
                     }
+                  } catch (error) {
+                    console.error("Error in onMount:", error);
                   }
                 }}
               />

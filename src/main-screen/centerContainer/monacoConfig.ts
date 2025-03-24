@@ -53,7 +53,7 @@ export const configureMonaco = (monaco: any) => {
     noSemanticValidation: false,
     noSyntaxValidation: false,
     noSuggestionDiagnostics: false,
-    diagnosticCodesToIgnore: []
+    diagnosticCodesToIgnore: [2669, 1046, 2307]
   });
 
   // Add React types
