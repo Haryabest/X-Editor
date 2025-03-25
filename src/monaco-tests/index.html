@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Тестирование Monaco Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    header {
+      background-color: #333;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .description {
+      background-color: white;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .error-list {
+      background-color: #fff8f8;
+      padding: 15px;
+      border-left: 4px solid #e74c3c;
+      margin: 15px 0;
+    }
+    .editor-container {
+      background-color: white;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #666;
+    }
+    .hidden-content {
+      display: none;
+    }
+    .actions {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      margin: 0 5px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Тестирование Monaco Editor</h1>
+  </header>
+
+  <div class="description">
+    <h2>О тестах</h2>
+    <p>Эта страница предназначена для тестирования работы Monaco Editor с различными типами файлов и проверки корректного отображения ошибок.</p>
+    <p>Выберите один из тестовых файлов ниже, чтобы загрузить его в редактор и проверить отображение ошибок.</p>
+    
+    <div class="error-list">
+      <h3>Ожидаемые ошибки:</h3>
+      <ul>
+        <li><strong>TypeScriptTest.ts</strong>: ошибки типов, несоответствия типов, отсутствующие свойства</li>
+        <li><strong>ReactComponentTest.tsx</strong>: ошибки в JSX синтаксисе, отсутствующие props</li>
+        <li><strong>JsxComponentTest.jsx</strong>: должен работать без ошибок</li>
+        <li><strong>SmartAnalyzerTest.ts</strong>: только критические ошибки синтаксиса и логики</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="ts-test-btn" class="button">TypeScriptTest.ts</button>
+    <button id="tsx-test-btn" class="button">ReactComponentTest.tsx</button>
+    <button id="jsx-test-btn" class="button">JsxComponentTest.jsx</button>
+    <button id="smart-test-btn" class="button">SmartAnalyzerTest.ts</button>
+  </div>
+
+  <div id="monaco-container" style="height: 500px; margin: 20px 0; border: 1px solid #ccc;"></div>
+
+  <div class="actions">
+    <button id="analyze-btn" class="button">Анализировать ошибки</button>
+  </div>
+
+  <div id="errors-container" style="margin-top: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12);"></div>
+
+  <footer>
+    <p>X-Editor Monaco Test Suite</p>
+  </footer>
+
+  <!-- Скрытые элементы для хранения содержимого файлов -->
+  <div class="hidden-content">
+    <script type="text/plain" id="typescript-test-content">
+// Содержимое будет загружено динамически
+    </script>
+    
+    <script type="text/plain" id="react-test-content">
+// Содержимое будет загружено динамически
+    </script>
+    
+    <script type="text/plain" id="jsx-test-content">
+// Содержимое будет загружено динамически
+    </script>
+    
+    <script type="text/plain" id="smart-analyzer-test-content">
+// Содержимое будет загружено динамически
+    </script>
+  </div>
+
+  <script type="module">
+    import { configureMonaco } from '../monaco-config/index.js';
+    import * as monaco from 'monaco-editor';
+    import typeScriptTestContent from './typescript-test-content.js';
+    import reactTestContent from './react-test-content.js';
+    import jsxTestContent from './jsx-test-content.js';
+    import smartAnalyzerTestContent from './smart-analyzer-test-content.js';
+    
+    // Заполняем содержимое тестовых файлов
+    document.getElementById('typescript-test-content').textContent = typeScriptTestContent;
+    document.getElementById('react-test-content').textContent = reactTestContent;
+    document.getElementById('jsx-test-content').textContent = jsxTestContent;
+    document.getElementById('smart-analyzer-test-content').textContent = smartAnalyzerTestContent;
+    
+    let editor;
+    let currentFile = null;
+    
+    async function fetchFileContent(filePath) {
+      try {
+        const response = await fetch(filePath);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return await response.text();
+      } catch (error) {
+        console.error(`Ошибка загрузки файла ${filePath}:`, error);
+        return `// Ошибка загрузки файла ${filePath}\n// ${error.message}`;
+      }
+    }
+    
+    function initMonaco() {
+      configureMonaco();
+      
+      editor = monaco.editor.create(document.getElementById('monaco-container'), {
+        automaticLayout: true,
+        theme: 'vs',
+        fontSize: 14,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+      });
+      
+      document.getElementById('ts-test-btn').addEventListener('click', () => loadFile('TypeScriptTest.ts'));
+      document.getElementById('tsx-test-btn').addEventListener('click', () => loadFile('ReactComponentTest.tsx'));
+      document.getElementById('jsx-test-btn').addEventListener('click', () => loadFile('JsxComponentTest.jsx'));
+      document.getElementById('smart-test-btn').addEventListener('click', () => loadFile('SmartAnalyzerTest.ts'));
+      document.getElementById('analyze-btn').addEventListener('click', analyzeErrors);
+    }
+    
+    async function loadFile(fileName) {
+      currentFile = fileName;
+      const filePath = `src/monaco-tests/${fileName}`;
+      
+      // Определяем язык по расширению файла
+      let language = 'typescript';
+      if (fileName.endsWith('.tsx')) {
+        language = 'typescriptreact';
+      } else if (fileName.endsWith('.jsx')) {
+        language = 'javascriptreact';
+      } else if (fileName.endsWith('.js')) {
+        language = 'javascript';
+      } else if (fileName.endsWith('.ts')) {
+        language = 'typescript';
+      }
+      
+      // Загружаем содержимое файла
+      let content = '';
+      const contentId = 
+        fileName === 'TypeScriptTest.ts' ? 'typescript-test-content' :
+        fileName === 'ReactComponentTest.tsx' ? 'react-test-content' :
+        fileName === 'JsxComponentTest.jsx' ? 'jsx-test-content' :
+        fileName === 'SmartAnalyzerTest.ts' ? 'smart-analyzer-test-content' : '';
+        
+      const contentElement = document.getElementById(contentId);
+      
+      if (contentElement && contentElement.textContent.trim().length > 10) {
+        content = contentElement.textContent;
+      } else {
+        content = await fetchFileContent(filePath);
+      }
+      
+      // Создаем URI для файла
+      const uri = monaco.Uri.parse(`file:///${filePath}`);
+      
+      // Проверяем, существует ли модель для этого файла
+      let model = monaco.editor.getModel(uri);
+      if (model) {
+        model.setValue(content);
+      } else {
+        model = monaco.editor.createModel(content, language, uri);
+      }
+      
+      // Устанавливаем модель в редактор
+      editor.setModel(model);
+      
+      // Настраиваем компилятор для разных типов файлов
+      if (language === 'typescriptreact' || language === 'javascriptreact') {
+        // Для JSX/TSX файлов
+        const jsxSettings = {
+          jsx: monaco.languages.typescript.JsxEmit.React,
+          jsxFactory: 'React.createElement',
+          jsxFragmentFactory: 'React.Fragment',
+          allowNonTsExtensions: true,
+          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          esModuleInterop: true,
+          noEmit: true,
+          allowJs: true,
+          allowSyntheticDefaultImports: true
+        };
+        
+        monaco.languages.typescript.typescriptDefaults.setCompilerOptions(jsxSettings);
+        
+        if (language === 'javascriptreact') {
+          monaco.languages.typescript.javascriptDefaults.setCompilerOptions(jsxSettings);
+        }
+        
+        // Настраиваем диагностику для JSX файлов
+        const diagnosticOptions = {
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: true,
+          diagnosticCodesToIgnore: [
+            2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+            2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+            1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+            1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+          ]
+        };
+        
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+        
+        if (language === 'javascriptreact') {
+          monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+        }
+      } else if (language === 'typescript' || language === 'javascript') {
+        // Для TS/JS файлов
+        const compilerOptions = {
+          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          module: monaco.languages.typescript.ModuleKind.ESNext,
+          noEmit: true,
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          allowJs: true
+        };
+        
+        if (language === 'typescript') {
+          monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+        } else {
+          monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
+        }
+        
+        // Диагностика для файла SmartAnalyzerTest.ts
+        if (fileName === 'SmartAnalyzerTest.ts') {
+          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+            noSuggestionDiagnostics: true,
+            diagnosticCodesToIgnore: [
+              2307, 2688, 1039, 2792, 1183, 1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+            ]
+          });
+        } else {
+          // Для обычных TypeScript файлов
+          const diagnosticOptions = {
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+            noSuggestionDiagnostics: true
+          };
+          
+          if (language === 'typescript') {
+            monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+          } else {
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+          }
+        }
+      }
+      
+      // Применяем подсказки для всех типов файлов
+      monaco.languages.typescript.typescriptDefaults.setInlayHintsOptions({
+        includeInlayParameterNameHints: 'all',
+        includeInlayParameterNameHintsWhenArgumentMatchesName: true,
+        includeInlayFunctionParameterTypeHints: true,
+        includeInlayVariableTypeHints: true,
+        includeInlayPropertyDeclarationTypeHints: true,
+        includeInlayFunctionLikeReturnTypeHints: true,
+        includeInlayEnumMemberValueHints: true
+      });
+      
+      // Добавляем React типы для JSX файлов
+      if (language === 'typescriptreact' || language === 'javascriptreact') {
+        const reactTypesURI = 'file:///node_modules/@types/react/index.d.ts';
+        const reactTypes = `
+          declare namespace React {
+            function createElement(type: any, props?: any, ...children: any[]): any;
+            interface FC<P = {}> { (props: P): any; displayName?: string; }
+            const Fragment: any;
+            interface HTMLAttributes {
+              className?: string;
+              style?: any;
+              id?: string;
+              onClick?: (event: any) => void;
+              [key: string]: any;
+            }
+          }
+          
+          declare namespace JSX {
+            interface Element {}
+            interface IntrinsicElements {
+              div: React.HTMLAttributes;
+              span: React.HTMLAttributes;
+              button: React.HTMLAttributes;
+              input: React.HTMLAttributes;
+              [key: string]: React.HTMLAttributes;
+            }
+          }
+        `;
+        
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(reactTypes, reactTypesURI);
+        monaco.languages.typescript.javascriptDefaults.addExtraLib(reactTypes, reactTypesURI);
+      }
+    }
+    
+    function analyzeErrors() {
+      if (!editor || !currentFile) return;
+      
+      const model = editor.getModel();
+      if (!model) return;
+      
+      const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+      
+      const errorsContainer = document.getElementById('errors-container');
+      errorsContainer.innerHTML = '';
+      
+      const header = document.createElement('h3');
+      header.textContent = `Ошибки в файле ${currentFile} (${markers.length})`;
+      errorsContainer.appendChild(header);
+      
+      if (markers.length === 0) {
+        const noErrors = document.createElement('p');
+        noErrors.textContent = 'Ошибки не обнаружены.';
+        errorsContainer.appendChild(noErrors);
+        return;
+      }
+      
+      // Собираем статистику по кодам ошибок
+      const errorCounts = {};
+      markers.forEach(marker => {
+        const code = marker.code;
+        errorCounts[code] = (errorCounts[code] || 0) + 1;
+      });
+      
+      // Выводим статистику
+      const statsHeader = document.createElement('h4');
+      statsHeader.textContent = 'Статистика по кодам ошибок:';
+      errorsContainer.appendChild(statsHeader);
+      
+      const statsList = document.createElement('ul');
+      Object.entries(errorCounts).forEach(([code, count]) => {
+        const item = document.createElement('li');
+        item.textContent = `Код ${code}: ${count} шт.`;
+        statsList.appendChild(item);
+      });
+      errorsContainer.appendChild(statsList);
+      
+      // Выводим детали ошибок
+      const detailsHeader = document.createElement('h4');
+      detailsHeader.textContent = 'Детали ошибок:';
+      errorsContainer.appendChild(detailsHeader);
+      
+      const errorsList = document.createElement('ul');
+      markers.forEach(marker => {
+        const item = document.createElement('li');
+        item.textContent = `Строка ${marker.startLineNumber}: ${marker.message} (код ${marker.code})`;
+        errorsList.appendChild(item);
+      });
+      errorsContainer.appendChild(errorsList);
+    }
+    
+    // Запускаем Monaco при загрузке страницы
+    window.addEventListener('DOMContentLoaded', initMonaco);
+  </script>
+</body>
+</html> 

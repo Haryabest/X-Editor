@@ -80,16 +80,11 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
   useEffect(() => {
     if (window.monaco) {
-      // Используем модульную конфигурацию Monaco
-      configureMonaco(
-        window.monaco, 
-        openedFiles, 
-        selectedFolder || null,
-        supportedTextExtensions, 
-        getLanguageFromExtension
-      ).catch(error => {
-        console.error("Error during Monaco configuration:", error);
-      });
+      // Используем модульную конфигурацию Monaco с обновленной сигнатурой
+      configureMonaco(openedFiles.map(file => ({
+        ...file,
+        filePath: file.path
+      })));
     }
   }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
 
@@ -268,16 +263,28 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                     try {
                       // Отключаем ошибки на старте для всех типов файлов
                       monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-                        noSemanticValidation: true,
-                        noSyntaxValidation: true,
-                        diagnosticCodesToIgnore: [2669, 1046, 2307, 1005, 1003, 17008, 2693, 1109, 8006, 8010]
+                        noSemanticValidation: false,
+                        noSyntaxValidation: false,
+                        noSuggestionDiagnostics: true,
+                        diagnosticCodesToIgnore: [
+                          2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+                          2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+                          1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+                          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+                        ]
                       });
                       
                       // Для JavaScript тоже отключаем проверки на старте
                       monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-                        noSemanticValidation: true,
-                        noSyntaxValidation: true,
-                        diagnosticCodesToIgnore: [2669, 1046, 2307, 1005, 1003, 17008, 2693, 1109, 8006, 8010]
+                        noSemanticValidation: false,
+                        noSyntaxValidation: false,
+                        noSuggestionDiagnostics: true,
+                        diagnosticCodesToIgnore: [
+                          2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+                          2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+                          1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+                          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+                        ]
                       });
                       
                       // Проверяем, является ли файл JSX или TSX
@@ -388,7 +395,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
                               2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010
+                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
                             ]
                           });
                           
@@ -409,7 +417,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
                               2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010
+                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
                             ]
                           });
                         }
@@ -429,7 +438,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
                               2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010
+                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
                             ]
                           });
                         }, 500);

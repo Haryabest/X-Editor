@@ -43,7 +43,6 @@ pub async fn stream_video(app: AppHandle, path: String) -> Result<String, String
         println!("File does not exist: {:?}", path);
         return Err(format!("File does not exist: {:?}", path));
     }
-
     // Use an Arc<Mutex<>> to safely share the port state across threads
     let port_state = Arc::new(Mutex::new(50000));
     let server = loop {

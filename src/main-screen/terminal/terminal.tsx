@@ -9,53 +9,110 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./style.css";
 
-const XTermTerminal: React.FC = () => {
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const terminal = useRef<Terminal | null>(null);
-  const fitAddon = useRef<FitAddon | null>(null);
-  const unlistenRef = useRef<(() => void) | null>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [isProcessRunning, setIsProcessRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
+interface TerminalInstance {
+  id: string;
+  name: string;
+  terminal: Terminal | null;
+  fitAddon: FitAddon | null;
+  isProcessRunning: boolean;
+  unlisten: (() => void) | null;
+  ref: HTMLDivElement | null;
+}
 
-  const resizeTerminal = async () => {
-    if (fitAddon.current && terminal.current) {
-      try {
-        fitAddon.current.fit();
-        const { rows, cols } = terminal.current;
-        await invoke("resize_pty", { rows, cols }).catch((err) => {
-          console.error("Failed to resize PTY:", err);
-        });
-      } catch (e) {
-        console.error("Failed to fit terminal:", e);
-      }
+const XTermTerminal: React.FC = () => {
+  const [terminals, setTerminals] = useState<TerminalInstance[]>([]);
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
+  const [nextTerminalId, setNextTerminalId] = useState(1);
+
+  // Initialize first terminal on mount
+  useEffect(() => {
+    if (terminals.length === 0) {
+      addNewTerminal();
+    }
+  }, []);
+
+  const addNewTerminal = () => {
+    const newTerminalId = `term-${nextTerminalId}`;
+    const newTerminalName = `Terminal ${nextTerminalId}`;
+    
+    const newTerminal: TerminalInstance = {
+      id: newTerminalId,
+      name: newTerminalName,
+      terminal: null,
+      fitAddon: null,
+      isProcessRunning: false,
+      unlisten: null,
+      ref: null
+    };
+
+    setTerminals([...terminals, newTerminal]);
+    setActiveTerminalId(newTerminalId);
+    setNextTerminalId(nextTerminalId + 1);
+  };
+
+  const removeTerminal = (id: string) => {
+    if (terminals.length <= 1) return; // Don't remove the last terminal
+
+    const terminalToRemove = terminals.find(t => t.id === id);
+    if (!terminalToRemove) return;
+
+    // Clean up resources
+    if (terminalToRemove.unlisten) terminalToRemove.unlisten();
+    if (terminalToRemove.terminal) terminalToRemove.terminal.dispose();
+
+    const newTerminals = terminals.filter(t => t.id !== id);
+    setTerminals(newTerminals);
+
+    // If we're removing the active terminal, select another one
+    if (activeTerminalId === id) {
+      setActiveTerminalId(newTerminals.length > 0 ? newTerminals[newTerminals.length - 1].id : null);
     }
   };
 
-  const startTerminalProcess = async () => {
-    if (!terminal.current || isProcessRunning) return;
+  const resizeTerminal = async (terminal: TerminalInstance) => {
+    if (!terminal.fitAddon || !terminal.terminal) return;
 
     try {
-      terminal.current.write("\r\n\x1b[33mStarting terminal process...\x1b[0m\r\n");
-
-      await invoke("start_process");
-      setIsProcessRunning(true);
-
-      await resizeTerminal();
-
-      terminal.current.write("\r\n\x1b[32mProcess started successfully\x1b[0m\r\n");
-    } catch (err) {
-      console.error("Failed to start process:", err);
-      if (terminal.current) {
-        terminal.current.write(`\r\n\x1b[31mFailed to start terminal process: ${err}\x1b[0m\r\n`);
-      }
-      setIsProcessRunning(false);
+      terminal.fitAddon.fit();
+      const { rows, cols } = terminal.terminal;
+      await invoke("resize_pty", { rows, cols }).catch((err) => {
+        console.error("Failed to resize PTY:", err);
+      });
+    } catch (e) {
+      console.error("Failed to fit terminal:", e);
     }
   };
 
+  const startTerminalProcess = async (terminal: TerminalInstance) => {
+    if (!terminal.terminal || terminal.isProcessRunning) return;
+
+    try {
+      terminal.terminal.write("\r\n\x1b[33mStarting terminal process...\x1b[0m\r\n");
+
+      await invoke("start_process");
+      setTerminals(terminals.map(t => 
+        t.id === terminal.id ? { ...t, isProcessRunning: true } : t
+      ));
+
+      await resizeTerminal(terminal);
+
+      terminal.terminal.write("\r\n\x1b[32mProcess started successfully\x1b[0m\r\n");
+    } catch (err) {
+      console.error("Failed to start process:", err);
+      if (terminal.terminal) {
+        terminal.terminal.write(`\r\n\x1b[31mFailed to start terminal process: ${err}\x1b[0m\r\n`);
+      }
+      setTerminals(terminals.map(t => 
+        t.id === terminal.id ? { ...t, isProcessRunning: false } : t
+      ));
+    }
+  };
+
+  // Initialize terminal when added or becomes active
   useEffect(() => {
-    const initTerminal = async () => {
-      if (!terminalRef.current || terminal.current) return;
+    const initializeTerminal = async (terminal: TerminalInstance) => {
+      if (!terminal.ref || terminal.terminal) return;
 
       const term = new Terminal({
         cursorBlink: true,
@@ -86,18 +143,10 @@ const XTermTerminal: React.FC = () => {
 
       term.unicode.activeVersion = '11';
 
-      terminal.current = term;
-      fitAddon.current = fit;
-
-      term.open(terminalRef.current);
+      term.open(terminal.ref);
 
       await new Promise((resolve) => setTimeout(resolve, 100));
-
-      try {
-        fit.fit();
-      } catch (e) {
-        console.error("Failed to fit terminal:", e);
-      }
+      fit.fit();
 
       term.onData((data) => {
         invoke("send_input", { input: data }).catch((err) => {
@@ -106,38 +155,51 @@ const XTermTerminal: React.FC = () => {
         });
       });
 
-      const resizeObserver = new ResizeObserver(() => {
-        resizeTerminal().catch(console.error);
-      });
-
-      if (terminalRef.current) {
-        resizeObserver.observe(terminalRef.current);
-      }
-
       const unlisten = await listen<string>("pty-output", (event) => {
-        if (terminal.current) {
-          terminal.current.write(event.payload);
+        if (term) {
+          term.write(event.payload);
         }
       });
 
-      unlistenRef.current = unlisten;
-      setIsReady(true);
+      // Update the terminal instance
+      setTerminals(terminals.map(t => 
+        t.id === terminal.id ? { 
+          ...t, 
+          terminal: term, 
+          fitAddon: fit, 
+          unlisten: unlisten as () => void 
+        } : t
+      ));
 
-      await startTerminalProcess();
-
-      return () => {
-        resizeObserver.disconnect();
-        if (unlistenRef.current) {
-          unlistenRef.current();
-        }
-        if (terminal.current) {
-          terminal.current.dispose();
-        }
-      };
+      await startTerminalProcess({ ...terminal, terminal: term, fitAddon: fit });
     };
 
-    initTerminal().catch(console.error);
-  }, []);
+    if (activeTerminalId) {
+      const terminal = terminals.find(t => t.id === activeTerminalId);
+      if (terminal) {
+        initializeTerminal(terminal).catch(console.error);
+      }
+    }
+  }, [activeTerminalId]);
+
+  // Handle window resize for active terminal
+  useEffect(() => {
+    const handleResize = () => {
+      if (activeTerminalId) {
+        const terminal = terminals.find(t => t.id === activeTerminalId);
+        if (terminal) {
+          resizeTerminal(terminal).catch(console.error);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeTerminalId, terminals]);
+
+  const getActiveTerminal = () => {
+    return terminals.find(t => t.id === activeTerminalId);
+  };
 
   return (
     <div className="terminal-container">
@@ -160,20 +222,55 @@ const XTermTerminal: React.FC = () => {
         <div className="right-actions">
           {activeTab === "terminal" ? (
             <>
-              <button
-                className="action-button"
-                onClick={() => terminal.current?.clear()}
-                title="Очистить терминал"
-              >
-                🧹 Очистить
-              </button>
-              <button
-                className="action-button"
-                onClick={startTerminalProcess}
-                title="Перезапустить процесс"
-              >
-                🔄 Перезапустить
-              </button>
+              <div className="terminal-tabs">
+                {terminals.map(term => (
+                  <div 
+                    key={term.id} 
+                    className={`terminal-tab ${activeTerminalId === term.id ? 'active' : ''}`}
+                    onClick={() => setActiveTerminalId(term.id)}
+                  >
+                    <span>{term.name}</span>
+                    {terminals.length > 1 && (
+                      <button 
+                        className="close-tab"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeTerminal(term.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button 
+                  className="add-terminal"
+                  onClick={addNewTerminal}
+                  title="Добавить новый терминал"
+                >
+                  +
+                </button>
+              </div>
+              
+              <div className="terminal-actions">
+                <button
+                  className="action-button"
+                  onClick={() => getActiveTerminal()?.terminal?.clear()}
+                  title="Очистить терминал"
+                >
+                  🧹 Очистить
+                </button>
+                <button
+                  className="action-button"
+                  onClick={() => {
+                    const term = getActiveTerminal();
+                    if (term) startTerminalProcess(term);
+                  }}
+                  title="Перезапустить процесс"
+                >
+                  🔄 Перезапустить
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -197,22 +294,39 @@ const XTermTerminal: React.FC = () => {
       </div>
 
       <div className="tab-content">
-        <div
-          ref={terminalRef}
-          className="terminal"
-          style={{ display: activeTab === "terminal" ? "block" : "none" }}
-        />
-        {activeTab === "issues" && (
+        {activeTab === "terminal" ? (
+          <>
+            {terminals.map(term => (
+              <div
+                key={term.id}
+                ref={el => {
+                  if (el && !term.ref) {
+                    setTerminals(terminals.map(t => 
+                      t.id === term.id ? { ...t, ref: el } : t
+                    ));
+                  }
+                }}
+                className="terminal"
+                style={{ 
+                  display: activeTerminalId === term.id ? "block" : "none",
+                  height: "100%"
+                }}
+              />
+            ))}
+          </>
+        ) : (
           <div className="issues-tab">
             <p>Здесь будет отображаться список проблем.</p>
           </div>
         )}
       </div>
 
-      <div
-        className={`status-indicator ${isProcessRunning ? "running" : "stopped"}`}
-        title={isProcessRunning ? "Process running" : "Process not running"}
-      />
+      {activeTab === "terminal" && getActiveTerminal() && (
+        <div
+          className={`status-indicator ${getActiveTerminal()?.isProcessRunning ? "running" : "stopped"}`}
+          title={getActiveTerminal()?.isProcessRunning ? "Process running" : "Process not running"}
+        />
+      )}
     </div>
   );
 };

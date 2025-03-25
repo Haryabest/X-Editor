@@ -35,7 +35,8 @@ export function configureJSXTypes(monaco: Monaco) {
     diagnosticCodesToIgnore: [
       2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
       2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-      1128, 1434, 1136, 1110, 8006, 8010
+      1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+      1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
     ]
   });
   
@@ -46,7 +47,8 @@ export function configureJSXTypes(monaco: Monaco) {
     diagnosticCodesToIgnore: [
       2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
       2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-      1128, 1434, 1136, 1110, 8006, 8010
+      1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+      1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
     ]
   });
 
@@ -80,73 +82,221 @@ export function configureJSXTypes(monaco: Monaco) {
       type: string;
     }
     
-    // Специфичные типы событий
-    interface MouseEvent extends SyntheticEvent {
-      button: number;
-      buttons: number;
-      clientX: number;
-      clientY: number;
-      pageX: number;
-      pageY: number;
-    }
-    
-    interface ChangeEvent extends SyntheticEvent {
-      target: EventTarget & { value: string };
-    }
-    
-    interface KeyboardEvent extends SyntheticEvent {
-      altKey: boolean;
-      charCode: number;
-      ctrlKey: boolean;
-      key: string;
-      keyCode: number;
-      metaKey: boolean;
-      shiftKey: boolean;
-    }
-    
-    // Стиль как объект
-    interface CSSProperties {
-      [key: string]: string | number;
-    }
-    
-    // Определение основных атрибутов HTML элементов
-    interface HTMLAttributes {
-      // Основные HTML атрибуты
-      className?: string;
-      class?: string;
-      id?: string;
-      style?: CSSProperties | string;
-      title?: string;
-      role?: string;
-      tabIndex?: number;
+    // Добавляем явное определение React, чтобы избежать ошибки 2503 "Cannot find namespace 'React'"
+    declare namespace React {
+      function createElement(type: any, props?: any, ...children: any[]): any;
       
-      // События с правильными типами
-      onClick?: (event: MouseEvent) => void;
-      onChange?: (event: ChangeEvent) => void;
-      onSubmit?: (event: SyntheticEvent) => void;
-      onKeyDown?: (event: KeyboardEvent) => void;
-      onKeyUp?: (event: KeyboardEvent) => void;
-      onMouseEnter?: (event: MouseEvent) => void;
-      onMouseLeave?: (event: MouseEvent) => void;
-      onMouseDown?: (event: MouseEvent) => void;
-      onMouseUp?: (event: MouseEvent) => void;
-      onFocus?: (event: SyntheticEvent) => void;
-      onBlur?: (event: SyntheticEvent) => void;
-      onInput?: (event: ChangeEvent) => void;
+      interface FC<P = {}> {
+        (props: P): any;
+        displayName?: string;
+      }
       
-      // Дополнительные атрибуты для input
-      type?: string;
-      value?: string | number | readonly string[];
-      defaultValue?: string | number | readonly string[];
-      placeholder?: string;
-      checked?: boolean;
-      defaultChecked?: boolean;
-      disabled?: boolean;
-      readOnly?: boolean;
-      name?: string;
+      const Fragment: any;
       
-      // Data-атрибуты и любые другие
-      [key: string]: any;
+      interface CSSProperties {
+        [key: string]: any;
+      }
+      
+      interface ReactDOM {
+        render(element: any, container: any): void;
+      }
+      
+      /**
+       * Объявляем интерфейс для HTML атрибутов с детальными описаниями
+       */
+      interface HTMLAttributes {
+        /** CSS класс элемента (аналог атрибута class в HTML) */
+        className?: string;
+        
+        /** Объект со стилями для элемента. Свойства записываются в camelCase */
+        style?: CSSProperties;
+        
+        /** Идентификатор элемента */
+        id?: string;
+        
+        /** Обработчик события клика */
+        onClick?: (event: MouseEvent<any>) => void;
+        
+        /** Обработчик события наведения указателя мыши */
+        onMouseOver?: (event: MouseEvent<any>) => void;
+        
+        /** Обработчик события ухода указателя мыши */
+        onMouseOut?: (event: MouseEvent<any>) => void;
+        
+        /** Обработчик события изменения значения (для элементов формы) */
+        onChange?: (event: ChangeEvent<any>) => void;
+        
+        /** Обработчик события отправки формы */
+        onSubmit?: (event: FormEvent<any>) => void;
+        
+        /** Обработчик события нажатия клавиши */
+        onKeyDown?: (event: KeyboardEvent<any>) => void;
+        
+        /** Обработчик события отпускания клавиши */
+        onKeyUp?: (event: KeyboardEvent<any>) => void;
+        
+        /** Обработчик события нажатия (для мобильных устройств) */
+        onTouchStart?: (event: SyntheticEvent) => void;
+        
+        /** Обработчик события перемещения (для мобильных устройств) */
+        onTouchMove?: (event: SyntheticEvent) => void;
+        
+        /** Обработчик события отпускания (для мобильных устройств) */
+        onTouchEnd?: (event: SyntheticEvent) => void;
+        
+        /** Значение элемента формы */
+        value?: string | number | readonly string[];
+        
+        /** Заполнитель (подсказка внутри поля ввода) */
+        placeholder?: string;
+        
+        /** Флаг, указывающий что элемент отключен */
+        disabled?: boolean;
+        
+        /** Заголовок (всплывающая подсказка) */
+        title?: string;
+        
+        /** Ссылка на элемент DOM */
+        ref?: any;
+        
+        /** Уникальный ключ для идентификации элемента в списке */
+        key?: string | number;
+        
+        /** Ширина элемента */
+        width?: string | number;
+        
+        /** Высота элемента */
+        height?: string | number;
+        
+        /** Имя элемента формы */
+        name?: string;
+        
+        /** Тип элемента (для input) */
+        type?: string;
+        
+        /** Путь к ресурсу (для img, script, iframe) */
+        src?: string;
+        
+        /** Альтернативный текст для изображения */
+        alt?: string;
+        
+        /** URL ссылки */
+        href?: string;
+        
+        /** Куда открывать ссылку (_blank, _self, _parent, _top) */
+        target?: string;
+        
+        /** HTML-содержимое (заменяет children) */
+        dangerouslySetInnerHTML?: { __html: string };
+        
+        /** Табличный индекс (для навигации с клавиатуры) */
+        tabIndex?: number;
+        
+        /** Флаг, указывающий что поле обязательно для заполнения */
+        required?: boolean;
+        
+        /** Флаг, указывающий что чекбокс или радиокнопка отмечены */
+        checked?: boolean;
+        
+        /** Максимальная длина текста */
+        maxLength?: number;
+        
+        /** Минимальная длина текста */
+        minLength?: number;
+        
+        /** Атрибут data-* для хранения произвольных данных */
+        [key: string]: any;
+      }
+      
+      interface ChangeEvent<T = Element> {
+        target: T;
+        currentTarget: T;
+        preventDefault(): void;
+        stopPropagation(): void;
+      }
+      
+      interface FormEvent<T = Element> {
+        target: T;
+        currentTarget: T;
+        preventDefault(): void;
+        stopPropagation(): void;
+      }
+      
+      interface MouseEvent<T = Element> {
+        target: T;
+        currentTarget: T;
+        preventDefault(): void;
+        stopPropagation(): void;
+        clientX: number;
+        clientY: number;
+      }
+      
+      interface KeyboardEvent<T = Element> {
+        target: T;
+        currentTarget: T;
+        key: string;
+        keyCode: number;
+        preventDefault(): void;
+        stopPropagation(): void;
+      }
+      
+      interface RefObject<T> {
+        readonly current: T | null;
+      }
+      
+      interface Ref<T> {
+        current: T | null;
+      }
+      
+      /**
+       * Создает ref-объект
+       * @returns объект с полем current, изначально null
+       */
+      function createRef<T = any>(): Ref<T>;
+      
+      /**
+       * Хук для создания ref-объекта
+       * @param initialValue начальное значение
+       * @returns объект с полем current
+       */
+      function useRef<T = any>(initialValue?: T): Ref<T>;
+      
+      /**
+       * Хук для управления состоянием компонента
+       * @param initialState начальное состояние или функция, возвращающая начальное состояние
+       * @returns кортеж из текущего состояния и функции для его обновления
+       */
+      function useState<T>(initialState: T | (() => T)): [T, (newValue: T | ((prevState: T) => T)) => void];
+      
+      /**
+       * Хук для выполнения побочных эффектов
+       * @param effect функция эффекта
+       * @param deps массив зависимостей
+       */
+      function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+      
+      /**
+       * Хук для мемоизации функций
+       * @param callback функция для мемоизации
+       * @param deps массив зависимостей
+       * @returns мемоизированная функция
+       */
+      function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+      
+      /**
+       * Хук для мемоизации значений
+       * @param factory функция, создающая значение
+       * @param deps массив зависимостей
+       * @returns мемоизированное значение
+       */
+      function useMemo<T>(factory: () => T, deps: any[]): T;
+      
+      // Добавляем определение для объектов с сокращенными свойствами, чтобы избежать ошибки 18004
+      type PropsWithChildren<P> = P & { children?: any };
+      
+      // Разрешить использование арифметических операций с разными типами
+      // для обхода ошибок 2362 и 2363
+      type ArithmeticOperand = any | number | bigint;
     }
     
     // Определяем JSX пространство имен
@@ -155,107 +305,353 @@ export function configureJSXTypes(monaco: Monaco) {
       
       // Определяем базовые HTML элементы
       interface IntrinsicElements {
-        div: HTMLAttributes;
-        span: HTMLAttributes;
-        p: HTMLAttributes;
-        a: HTMLAttributes;
-        button: HTMLAttributes;
-        input: HTMLAttributes;
-        textarea: HTMLAttributes;
-        select: HTMLAttributes;
-        option: HTMLAttributes;
-        form: HTMLAttributes;
-        img: HTMLAttributes;
-        h1: HTMLAttributes;
-        h2: HTMLAttributes;
-        h3: HTMLAttributes;
-        h4: HTMLAttributes;
-        h5: HTMLAttributes;
-        h6: HTMLAttributes;
-        hr: HTMLAttributes;
-        br: HTMLAttributes;
-        table: HTMLAttributes;
-        thead: HTMLAttributes;
-        tbody: HTMLAttributes;
-        tr: HTMLAttributes;
-        td: HTMLAttributes;
-        th: HTMLAttributes;
-        ul: HTMLAttributes;
-        ol: HTMLAttributes;
-        li: HTMLAttributes;
-        nav: HTMLAttributes;
-        main: HTMLAttributes;
-        section: HTMLAttributes;
-        article: HTMLAttributes;
-        header: HTMLAttributes;
-        footer: HTMLAttributes;
-        label: HTMLAttributes;
-        fieldset: HTMLAttributes;
-        legend: HTMLAttributes;
-        pre: HTMLAttributes;
-        code: HTMLAttributes;
-        i: HTMLAttributes;
-        b: HTMLAttributes;
-        strong: HTMLAttributes;
-        em: HTMLAttributes;
-        small: HTMLAttributes;
-        svg: HTMLAttributes;
-        path: HTMLAttributes;
-        canvas: HTMLAttributes;
-        video: HTMLAttributes;
-        audio: HTMLAttributes;
-        iframe: HTMLAttributes;
+        /** <div> - блочный элемент-контейнер */
+        div: React.HTMLAttributes;
+        
+        /** <span> - строчный элемент-контейнер */
+        span: React.HTMLAttributes;
+        
+        /** <p> - параграф текста */
+        p: React.HTMLAttributes;
+        
+        /** <a> - гиперссылка */
+        a: React.HTMLAttributes;
+        
+        /** <button> - кнопка */
+        button: React.HTMLAttributes;
+        
+        /** <input> - поле ввода */
+        input: React.HTMLAttributes;
+        
+        /** <textarea> - многострочное поле ввода */
+        textarea: React.HTMLAttributes;
+        
+        /** <select> - выпадающий список */
+        select: React.HTMLAttributes;
+        
+        /** <option> - элемент выпадающего списка */
+        option: React.HTMLAttributes;
+        
+        /** <form> - форма для отправки данных */
+        form: React.HTMLAttributes;
+        
+        /** <img> - изображение */
+        img: React.HTMLAttributes;
+        
+        /** <h1> - заголовок первого уровня */
+        h1: React.HTMLAttributes;
+        
+        /** <h2> - заголовок второго уровня */
+        h2: React.HTMLAttributes;
+        
+        /** <h3> - заголовок третьего уровня */
+        h3: React.HTMLAttributes;
+        
+        /** <h4> - заголовок четвертого уровня */
+        h4: React.HTMLAttributes;
+        
+        /** <h5> - заголовок пятого уровня */
+        h5: React.HTMLAttributes;
+        
+        /** <h6> - заголовок шестого уровня */
+        h6: React.HTMLAttributes;
+        
+        /** <hr> - горизонтальная линия */
+        hr: React.HTMLAttributes;
+        
+        /** <br> - перенос строки */
+        br: React.HTMLAttributes;
+        
+        /** <table> - таблица */
+        table: React.HTMLAttributes;
+        
+        /** <thead> - заголовок таблицы */
+        thead: React.HTMLAttributes;
+        
+        /** <tbody> - тело таблицы */
+        tbody: React.HTMLAttributes;
+        
+        /** <tr> - строка таблицы */
+        tr: React.HTMLAttributes;
+        
+        /** <td> - ячейка таблицы */
+        td: React.HTMLAttributes;
+        
+        /** <th> - ячейка заголовка таблицы */
+        th: React.HTMLAttributes;
+        
+        /** <ul> - маркированный список */
+        ul: React.HTMLAttributes;
+        
+        /** <ol> - нумерованный список */
+        ol: React.HTMLAttributes;
+        
+        /** <li> - элемент списка */
+        li: React.HTMLAttributes;
+        
+        /** <nav> - навигационный блок */
+        nav: React.HTMLAttributes;
+        
+        /** <main> - основной контент страницы */
+        main: React.HTMLAttributes;
+        
+        /** <section> - раздел страницы */
+        section: React.HTMLAttributes;
+        
+        /** <article> - независимый блок контента */
+        article: React.HTMLAttributes;
+        
+        /** <header> - верхняя часть страницы или секции */
+        header: React.HTMLAttributes;
+        
+        /** <footer> - нижняя часть страницы или секции */
+        footer: React.HTMLAttributes;
+        
+        /** <label> - метка для элемента формы */
+        label: React.HTMLAttributes;
+        
+        /** <fieldset> - группа элементов формы */
+        fieldset: React.HTMLAttributes;
+        
+        /** <legend> - заголовок группы элементов формы */
+        legend: React.HTMLAttributes;
+        
+        /** <pre> - блок предварительного форматирования */
+        pre: React.HTMLAttributes;
+        
+        /** <code> - фрагмент кода */
+        code: React.HTMLAttributes;
+        
+        /** <i> - курсивный текст */
+        i: React.HTMLAttributes;
+        
+        /** <b> - жирный текст */
+        b: React.HTMLAttributes;
+        
+        /** <strong> - важный текст */
+        strong: React.HTMLAttributes;
+        
+        /** <em> - выделенный текст */
+        em: React.HTMLAttributes;
+        
+        /** <small> - маленький текст */
+        small: React.HTMLAttributes;
+        
+        /** <svg> - векторное изображение */
+        svg: React.HTMLAttributes;
+        
+        /** <path> - путь в векторном изображении */
+        path: React.HTMLAttributes;
+        
+        /** <canvas> - область рисования */
+        canvas: React.HTMLAttributes;
+        
+        /** <video> - видео */
+        video: React.HTMLAttributes;
+        
+        /** <audio> - аудио */
+        audio: React.HTMLAttributes;
+        
+        /** <iframe> - встроенный iframe */
+        iframe: React.HTMLAttributes;
       }
-    }
-    
-    // Определяем React пространство имен
-    declare namespace React {
-      // Определение компонента
-      class Component<P = {}, S = {}> {
-        constructor(props: P);
-        props: P;
-        state: S;
-        setState(state: S | ((prevState: S) => S), callback?: () => void): void;
-        forceUpdate(callback?: () => void): void;
-        render(): JSX.Element | null;
-      }
-      
-      // Определение функционального компонента
-      interface FC<P = {}> {
-        (props: P): JSX.Element | null;
-        displayName?: string;
-        defaultProps?: Partial<P>;
-      }
-      
-      // HTML Атрибуты React
-      interface HTMLAttributes {
-        className?: string;
-        style?: CSSProperties;
-        onClick?: (event: MouseEvent) => void;
-        onChange?: (event: ChangeEvent) => void;
-        // Другие атрибуты
-        [key: string]: any;
-      }
-      
-      // Хуки
-      function useState<T>(initialState: T | (() => T)): [T, (newState: T | ((prevState: T) => T)) => void];
-      function useEffect(effect: () => void | (() => void), deps?: any[]): void;
-      function useContext<T>(context: any): T;
-      function useRef<T>(initialValue: T): { current: T };
-      function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
-      function useMemo<T>(factory: () => T, deps: any[]): T;
-      
-      // React.createElement
-      function createElement(
-        type: string | any,
-        props?: any,
-        ...children: any[]
-      ): JSX.Element;
-      
-      // Фрагмент
-      const Fragment: any;
     }
     `,
     'file:///node_modules/@types/react-jsx-runtime/index.d.ts'
   );
-} 
+}
+
+/**
+ * Базовые определения для JSX элементов
+ */
+export const jsxIntrinsicElementsDefinitions = `
+declare namespace React {
+  function createElement(type: any, props?: any, ...children: any[]): any;
+  
+  interface FC<P = {}> {
+    (props: P): any;
+    displayName?: string;
+  }
+  
+  const Fragment: any;
+  
+  interface CSSProperties {
+    [key: string]: any;
+  }
+  
+  interface ReactDOM {
+    render(element: any, container: any): void;
+  }
+  
+  interface ChangeEvent<T = Element> {
+    target: T;
+    currentTarget: T;
+    preventDefault(): void;
+    stopPropagation(): void;
+  }
+  
+  interface FormEvent<T = Element> {
+    target: T;
+    currentTarget: T;
+    preventDefault(): void;
+    stopPropagation(): void;
+  }
+  
+  interface MouseEvent<T = Element> {
+    target: T;
+    currentTarget: T;
+    preventDefault(): void;
+    stopPropagation(): void;
+    clientX: number;
+    clientY: number;
+  }
+  
+  interface KeyboardEvent<T = Element> {
+    target: T;
+    currentTarget: T;
+    key: string;
+    keyCode: number;
+    preventDefault(): void;
+    stopPropagation(): void;
+  }
+  
+  interface RefObject<T> {
+    readonly current: T | null;
+  }
+  
+  interface Ref<T> {
+    current: T | null;
+  }
+  
+  function createRef<T = any>(): Ref<T>;
+  function useRef<T = any>(initialValue?: T): Ref<T>;
+  function useState<T>(initialState: T | (() => T)): [T, (newValue: T | ((prevState: T) => T)) => void];
+  function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+  function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+  function useMemo<T>(factory: () => T, deps: any[]): T;
+  
+  interface HTMLAttributes {
+    className?: string;
+    style?: CSSProperties;
+    id?: string;
+    key?: string | number;
+    ref?: any;
+    onClick?: (event: MouseEvent) => void;
+    onChange?: (event: ChangeEvent) => void;
+    onSubmit?: (event: FormEvent) => void;
+    onKeyDown?: (event: KeyboardEvent) => void;
+    onKeyUp?: (event: KeyboardEvent) => void;
+    onMouseOver?: (event: MouseEvent) => void;
+    onMouseOut?: (event: MouseEvent) => void;
+    onFocus?: (event: FocusEvent) => void;
+    onBlur?: (event: FocusEvent) => void;
+    tabIndex?: number;
+    hidden?: boolean;
+    title?: string;
+    role?: string;
+    disabled?: boolean;
+    draggable?: boolean;
+    dir?: string;
+    checked?: boolean;
+    value?: string | number | any;
+    placeholder?: string;
+    type?: string;
+    name?: string;
+    maxLength?: number;
+    minLength?: number;
+    max?: number | string;
+    min?: number | string;
+    width?: number | string;
+    height?: number | string;
+    required?: boolean;
+    [key: string]: any;
+  }
+  
+  interface FunctionComponent<P = {}> {
+    (props: P): any;
+    displayName?: string;
+    defaultProps?: Partial<P>;
+  }
+  
+  interface ComponentClass<P = {}, S = {}> {
+    new(props: P): Component<P, S>;
+    displayName?: string;
+    defaultProps?: Partial<P>;
+  }
+  
+  interface Component<P = {}, S = {}> {
+    props: P;
+    state: S;
+    refs: { [key: string]: any };
+    setState(state: Partial<S> | ((prevState: S, props: P) => Partial<S>), callback?: () => void): void;
+    forceUpdate(callback?: () => void): void;
+    render(): any;
+  }
+  
+  namespace JSX {
+    interface Element {}
+    
+    interface IntrinsicElements {
+      div: HTMLAttributes;
+      span: HTMLAttributes;
+      p: HTMLAttributes;
+      a: HTMLAttributes & { href?: string, target?: string };
+      button: HTMLAttributes & { disabled?: boolean };
+      input: HTMLAttributes & { 
+        type?: string, 
+        value?: string | number | string[], 
+        checked?: boolean,
+        disabled?: boolean,
+        placeholder?: string,
+        readOnly?: boolean,
+        required?: boolean,
+        onChange?: (event: any) => void
+      };
+      textarea: HTMLAttributes;
+      select: HTMLAttributes;
+      option: HTMLAttributes & { value?: string | number };
+      form: HTMLAttributes & { action?: string, method?: string };
+      h1: HTMLAttributes;
+      h2: HTMLAttributes;
+      h3: HTMLAttributes;
+      h4: HTMLAttributes;
+      h5: HTMLAttributes;
+      h6: HTMLAttributes;
+      img: HTMLAttributes & { src: string, alt?: string };
+      ul: HTMLAttributes;
+      ol: HTMLAttributes;
+      li: HTMLAttributes;
+      table: HTMLAttributes;
+      tr: HTMLAttributes;
+      td: HTMLAttributes;
+      th: HTMLAttributes;
+      thead: HTMLAttributes;
+      tbody: HTMLAttributes;
+      tfoot: HTMLAttributes;
+      br: HTMLAttributes;
+      hr: HTMLAttributes;
+      header: HTMLAttributes;
+      footer: HTMLAttributes;
+      nav: HTMLAttributes;
+      section: HTMLAttributes;
+      article: HTMLAttributes;
+      aside: HTMLAttributes;
+      main: HTMLAttributes;
+      label: HTMLAttributes & { htmlFor?: string };
+      script: HTMLAttributes & { src?: string };
+      link: HTMLAttributes & { rel?: string, href?: string };
+      pre: HTMLAttributes;
+      code: HTMLAttributes;
+      i: HTMLAttributes;
+      b: HTMLAttributes;
+      strong: HTMLAttributes;
+      em: HTMLAttributes;
+      small: HTMLAttributes;
+      svg: HTMLAttributes;
+      path: HTMLAttributes;
+      circle: HTMLAttributes;
+      rect: HTMLAttributes;
+      [key: string]: HTMLAttributes;
+    }
+  }
+}`; 

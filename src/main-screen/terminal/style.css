@@ -5,6 +5,7 @@
   width: 100vw;
   background-color: #1e1e1e;
   color: #d4d4d4;
+  font-family: "Inter";
 }
 
 
@@ -33,11 +34,13 @@
 .tab-button {
   padding: 8px 16px;
   border-radius: 4px;
+  font-family: "Inter";
+
   font-size: 14px;
   cursor: pointer;
   color: #fff;
-  border: 1px solid #fff;
-  background-color: #5E5C5C;
+  border: 1px solid #3c3c3c;
+  background-color: #2d2d2d;
   transition: background-color 0.3s ease;
 }
 
@@ -131,4 +134,71 @@
 
 .status-indicator.stopped {
   background-color: #ef4444;
+}.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.terminal-tab {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #d4d4d4;
+  background-color: #2d2d2d;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.terminal-tab:hover {
+  background-color: #37373d;
+}
+
+.terminal-tab.active {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+
+.close-tab {
+  margin-left: 6px;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  color: #d4d4d4;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.close-tab:hover {
+  background-color: #3a3d41;
+  color: #ffffff;
+}
+
+.add-terminal {
+  padding: 6px 10px;
+  background-color: #2d2d2d;
+  border: none;
+  color: #d4d4d4;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.add-terminal:hover {
+  background-color: #37373d;
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 8px;
 }
