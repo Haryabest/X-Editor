@@ -271,7 +271,11 @@ export async function configureTypes(monaco: Monaco, basePath: string | null = n
     noSemanticValidation: false,
     noSyntaxValidation: false,
     noSuggestionDiagnostics: true,
-    diagnosticCodesToIgnore: [2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006] // Игнорируем ошибки, которые мешают работе
+    diagnosticCodesToIgnore: [
+      2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006, 
+      2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+      1128, 1434, 1136, 1110, 8006, 8010
+    ] // Игнорируем ошибки, которые мешают работе
   });
 
   // Добавляем глобальный модуль для корректной работы с глобальными типами

@@ -4,6 +4,63 @@ import { Monaco } from '@monaco-editor/react';
  * Конфигурирует продвинутые типы для JSX/TSX файлов
  */
 export function configureJSXTypes(monaco: Monaco) {
+  // Настраиваем специальные параметры для JSX/TSX
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
+    jsx: monaco.languages.typescript.JsxEmit.React,
+    jsxFactory: 'React.createElement',
+    jsxFragmentFactory: 'React.Fragment',
+    allowNonTsExtensions: true,
+    allowJs: true,
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    esModuleInterop: true
+  });
+  
+  // Настраиваем JavaScript для поддержки JSX
+  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+    ...monaco.languages.typescript.javascriptDefaults.getCompilerOptions(),
+    jsx: monaco.languages.typescript.JsxEmit.React,
+    jsxFactory: 'React.createElement',
+    jsxFragmentFactory: 'React.Fragment',
+    allowNonTsExtensions: true,
+    allowJs: true
+  });
+  
+  // Отключаем проверки для ускорения работы и избежания ложных ошибок
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: false,
+    noSyntaxValidation: false,
+    noSuggestionDiagnostics: true,
+    diagnosticCodesToIgnore: [
+      2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+      2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+      1128, 1434, 1136, 1110, 8006, 8010
+    ]
+  });
+  
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: false,
+    noSyntaxValidation: false,
+    noSuggestionDiagnostics: true,
+    diagnosticCodesToIgnore: [
+      2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+      2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+      1128, 1434, 1136, 1110, 8006, 8010
+    ]
+  });
+
+  // Настраиваем анализатор для JSX
+  monaco.languages.typescript.typescriptDefaults.setInlayHintsOptions({
+    includeInlayParameterNameHints: 'all',
+    includeInlayParameterNameHintsWhenArgumentMatchesName: true,
+    includeInlayFunctionParameterTypeHints: true,
+    includeInlayVariableTypeHints: true,
+    includeInlayPropertyDeclarationTypeHints: true,
+    includeInlayFunctionLikeReturnTypeHints: true,
+    includeInlayEnumMemberValueHints: true
+  });
+
   // Добавляем расширенные определения JSX/TSX
   monaco.languages.typescript.typescriptDefaults.addExtraLib(
     `

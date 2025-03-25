@@ -4,6 +4,106 @@ import { setupAutoTypes } from './auto-types';
 import { configureJSXTypes } from './jsx-types';
 import { FileItem } from '../types';
 
+/**
+ * Умный анализатор кода, который определяет, какие ошибки показывать
+ */
+function setupSmartCodeAnalyzer(monaco: Monaco) {
+  // Эти коды ошибок важны и всегда должны отображаться, даже в JSX
+  const criticalErrorCodes = [
+    // Критические синтаксические ошибки
+    1002, // Неожиданный конец файла
+    1012, // Требуется точка
+    1014, // Точка с запятой требуется
+    1035, // Недопустимая стрелочная функция
+    1068, // Неожиданная фигурная скобка
+    
+    // Важные логические ошибки
+    2440, // Тип не является конструируемым
+    2448, // Декларация не найдена
+    2451, // Не может быть назначен
+    2420, // Свойство не существует в типе
+    2554, // Неверные аргументы функции
+    2575, // Нет значения по умолчанию для параметра
+    
+    // Другие важные ошибки
+    2391, // Дублирование имен
+    2322, // Несоответствие типов
+    2349, // Не имеет конструктора
+    2307, // Не удается найти модуль (важно, хотя мы его игнорируем в JSX контексте)
+  ];
+  
+  // Отслеживаем создание моделей
+  monaco.editor.onDidCreateModel((model) => {
+    // Получаем информацию о языке
+    const languageId = model.getLanguageId();
+    
+    // Анализируем содержимое модели
+    const content = model.getValue();
+    const isJsxFile = model.uri.path.endsWith('.tsx') || model.uri.path.endsWith('.jsx') || content.includes('</');
+    
+    // Настраиваем параметры диагностики в зависимости от типа файла
+    if (languageId === 'typescript' || languageId === 'javascript') {
+      // Базовый набор игнорируемых кодов
+      const ignoredCodes = [
+        2669, 1046, 2307, 7031, 1161, 2304, 7026, 7006,
+        2740, 2339, 2531, 2786, 2605, 8006, 8010
+      ];
+      
+      // Если файл содержит JSX, игнорируем дополнительные коды
+      if (isJsxFile) {
+        ignoredCodes.push(
+          1005, 1003, 17008, 2693, 1109, 1128, 1434, 1136, 1110
+        );
+      }
+      
+      // Применяем настройки
+      if (languageId === 'typescript') {
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: true,
+          diagnosticCodesToIgnore: ignoredCodes
+        });
+      } else {
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: true,
+          diagnosticCodesToIgnore: ignoredCodes
+        });
+      }
+    }
+  });
+}
+
+/**
+ * Проверка синтаксиса JSX/TSX для уменьшения ложных срабатываний
+ */
+function setupCustomJsxValidator(monaco: Monaco) {
+  // Регистрируем собственный провайдер маркеров для TypeScript
+  monaco.editor.onDidCreateModel((model) => {
+    if (model.getLanguageId() === 'typescript' || model.getLanguageId() === 'javascript') {
+      // Анализируем содержимое модели на предмет JSX
+      const content = model.getValue();
+      const isJsxFile = model.uri.path.endsWith('.tsx') || model.uri.path.endsWith('.jsx') || content.includes('</');
+      
+      if (isJsxFile) {
+        // Для JSX файлов отключаем стандартные проверки синтаксиса
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: true,
+          diagnosticCodesToIgnore: [
+            2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+            2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+            1128, 1434, 1136, 1110, 8006, 8010
+          ]
+        });
+      }
+    }
+  });
+}
+
 export async function configureMonaco(
   monaco: Monaco, 
   openedFiles: FileItem[], 
@@ -20,6 +120,12 @@ export async function configureMonaco(
     
     // Настройка автоматического определения типов на основе импортов
     await setupAutoTypes(monaco, openedFiles);
+
+    // Настраиваем собственный валидатор JSX/TSX
+    setupCustomJsxValidator(monaco);
+    
+    // Настраиваем умный анализатор кода
+    setupSmartCodeAnalyzer(monaco);
 
     // Настройка виртуальной файловой системы
     monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
@@ -58,9 +164,23 @@ export async function configureMonaco(
         2339,  // Property does not exist on type
         2531,  // Object is possibly 'null'
         2786,  // 'x' cannot be used as a JSX component
-        2605   // JSX element type 'x' is not a constructor function
+        2605,  // JSX element type 'x' is not a constructor function
+        1005,  // '>' expected.
+        1003,  // Identifier expected.
+        17008, // JSX element 'x' has no corresponding closing tag.
+        2693,  // 'x' only refers to a type, but is being used as a value here.
+        1109,  // Expression expected.
+        1128,  // Declaration or statement expected.
+        1434,  // Unexpected keyword or identifier.
+        1136,  // Property assignment expected.
+        1110,  // Type expected.
+        8006,  // 'module' declarations can only be used in TypeScript files.
+        8010   // Type annotations can only be used in TypeScript files.
       ]
     });
+    
+    // Настраиваем анализатор с дополнительными опциями
+    monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
     
     // Мы НЕ создаем модели здесь, так как они будут созданы при монтировании редактора
     // Это предотвращает конфликты и ошибки "getFullModelRange of null"
@@ -133,6 +253,15 @@ export async function configureMonaco(
         
         return null;
       }
+    });
+    
+    // Настройка для JSON файлов
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+      validate: true,
+      allowComments: true,
+      schemas: [],
+      enableSchemaRequest: true,
+      schemaRequest: 'warning'
     });
   } catch (error) {
     console.error('Error configuring Monaco:', error);

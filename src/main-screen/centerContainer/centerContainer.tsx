@@ -266,17 +266,36 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                   // Настраиваем Monaco заранее
                   if (selectedFile) {
                     try {
-                      // Отключаем ошибки на старте
+                      // Отключаем ошибки на старте для всех типов файлов
                       monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
                         noSemanticValidation: true,
                         noSyntaxValidation: true,
-                        diagnosticCodesToIgnore: [2669, 1046, 2307]
+                        diagnosticCodesToIgnore: [2669, 1046, 2307, 1005, 1003, 17008, 2693, 1109, 8006, 8010]
+                      });
+                      
+                      // Для JavaScript тоже отключаем проверки на старте
+                      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+                        noSemanticValidation: true,
+                        noSyntaxValidation: true,
+                        diagnosticCodesToIgnore: [2669, 1046, 2307, 1005, 1003, 17008, 2693, 1109, 8006, 8010]
                       });
                       
                       // Проверяем, является ли файл JSX или TSX
                       if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
                         // Устанавливаем специфические настройки для JSX/TSX
                         monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                          jsx: monaco.languages.typescript.JsxEmit.React,
+                          jsxFactory: 'React.createElement',
+                          jsxFragmentFactory: 'React.Fragment',
+                          allowNonTsExtensions: true,
+                          allowJs: true,
+                          target: monaco.languages.typescript.ScriptTarget.ESNext,
+                          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                          esModuleInterop: true
+                        });
+                        
+                        // JavaScript тоже настраиваем для JSX
+                        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
                           jsx: monaco.languages.typescript.JsxEmit.React,
                           jsxFactory: 'React.createElement',
                           jsxFragmentFactory: 'React.Fragment',
@@ -289,6 +308,24 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                           `declare namespace React {
                             function createElement(type: any, props?: any, ...children: any[]): any;
                             const Fragment: any;
+                            
+                            interface HTMLAttributes {
+                              className?: string;
+                              onClick?: (event: any) => void;
+                              style?: any;
+                              [key: string]: any;
+                            }
+                            
+                            namespace JSX {
+                              interface Element {}
+                              interface IntrinsicElements {
+                                div: HTMLAttributes;
+                                span: HTMLAttributes;
+                                button: HTMLAttributes;
+                                // и другие элементы
+                                [key: string]: HTMLAttributes;
+                              }
+                            }
                           }`,
                           'file:///node_modules/@types/react-core/index.d.ts'
                         );
@@ -350,7 +387,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             noSuggestionDiagnostics: true,
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605
+                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+                              1128, 1434, 1136, 1110, 8006, 8010
                             ]
                           });
                           
@@ -370,7 +408,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             noSuggestionDiagnostics: true,
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605
+                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+                              1128, 1434, 1136, 1110, 8006, 8010
                             ]
                           });
                         }
@@ -389,7 +428,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                             noSuggestionDiagnostics: true,
                             diagnosticCodesToIgnore: [
                               2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605
+                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+                              1128, 1434, 1136, 1110, 8006, 8010
                             ]
                           });
                         }, 500);

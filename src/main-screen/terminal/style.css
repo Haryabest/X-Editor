@@ -7,26 +7,29 @@
   color: #d4d4d4;
 }
 
-.tab-buttons {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px;
-  background-color: #2d2d2d;
-  gap: 8px;
-}
+
 
 .left-tabs {
   display: flex;
   gap: 8px;
 }
 
+.tab-buttons {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background-color: #2d2d2d;
+  gap: 8px;
+}
+
+.spacer {
+  flex-grow: 1; /* Растягивается, отодвигая .right-actions вправо */
+}
+
 .right-actions {
   display: flex;
   gap: 8px;
-  margin-left: auto;
 }
-
 .tab-button {
   padding: 8px 16px;
   border-radius: 4px;
