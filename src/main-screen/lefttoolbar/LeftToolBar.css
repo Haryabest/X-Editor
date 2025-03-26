@@ -1,0 +1,68 @@
+.left-toolbar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 48px;
+  background-color: #252526;
+  height: calc(100% - 22px);
+  border-right: 1px solid #1e1e1e;
+  padding: 8px 0;
+  font-family: 'Inter', sans-serif;
+  z-index: 5;
+}
+
+.top-buttons, .bottom-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bottom-buttons {
+  margin-bottom: 10px;
+}
+
+.toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: none;
+  background-color: transparent;
+  color: #ccc;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.toolbar-button:hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+.toolbar-button.active {
+  color: #fff;
+  background-color: #37373d;
+}
+
+.toolbar-button.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  background-color: #10b981;
+  border-radius: 0 2px 2px 0;
+}
+
+.toolbar-button.active.open::before {
+  background-color: #10b981;
+}
+
+/* Анимация при нажатии */
+.toolbar-button:active {
+  transform: scale(0.95);
+}

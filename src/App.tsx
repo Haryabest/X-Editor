@@ -9,8 +9,16 @@ import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
 import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
+import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
 
 import './App.css';
+
+// Расширенный интерфейс для отображения файлов в UI
+interface UIFileItem extends FileItem {
+  icon?: string;
+  type?: string;
+  isDirectory?: boolean;
+}
 
 function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(250);
@@ -19,8 +27,8 @@ function App() {
   const [isTerminalVisible, setIsTerminalVisible] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [currentFiles, setCurrentFiles] = useState<FileItem[]>([]);
-  const [openedFiles, setOpenedFiles] = useState<FileItem[]>([]);
+  const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
+  const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
@@ -33,22 +41,16 @@ function App() {
 
   useEffect(() => {
     if (monaco) {
-      configureMonaco(
-        monaco,
-        openedFiles,
-        selectedFolder,
-        supportedExtensions,
-        getLanguageFromExtension
-      );
+      configureMonaco(openedFiles);
     }
-  }, [monaco]);
+  }, [monaco, openedFiles]);
 
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {
       const file = currentFiles.find(f => f.path === filePath);
       if (file) {
         console.log('Adding file to openedFiles:', file);
-        setOpenedFiles(prev => [...prev, { ...file, is_directory: false, expanded: false, loaded: true }]);
+        setOpenedFiles(prev => [...prev, { ...file, isFolder: false, expanded: false, loaded: true }]);
       } else {
         console.log('File not found in currentFiles:', filePath);
       }
@@ -63,12 +65,11 @@ function App() {
       setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
     }
   };
-
   const handleCreateFile = () => {
-    const newFile: FileItem = {
+    const newFile: UIFileItem = {
       name: 'Без названия 1',
       path: `untitled-${Date.now()}`,
-      icon: 'file',
+      isFolder: false,
     };
     setOpenedFiles(prev => [...prev, newFile]);
     setSelectedFile(newFile.path);
@@ -137,17 +138,26 @@ function App() {
     );
   };
 
+  const toggleFileExplorer = () => {
+    setIsLeftPanelVisible(!isLeftPanelVisible);
+  };
+
   return (
     <div className="app-container">
-      <TopToolbar currentFiles={currentFiles} setSelectedFile={handleSetSelectedFile} />
+      <TopToolbar currentFiles={currentFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))} setSelectedFile={handleSetSelectedFile} />
 
       <div className="main-content">
+        <LeftToolBar 
+          onToggleFileExplorer={toggleFileExplorer} 
+          isFileExplorerOpen={isLeftPanelVisible} 
+        />
+        
         {isLeftPanelVisible ? (
           <div className="left-panel" style={{ width: leftPanelWidth }}>
             <FileManager
               selectedFolder={selectedFolder}
               setSelectedFile={handleSetSelectedFile}
-              setCurrentFiles={(files) => setCurrentFiles(files as FileItem[])}
+              setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
             />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
           </div>
@@ -160,7 +170,7 @@ function App() {
         <div className="center-and-terminal">
           {openedFiles.length > 0 && (
             <TopbarEditor
-              openedFiles={openedFiles}
+              openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
               activeFile={selectedFile}
               setSelectedFile={handleSetSelectedFile}
               closeFile={handleCloseFile}
@@ -180,7 +190,7 @@ function App() {
           {isTerminalVisible ? (
             <div className="terminal-container" style={{ height: terminalHeight }}>
               <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
-              <Terminal />
+              <Terminal terminalHeight={terminalHeight} />
             </div>
           ) : (
             <button className="restore-button bottom" onClick={handleRestoreTerminal}>

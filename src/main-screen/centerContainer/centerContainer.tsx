@@ -475,15 +475,19 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       ) : (
         <div className="card-container">
           <button className="start-card" onClick={handleCreateFile}>
-            <p>New Project</p>
+            <p>Создать файл</p>
             <span className="hotkey">CTRL + SHIFT + N</span>
           </button>
           <button className="start-card" onClick={handleCreateFile}>
-            <p>New Folder</p>
+            <p>Новая папка</p>
             <span className="hotkey">CTRL + SHIFT + F</span>
           </button>
           <button className="start-card" onClick={handleOpenFolder}>
-            <p>Open Folder</p>
+            <p>Открыть папку</p>
+            <span className="hotkey">CTRL + O</span>
+          </button>
+          <button className="start-card" onClick={handleOpenFolder}>
+            <p>Открыть последний проект</p>
             <span className="hotkey">CTRL + O</span>
           </button>
         </div>
