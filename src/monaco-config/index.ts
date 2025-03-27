@@ -2,6 +2,7 @@ import * as monaco from 'monaco-editor';
 import { getLanguageFromExtension } from './language-detector';
 import { configureJSXTypes, jsxIntrinsicElementsDefinitions } from './jsx-types';
 import { FileItem } from '../types';
+import { invoke } from '@tauri-apps/api/core';
 
 // Игнорирование ошибок импорта для интеграционного модуля
 // @ts-ignore
@@ -28,185 +29,231 @@ interface MonacoFileConfig extends FileItem {
 }
 
 /**
+ * Проверяет существование импортируемых модулей и настраивает отображение ошибок
+ */
+async function setupDependencyAnalysis(monaco: Monaco, model: any) {
+  try {
+    // Получаем текст файла
+    const text = model.getValue();
+    const filePath = model.uri.path;
+    const fileExtension = filePath.split('.').pop()?.toLowerCase();
+    
+    // Только для TypeScript/JavaScript файлов
+    if (!['ts', 'tsx', 'js', 'jsx'].includes(fileExtension || '')) {
+      return;
+    }
+
+    // Регулярное выражение для поиска импортов
+    const importRegex = /import\s+(?:(?:(?:{[^}]*}|\*\s+as\s+[^,]*|[^\s,]*)\s*,?\s*)(?:,\s*(?:{[^}]*}|\*\s+as\s+[^,]*|[^\s,]*))*\s*from\s+)?['"]([^'"]+)['"]/g;
+    
+    // Регулярное выражение для поиска require
+    const requireRegex = /(?:const|let|var)\s+(?:.*?)\s*=\s*require\(['"]([^'"]+)['"]\)/g;
+    
+    // Собираем все импорты
+    const imports: string[] = [];
+    let match;
+    
+    while ((match = importRegex.exec(text)) !== null) {
+      const modulePath = match[1].trim();
+      imports.push(modulePath);
+    }
+    
+    while ((match = requireRegex.exec(text)) !== null) {
+      const modulePath = match[1].trim();
+      imports.push(modulePath);
+    }
+    
+    if (imports.length === 0) {
+      return; // Нет импортов для проверки
+    }
+    
+    console.log(`Found ${imports.length} imports in ${filePath}:`, imports);
+    
+    // Функция для проверки существования модуля
+    const checkModuleExists = async (modulePath: string): Promise<boolean> => {
+      // Если это относительный путь, проверяем существование файла
+      if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
+        try {
+          // Определяем полный путь к файлу
+          const basePath = filePath.split('/').slice(0, -1).join('/');
+          const fullPath = `${basePath}/${modulePath}`;
+          
+          // Пытаемся проверить существование через Tauri API
+          return await invoke<boolean>('check_path_exists', { path: fullPath })
+            .then((exists) => {
+              return exists;
+            })
+            .catch(() => {
+              // В случае ошибки предполагаем, что файла нет
+              return false;
+            });
+        } catch (error) {
+          console.warn(`Error checking file existence: ${modulePath}`, error);
+          return false;
+        }
+      }
+      
+      // Для npm-пакетов предполагаем, что они существуют
+      // В реальном приложении здесь можно добавить проверку package.json
+      return true;
+    };
+    
+    // Проверяем каждый импортированный модуль
+    const checkResults = await Promise.all(
+      imports.map(async (modulePath) => {
+        const exists = await checkModuleExists(modulePath);
+        return { modulePath, exists };
+      })
+    );
+    
+    // Получаем несуществующие модули
+    const nonExistentModules = checkResults
+      .filter(result => !result.exists)
+      .map(result => result.modulePath);
+    
+    if (nonExistentModules.length > 0) {
+      console.warn(`Found non-existent modules in ${filePath}:`, nonExistentModules);
+      
+      // Создаем маркеры для отображения ошибок
+      const markers = [];
+      
+      // Заново проходим по всем импортам и создаем маркеры для несуществующих модулей
+      let importMatch;
+      importRegex.lastIndex = 0; // Сбрасываем индекс
+      
+      while ((importMatch = importRegex.exec(text)) !== null) {
+        const modulePath = importMatch[1].trim();
+        if (nonExistentModules.includes(modulePath)) {
+          // Определяем позицию модуля в строке
+          const lineContent = text.substring(0, importMatch.index).split('\n');
+          const lineNumber = lineContent.length;
+          const startColumn = importMatch[0].indexOf(modulePath) + importMatch.index - lineContent[lineContent.length - 1].length + 1;
+          
+          markers.push({
+            severity: monaco.MarkerSeverity.Error,
+            message: `Cannot find module '${modulePath}'`,
+            startLineNumber: lineNumber,
+            startColumn: startColumn,
+            endLineNumber: lineNumber,
+            endColumn: startColumn + modulePath.length,
+            code: 2307, // Код ошибки Cannot find module
+            source: 'ts'
+          });
+        }
+      }
+      
+      // То же самое для require
+      let requireMatch;
+      requireRegex.lastIndex = 0;
+      
+      while ((requireMatch = requireRegex.exec(text)) !== null) {
+        const modulePath = requireMatch[1].trim();
+        if (nonExistentModules.includes(modulePath)) {
+          const lineContent = text.substring(0, requireMatch.index).split('\n');
+          const lineNumber = lineContent.length;
+          const startColumn = requireMatch[0].indexOf(modulePath) + requireMatch.index - lineContent[lineContent.length - 1].length + 1;
+          
+          markers.push({
+            severity: monaco.MarkerSeverity.Error,
+            message: `Cannot find module '${modulePath}'`,
+            startLineNumber: lineNumber,
+            startColumn: startColumn,
+            endLineNumber: lineNumber,
+            endColumn: startColumn + modulePath.length,
+            code: 2307,
+            source: 'ts'
+          });
+        }
+      }
+      
+      // Устанавливаем маркеры для модели
+      monaco.editor.setModelMarkers(model, 'dependency-checker', markers);
+    }
+  } catch (error) {
+    console.error('Error in setupDependencyAnalysis:', error);
+  }
+}
+
+/**
  * Настраивает умный анализатор кода для различных типов файлов
  * @param monaco - Объект Monaco
  * @param filePath - Путь к файлу
  */
 export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
-  // Определяем тип файла
-  const isJsxFile = filePath.endsWith('.jsx') || filePath.endsWith('.tsx');
-  
-  // Список критических кодов ошибок, которые всегда должны отображаться
-  const criticalErrorCodes = [
-    // Критические синтаксические ошибки
-    1002, // Unexpected end of file
-    1012, // Requires dot
-    1014, // Semicolon required
-    1035, // Invalid arrow function
-    1068, // Unexpected curly brace
+  try {
+    console.log(`Setting up smart code analyzer for ${filePath}`);
     
-    // Важные логические ошибки
-    2440, // Type is not constructable
-    2448, // Declaration not found
-    2451, // Cannot be assigned
-    2420, // Property doesn't exist on type
-    2554, // Wrong function arguments
-    2575, // No default value for parameter
+    // Получаем расширение файла
+    const fileExtension = filePath.split('.').pop()?.toLowerCase();
     
-    // Другие важные ошибки
-    2391, // Duplicate names
-    2349, // No constructor
-  ];
-  
-  // Список кодов ошибок, которые можно игнорировать
-  const diagnosticCodesToIgnore = [
-    2669, // Augmentations for the global scope can only be directly nested
-    1046, // Top-level declarations in .d.ts files must start with 'declare' or 'export'
-    2307, // Cannot find module
-    7031, // Initializers are not allowed in ambient contexts
-    1161, // Unterminated regular expression literal
-    2304, // Cannot find name (HTML elements)
-    7026, // JSX element implicitly has type 'any'
-    7006, // Parameter implicitly has an 'any' type
-    2740,  // Type 'string | undefined' is missing the following properties
-    2339,  // Property does not exist on type
-    2531,  // Object is possibly 'null'
-    2786,  // 'x' cannot be used as a JSX component
-    2605,  // JSX element type 'x' is not a constructor function
-    1005,  // '>' expected.
-    1003,  // Identifier expected.
-    17008, // JSX element 'x' has no corresponding closing tag.
-    2693,  // 'x' only refers to a type, but is being used as a value here.
-    1109,  // Expression expected.
-    1128,  // Declaration or statement expected.
-    1434,  // Unexpected keyword or identifier.
-    1136,  // Property assignment expected.
-    1110,  // Type expected.
-    8006,  // 'module' declarations can only be used in TypeScript files.
-    8010,  // Type annotations can only be used in TypeScript files.
-    2688,  // Cannot find type definition file.
-    1039,  // Initializers are not allowed in ambient contexts.
-    2792,  // Cannot find module 'next'. Did you mean to set the 'moduleResolution' option to 'nodenext'
-    1183,  // An implementation cannot be declared in ambient contexts.
-    1254,  // A 'const' initializer in an ambient context must be a string or numeric literal.
-    2695,  // Left side of comma operator is unused and has no side effects.
-    2365,  // Operator '<' cannot be applied to types 'boolean' and 'number'.
-    2714,  // The expression of an export assignment must be an identifier or qualified name in an ambient context.
-    2552,  // Cannot find name 'body'. Did you mean 'Body'?
-    2362,  // The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-    2503,  // Cannot find namespace 'React'.
-    2363,  // The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-    18004,  // No value exists in scope for the shorthand property 'x'. Either declare one or provide an initializer.
-    7027,   // Unreachable code detected
-    2322,   // Type mismatch
-    2741,   // Property missing in type
-    2345,   // Argument type not assignable
-    2451,   // Cannot redeclare block-scoped variable
-    2612,   // Property will overwrite the base property
-    2454,   // Variable is used before being assigned
-    2306,   // File not a module
-    6133,   // 'variable' is declared but its value is never read
-    2769,   // No overload matches this call
-    7005,   // Variable implicitly has an 'any[]' type
-    2355,   // A function whose declared type is not 'void' must return a value
-    2540,   // Cannot assign to readonly property
-    2665,   // Invalid module name
-    2694,   // Namespace name cannot be 'any'
-    1108,   // A rest parameter must be of an array type
-    6196,   // 'xxxxx' is declared but never used
-    80001,  // File contains unsupported features
-    80002,  // Semantic coloring service disabled
-    80003,  // Wrong number of type arguments
-    18002,  // The 'this' context of type ... is not assignable
-    18003,  // No value exists in scope for the shorthand property 'x'
-    2614,   // Module has no default export
-    2459,   // Module exports has no XXX member
-    2580,   // Cannot find name 'require'
-    2487,   // Object is possibly undefined
-    // Добавляем новые коды для игнорирования в проекте centerContainer
-    7053,   // Element implicitly has an 'any' type 
-    2602,   // JSX element implicitly has type 'any'
-    2551,   // Property is missing in type but required
-    2578,   // Unused variable
-    7008,   // Member is possibly undefined
-    2525,   // Initializer provides no value
-    2683,   // This file is being processed
-    2821,   // Unknown property in interface
-    1011,   // An element access expression should take an argument
-    8016,   // Type assertion expressions can only be used in TypeScript files
-  ];
-  
-  // Для JSX файлов игнорируем больше ошибок, связанных с синтаксисом JSX и типами
-  if (isJsxFile) {
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      noSuggestionDiagnostics: true,
-      diagnosticCodesToIgnore: [
-        2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-        2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-        1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-        1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004, 7027,
-        2741, 2345, 2451, 2612, 2454, 2306, 6133, 2769, 7005, 2355,
-        2540, 2665, 2694, 1108, 6196, 80001, 80002, 80003, 18002, 18003,
-        7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821, 2614, 2459, 2580, 2487,
-        1011, 8016
-      ]
-    });
+    // Определяем язык на основе расширения
+    let language = 'plaintext';
+    if (['ts', 'tsx'].includes(fileExtension || '')) {
+      language = 'typescript';
+    } else if (['js', 'jsx'].includes(fileExtension || '')) {
+      language = 'javascript';
+    } else if (fileExtension === 'json') {
+      language = 'json';
+    } else if (fileExtension === 'css') {
+      language = 'css';
+    } else if (fileExtension === 'html') {
+      language = 'html';
+    } else if (['md', 'markdown'].includes(fileExtension || '')) {
+      language = 'markdown';
+    }
     
-    // Для JavaScript файлов (.jsx) также устанавливаем соответствующие опции
-    if (filePath.endsWith('.jsx')) {
-      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
-        noSuggestionDiagnostics: true,
-        diagnosticCodesToIgnore: [
-          2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-          2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-          1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004, 7027,
-          2741, 2345, 2451, 2612, 2454, 2306, 6133, 2769, 7005, 2355,
-          2540, 2665, 2694, 1108, 6196, 80001, 80002, 80003, 18002, 18003,
-          7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821, 2614, 2459, 2580, 2487,
-          1011, 8016
-        ]
+    // Список кодов ошибок, которые можно игнорировать
+    const diagnosticCodesToIgnore = [
+      2669, 1046, 7031, 1161, 2304, 7026, 7006, 2740, 2339, 2531, 2786, 
+      2605, 1005, 1003, 17008, 2693, 1109, 1128, 1434, 1136, 1110, 8006, 
+      8010, 2688, 1039, 2792, 1183, 1254, 2695, 2365, 2714, 2552, 2362, 
+      2503, 2363, 18004, 7027, 2322, 2741, 2345, 2451, 2612, 2454, 2306, 
+      6133, 2769, 7005, 2355, 2540, 2665, 2694, 1108, 6196, 80001, 80002, 
+      80003, 18002, 18003, 2614, 2459, 2580, 2487, 7053, 2602, 2551, 
+      2578, 7008, 2525, 2683, 2821, 1011, 8016
+    ];
+    
+    // Для TypeScript и JavaScript отдельно настраиваем параметры диагностики
+    if (language === 'typescript' || language === 'javascript') {
+      const isJSX = fileExtension?.endsWith('x') || false;
+      
+      // Настраиваем диагностику в зависимости от типа файла
+      if (language === 'typescript') {
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: isJSX, // Отключаем suggestion diagnostics для JSX файлов
+          diagnosticCodesToIgnore: isJSX 
+            ? [...diagnosticCodesToIgnore, 2307] // Для JSX игнорируем "Cannot find module" по умолчанию
+            : diagnosticCodesToIgnore.filter(code => code !== 2307) // Для не-JSX удаляем 2307, чтобы показывать ошибки
+        });
+      } else {
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+          noSuggestionDiagnostics: isJSX,
+          diagnosticCodesToIgnore: isJSX 
+            ? [...diagnosticCodesToIgnore, 2307]
+            : diagnosticCodesToIgnore.filter(code => code !== 2307)
+        });
+      }
+      
+      // Подписываемся на событие создания модели
+      monaco.editor.onDidCreateModel((model: any) => {
+        if (model.uri.path === filePath) {
+          // Запускаем проверку зависимостей
+          setupDependencyAnalysis(monaco, model);
+          
+          // Подписываемся на изменения модели
+          model.onDidChangeContent(() => {
+            // Если содержимое изменилось, повторно проверяем зависимости
+            setupDependencyAnalysis(monaco, model);
+          });
+        }
       });
     }
-  } else {
-    // Для обычных TS файлов используем более строгую проверку, но всё равно игнорируем ошибки модулей
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      // Для не-JSX файлов игнорируем коды типовых ошибок
-      diagnosticCodesToIgnore: [
-        2307, 2792, 2688, 7027, 2304, 1005, 
-        2451, 6133, 2769, 7005, 2355, 18002, 18003, 
-        2306, 2665, 6196, 2614, 2459, 2580, 2487,
-        7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821,
-        1011, 8016
-      ]
-    });
-  }
-  
-  // Добавляем кастомный обработчик для фильтрации ошибок, если в режиме разработки
-  if (isDevelopmentMode) {
-    // Логгируем для отладки
-    console.log(`Setting up smart analyzer for ${filePath}, JSX: ${isJsxFile}`);
-    
-    // Функция для отладки диагностики (вызывается при необходимости)
-    window.logMonacoDiagnostics = () => {
-      const markers = monaco.editor.getModelMarkers({});
-      console.log('All diagnostic messages:', markers);
-      
-      // Группировка по кодам ошибок
-      const errorCounts: Record<string, number> = {};
-      markers.forEach((marker: any) => {
-        const code = marker.code as string;
-        errorCounts[code] = (errorCounts[code] || 0) + 1;
-      });
-      console.log('Error code statistics:', errorCounts);
-      return { markers, errorCounts };
-    };
+  } catch (error) {
+    console.error(`Error setting up analyzer for ${filePath}:`, error);
   }
 }
 
@@ -219,7 +266,12 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
     // Логгируем информацию о версии
     console.log('Configuring Monaco with TypeScript support');
     
-    // Настраиваем умный анализатор кода
+    // Настраиваем умный анализатор кода с проверкой зависимостей
+    // Импорты проверяются на существование файлов:
+    // - Для относительных путей (./file.js, ../components/Button.tsx)
+    //   проверяется реальное существование файла
+    // - Если файл не существует, показывается ошибка "Cannot find module"
+    // - Для npm-пакетов (react, lodash и т.д.) ошибки не отображаются
     openedFiles.forEach(file => {
       // Используем либо filePath, либо path
       const filePath = file.filePath || file.path;
@@ -1451,5 +1503,404 @@ function tryLoadVSCodeSettings() {
       });
   } catch (error) {
     console.log('Ошибка при попытке загрузки настроек VSCode:', error);
+  }
+}
+
+/**
+ * Настраивает отображение подсказок при наведении на элементы
+ */
+function setupHoverProviders(monaco: any) {
+  // Общая функция для обработки наведения
+  const provideHoverFunction = function(model: any, position: any) {
+    const word = model.getWordAtPosition(position);
+    if (!word) return null;
+    
+    const lineContent = model.getLineContent(position.lineNumber);
+    
+    // Различные регулярные выражения для поиска импортов
+    const importPatterns = [
+      // import ... from 'module'
+      /import\s+(?:.*?)\s+from\s+['"]([^'"]+)['"]/,
+      // import('module')
+      /import\(\s*['"]([^'"]+)['"]\s*\)/,
+      // require('module')
+      /require\(\s*['"]([^'"]+)['"]\s*\)/,
+      // import type ... from 'module'
+      /import\s+type\s+(?:.*?)\s+from\s+['"]([^'"]+)['"]/,
+      // /// <reference path="module" />
+      /<reference\s+path=['"]([^'"]+)['"]/,
+      // @import 'module' (CSS импорты)
+      /@import\s+['"]([^'"]+)['"]/
+    ];
+    
+    // Проверяем каждый тип импорта
+    for (const pattern of importPatterns) {
+      const match = lineContent.match(pattern);
+      if (match && lineContent.includes(word.word)) {
+        const modulePath = match[1];
+        const isNpmPackage = !modulePath.startsWith('./') && !modulePath.startsWith('../');
+        
+        let hoverContent = '';
+        
+        if (isNpmPackage) {
+          // Информация о npm пакете
+          const packageInfo: Record<string, string> = {
+            'react': 'React - библиотека для создания пользовательских интерфейсов',
+            'react-dom': 'ReactDOM - рендерер для React в браузере',
+            'next': 'Next.js - фреймворк для React с SSR',
+            '@tauri-apps': 'Tauri - фреймворк для создания нативных приложений',
+            'monaco-editor': 'Monaco Editor - редактор кода, используемый в VS Code',
+            '@monaco-editor/react': 'React компонент для Monaco Editor',
+            'clsx': 'Утилита для условной конкатенации строк CSS классов',
+            'tailwind-merge': 'Утилита для объединения Tailwind CSS классов без конфликтов',
+            'react-player': 'Компонент для воспроизведения видео',
+            'axios': 'HTTP-клиент для выполнения запросов',
+            'lodash': 'Утилитарная библиотека для JavaScript',
+            'date-fns': 'Библиотека для работы с датами',
+            'framer-motion': 'Библиотека для анимаций в React',
+            'fs': 'Node.js модуль для работы с файловой системой',
+            'path': 'Node.js модуль для работы с путями файлов',
+            'crypto': 'Node.js модуль для криптографических операций',
+            'os': 'Node.js модуль для работы с операционной системой',
+            'child_process': 'Node.js модуль для создания дочерних процессов',
+            'util': 'Node.js модуль с утилитарными функциями',
+            'stream': 'Node.js модуль для работы с потоками данных',
+            'events': 'Node.js модуль для работы с событиями',
+            'buffer': 'Node.js модуль для работы с бинарными данными',
+          };
+          
+          const packageName = modulePath.split('/')[0];
+          hoverContent = `**${modulePath}**\n\n`;
+          
+          if (packageInfo[packageName]) {
+            hoverContent += packageInfo[packageName] + '\n\n';
+          }
+          
+          hoverContent += 'Полный путь: `node_modules/' + modulePath + '`';
+          
+          // Показываем тип импорта
+          if (pattern.source.includes('require')) {
+            hoverContent += '\n\nТип: CommonJS импорт (require)';
+          } else if (pattern.source.includes('import\\(')) {
+            hoverContent += '\n\nТип: Динамический импорт';
+          } else if (pattern.source.includes('type')) {
+            hoverContent += '\n\nТип: Импорт типов TypeScript';
+          } else if (pattern.source.includes('reference')) {
+            hoverContent += '\n\nТип: Ссылка на определение типов';
+          } else if (pattern.source.includes('@import')) {
+            hoverContent += '\n\nТип: CSS импорт';
+          } else {
+            hoverContent += '\n\nТип: ES модуль';
+          }
+        } else {
+          // Относительный импорт
+          const filePath = model.uri.path;
+          const basePath = filePath.substring(0, filePath.lastIndexOf('/'));
+          
+          // Реализация resolvePath
+          const resolveRelativePath = (base: string, relative: string): string => {
+            if (relative.startsWith('/')) {
+              return relative;
+            }
+            
+            // Удаляем file:// префикс и нормализуем путь
+            const normalizedBase = base.replace(/^file:\/\//, '');
+            
+            // Получаем путь до корня проекта (предполагаем, что корень проекта - это папка src)
+            const projectRoot = normalizedBase.includes('/src/') 
+              ? normalizedBase.substring(0, normalizedBase.indexOf('/src/') + 4) // +4 чтобы включить '/src'
+              : normalizedBase;
+              
+            // Добавляем информацию о диске, если ее нет
+            const fullProjectRoot = projectRoot.match(/^[A-Z]:/i) 
+              ? projectRoot 
+              : `C:/PROJECTS/X-Editor${projectRoot.startsWith('/') ? '' : '/'}${projectRoot}`;
+            
+            // Для путей вида ./something
+            if (relative.startsWith('./')) {
+              // Получаем путь без первых двух символов (./)
+              const cleanPath = relative.slice(2);
+              // Получаем директорию текущего файла
+              const currentDir = normalizedBase.substring(0, normalizedBase.lastIndexOf('/'));
+              return `${currentDir}/${cleanPath}`;
+            }
+            
+            // Для путей вида ../something
+            if (relative.startsWith('../')) {
+              let currentPath = normalizedBase;
+              let relPath = relative;
+              
+              // Поднимаемся по "../" вверх по дереву директорий
+              while (relPath.startsWith('../')) {
+                currentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+                relPath = relPath.slice(3);
+              }
+              
+              return `${currentPath}/${relPath}`;
+            }
+            
+            // Для импортов без ./ или ../ (модули или абсолютные пути)
+            // Просто возвращаем путь как есть
+            if (!relative.startsWith('.')) {
+              // Если путь выглядит как путь к модулю проекта, добавляем полный путь
+              if (relative.includes('/') && !relative.startsWith('@')) {
+                return `${fullProjectRoot}/${relative}`;
+              }
+              return relative;
+            }
+            
+            // Для остальных случаев используем стандартную логику
+            // Разбиваем пути на сегменты
+            const baseSegments = normalizedBase.split('/');
+            const relativeSegments = relative.split('/');
+            
+            // Создаем новый результирующий массив сегментов
+            const resultSegments = [...baseSegments.slice(0, baseSegments.length - 1)]; // Удаляем последний сегмент, который обычно содержит имя файла
+            
+            for (const segment of relativeSegments) {
+              if (segment === '..') {
+                // Поднимаемся на уровень выше
+                resultSegments.pop();
+              } else if (segment !== '.' && segment !== '') {
+                // Добавляем сегмент к пути
+                resultSegments.push(segment);
+              }
+            }
+            
+            // Собираем путь обратно
+            return resultSegments.join('/');
+          };
+          
+          const fullPath = resolveRelativePath(basePath, modulePath);
+          
+          // Проверяем на дублирование пути в тексте подсказки
+          const modulePathClean = modulePath.endsWith('/') ? modulePath.slice(0, -1) : modulePath;
+          const fullPathClean = fullPath.endsWith('/') ? fullPath.slice(0, -1) : fullPath;
+          
+          // Проверяем, не повторяет ли полный путь уже показанный относительный
+          const showBothPaths = !fullPathClean.endsWith(modulePathClean) && 
+                               !modulePathClean.endsWith(fullPathClean);
+          
+          hoverContent = `**${modulePath}**\n\n`;
+          
+          if (showBothPaths) {
+            hoverContent += `Полный путь: \`${fullPath}\``;
+          } else {
+            // Если один путь содержит другой, показываем только полный
+            hoverContent += `Путь: \`${fullPath}\``;
+          }
+          
+          // Определение типа файла
+          let fileExtension = '';
+          
+          // Извлекаем расширение из пути модуля
+          if (modulePath.includes('.')) {
+            fileExtension = modulePath.split('.').pop() || '';
+          } else {
+            // Если расширение не указано, предполагаем несколько вариантов
+            const possibleExts = ['ts', 'tsx', 'js', 'jsx'];
+            hoverContent += '\n\nРасширение не указано, может быть один из следующих файлов:';
+            for (const ext of possibleExts) {
+              hoverContent += `\n- \`${fullPath}.${ext}\``;
+            }
+            hoverContent += `\n- \`${fullPath}/index.[ts|tsx|js|jsx]\``;
+          }
+          
+          if (fileExtension) {
+            const fileTypeInfo: Record<string, string> = {
+              'ts': 'TypeScript файл',
+              'tsx': 'TypeScript с JSX компонентами',
+              'js': 'JavaScript файл',
+              'jsx': 'JavaScript с JSX компонентами',
+              'css': 'CSS стили',
+              'scss': 'SCSS стили',
+              'less': 'LESS стили',
+              'json': 'JSON файл данных',
+              'md': 'Markdown документация',
+              'mdx': 'MDX документация с компонентами',
+              'svg': 'SVG векторная графика',
+              'png': 'PNG изображение',
+              'jpg': 'JPEG изображение',
+              'jpeg': 'JPEG изображение',
+              'gif': 'GIF изображение',
+              'webp': 'WebP изображение',
+              'woff': 'Web Open Font Format шрифт',
+              'woff2': 'Web Open Font Format 2 шрифт',
+              'eot': 'Embedded OpenType шрифт',
+              'ttf': 'TrueType шрифт',
+              'otf': 'OpenType шрифт',
+              'html': 'HTML файл',
+              'htm': 'HTML файл',
+              'xml': 'XML файл',
+              'yml': 'YAML файл конфигурации',
+              'yaml': 'YAML файл конфигурации',
+              'toml': 'TOML файл конфигурации',
+              'csv': 'CSV файл с данными',
+              'txt': 'Текстовый файл',
+            };
+            
+            if (fileTypeInfo[fileExtension]) {
+              hoverContent += `\n\nТип: ${fileTypeInfo[fileExtension]}`;
+            }
+          }
+          
+          // Показываем тип импорта
+          if (pattern.source.includes('require')) {
+            hoverContent += '\n\nТип: CommonJS импорт (require)';
+          } else if (pattern.source.includes('import\\(')) {
+            hoverContent += '\n\nТип: Динамический импорт';
+          } else if (pattern.source.includes('type')) {
+            hoverContent += '\n\nТип: Импорт типов TypeScript';
+          } else if (pattern.source.includes('reference')) {
+            hoverContent += '\n\nТип: Ссылка на определение типов';
+          } else if (pattern.source.includes('@import')) {
+            hoverContent += '\n\nТип: CSS импорт';
+          } else {
+            hoverContent += '\n\nТип: ES модуль';
+          }
+        }
+        
+        return {
+          contents: [
+            { value: hoverContent }
+          ]
+        };
+      }
+    }
+    
+    // Проверяем, является ли это переменной или функцией
+    const declarationPatterns = [
+      /(const|let|var|function|class|interface|type)\s+([a-zA-Z0-9_$]+)/,
+      /export\s+(const|let|var|function|class|interface|type)\s+([a-zA-Z0-9_$]+)/,
+      /export\s+default\s+(function|class)\s+([a-zA-Z0-9_$]+)/,
+      /async\s+function\s+([a-zA-Z0-9_$]+)/
+    ];
+    
+    for (const pattern of declarationPatterns) {
+      const match = lineContent.match(pattern);
+      if (match) {
+        const declarationType = match[1] || match[0].includes('function') ? 'function' : match[0].includes('class') ? 'class' : 'unknown';
+        const name = match[2] || match[1];
+        
+        if (word.word === name) {
+          // Функция для определения описания
+          const getTypeDescription = (type: string, name: string): string => {
+            switch (type) {
+              case 'const':
+                return `Константа, объявленная с помощью 'const'`;
+              case 'let':
+                return `Переменная, объявленная с помощью 'let'`;
+              case 'var':
+                return `Переменная, объявленная с помощью 'var'`;
+              case 'function':
+                return `Функция '${name}'`;
+              case 'class':
+                return `Класс '${name}'`;
+              case 'interface':
+                return `Интерфейс TypeScript '${name}'`;
+              case 'type':
+                return `Пользовательский тип TypeScript '${name}'`;
+              default:
+                return `Объявление '${name}'`;
+            }
+          };
+          
+          return {
+            contents: [
+              { value: `**${word.word}** - ${getTypeDescription(declarationType, word.word)}` }
+            ]
+          };
+        }
+      }
+    }
+    
+    // Проверяем JSX компоненты
+    if (model.getLanguageId() === 'typescript' || model.getLanguageId() === 'javascript') {
+      const jsxComponentPattern = /<([A-Z][a-zA-Z0-9_$]*)(?:\s|\/|>)/;
+      const match = lineContent.match(jsxComponentPattern);
+      
+      if (match && word.word === match[1]) {
+        return {
+          contents: [
+            { value: `**${word.word}** - React компонент` }
+          ]
+        };
+      }
+    }
+    
+    return null;
+  };
+  
+  // Регистрируем провайдер для TypeScript
+  monaco.languages.registerHoverProvider('typescript', {
+    provideHover: provideHoverFunction
+  });
+  
+  // Регистрируем провайдер для JavaScript
+  monaco.languages.registerHoverProvider('javascript', {
+    provideHover: provideHoverFunction
+  });
+  
+  // Регистрируем тот же провайдер для JSX/TSX файлов
+  monaco.languages.registerHoverProvider('javascriptreact', {
+    provideHover: provideHoverFunction
+  });
+  
+  monaco.languages.registerHoverProvider('typescriptreact', {
+    provideHover: provideHoverFunction
+  });
+}
+
+/**
+ * Резолвит относительный путь относительно базового пути
+ */
+function resolvePath(basePath: string, relativePath: string): string {
+  // Если путь абсолютный, возвращаем его как есть
+  if (relativePath.startsWith('/')) {
+    return relativePath;
+  }
+  
+  // Разбиваем пути на сегменты
+  const baseSegments = basePath.split('/');
+  const relativeSegments = relativePath.split('/');
+  
+  // Создаем новый результирующий массив сегментов
+  const resultSegments = [...baseSegments];
+  
+  for (const segment of relativeSegments) {
+    if (segment === '..') {
+      // Поднимаемся на уровень выше
+      resultSegments.pop();
+    } else if (segment !== '.' && segment !== '') {
+      // Добавляем сегмент к пути
+      resultSegments.push(segment);
+    }
+  }
+  
+  // Собираем путь обратно
+  return resultSegments.join('/');
+}
+
+/**
+ * Возвращает описание для объявления на основе его типа
+ */
+function getDeclarationDescription(type: string, name: string): string {
+  switch (type) {
+    case 'const':
+      return `Константа, объявленная с помощью 'const'`;
+    case 'let':
+      return `Переменная, объявленная с помощью 'let'`;
+    case 'var':
+      return `Переменная, объявленная с помощью 'var'`;
+    case 'function':
+      return `Функция '${name}'`;
+    case 'class':
+      return `Класс '${name}'`;
+    case 'interface':
+      return `Интерфейс TypeScript '${name}'`;
+    case 'type':
+      return `Пользовательский тип TypeScript '${name}'`;
+    default:
+      return `Объявление '${name}'`;
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { X } from 'lucide-react';
 import './Settings.css';
 
@@ -28,7 +28,8 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ isVisible, onClose }) => {
+// Используем forwardRef для передачи ref
+const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose }, ref) => {
   const [activeTab, setActiveTab] = useState<string>('editor');
   
   // Пример первоначальных настроек
@@ -68,8 +69,8 @@ const Settings: React.FC<SettingsProps> = ({ isVisible, onClose }) => {
   };
 
   return (
-    <div className="settings-overlay">
-      <div className="settings-modal">
+    <div className="settings-overlay" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-modal" ref={ref}>
         <div className="settings-header">
           <h2>Настройки</h2>
           <button className="close-button" onClick={onClose}>
@@ -250,7 +251,7 @@ const Settings: React.FC<SettingsProps> = ({ isVisible, onClose }) => {
                     <div className="setting-control">
                       <select 
                         value={themeSettings.theme}
-                        onChange={(e) => handleThemeSettingChange('theme', e.target.value)}
+                        onChange={(e) => handleThemeSettingChange('theme', e.target.value as 'dark' | 'light' | 'auto')}
                       >
                         <option value="dark">Темная</option>
                         <option value="light">Светлая</option>
@@ -297,6 +298,6 @@ const Settings: React.FC<SettingsProps> = ({ isVisible, onClose }) => {
       </div>
     </div>
   );
-};
+});
 
-export default Settings; 
+export default Settings;

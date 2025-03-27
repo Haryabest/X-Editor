@@ -14,6 +14,7 @@ import { MenuItem, FileItem } from './types/types';
 
 import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
+import Settings from '../lefttoolbar/settings/Settings'; // Импортируем компонент Settings
 
 import './style.css';
 
@@ -27,14 +28,15 @@ interface TopToolbarProps {
 const menuData: Record<string, MenuItem[]> = {
   "Файл": [
     { text: "Новый файл", shortcut: "Ctrl + N" },
-    { text: "Открыть", shortcut: "Ctrl + O" },
+    { text: "Открыть папку", shortcut: "Ctrl + O" },
+    { text: "Открыть файл", shortcut: "Ctrl + O" },
     { text: "Сохранить", shortcut: "Ctrl + S" },
     { text: "Сохранить как", shortcut: "Ctrl + S" },
     { text: "Сохранить все", shortcut: "Ctrl + S" },
     { text: "Открыть новое окно", shortcut: "Ctrl + S" },
     { text: "Последнее", shortcut: "" },
     { text: "Настройки", shortcut: "" },
-    { text: "Выход", shortcut: "" }
+    { text: "Выход", shortcut: "Ctrl + Q" }
   ],
   "Выделение": [
     { text: "Выбрать всё", shortcut: "Ctrl + A" },
@@ -75,11 +77,13 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSplitMenu, setShowSplitMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); // Состояние для модального окна настроек
   
   const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const splitMenuRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null); // Ref для модального окна
 
   // Window controls handlers
   const handleMinimize = async () => {
@@ -116,9 +120,35 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
       if (splitMenuRef.current && !splitMenuRef.current.contains(e.target as Node)) {
         setShowSplitMenu(false);
       }
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
     };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  // Esc key handler for closing settings
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSettings(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  // Shortcut handler for Ctrl + Q
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'q') {
+        e.preventDefault();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Menu configuration
@@ -147,10 +177,13 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
     setActiveMenu(null);
   };
 
-  // Обработчик для пунктов меню
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
+    console.log(`Menu: ${menu}, Option: ${option.text}`); // Отладка
     if (menu === "Файл" && option.text === "Выход") {
       handleClose(); // Закрываем приложение
+    } else if (menu === "Файл" && option.text === "Настройки") {
+      console.log("Opening Settings"); // Отладка
+      setShowSettings(true); // Открываем модальное окно настроек
     }
     setActiveMenu(null); // Закрываем меню после выбора
   };
@@ -316,6 +349,13 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
           <X size={14} />
         </button>
       </div>
+
+      {/* Добавляем модальное окно настроек */}
+      <Settings 
+        isVisible={showSettings} 
+        onClose={() => setShowSettings(false)}
+        ref={settingsRef} // Передаем ref для обработки кликов вне окна
+      />
     </div>
   );
 };

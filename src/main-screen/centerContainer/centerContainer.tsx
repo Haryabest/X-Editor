@@ -319,9 +319,100 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }, 100);
   }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
 
-  const handleBeforeMount = (monaco: any) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    // Сохраняем экземпляры редактора и Monaco для дальнейшего использования
+    setEditorInstance(editor);
+    setMonacoInstance(monaco);
     window.monaco = monaco;
-    configureMonaco(monaco);
+    
+    // Применяем расширенные настройки Monaco
+    const configuredMonaco = configureMonaco(monaco);
+    
+    // Фокусируем редактор
+    editor.focus();
+    
+    // Настраиваем поведение редактора
+    editor.onDidChangeCursorPosition((e: any) => {
+      // Обновляем информацию о позиции курсора
+      if (onEditorInfoChange && editorInstance) {
+        const model = editor.getModel();
+        const totalChars = model ? model.getValueLength() : 0;
+        
+        onEditorInfoChange({
+          errors: 0, // будет обновлено при изменении маркеров
+          warnings: 0, // будет обновлено при изменении маркеров
+          language: model ? model.getLanguageId() : 'plaintext',
+          encoding: 'UTF-8',
+          cursorInfo: {
+            line: e.position.lineNumber,
+            column: e.position.column,
+            totalChars
+          }
+        });
+      }
+    });
+    
+    // Добавляем отслеживание маркеров (ошибок, предупреждений)
+    const updateMarkers = () => {
+      if (editor && selectedFile) {
+        const uri = monaco.Uri.parse(selectedFile);
+        const markers = monaco.editor.getModelMarkers({ resource: uri });
+        
+        let errors = 0;
+        let warnings = 0;
+        
+        markers.forEach((marker: any) => {
+          if (marker.severity === monaco.MarkerSeverity.Error) errors++;
+          if (marker.severity === monaco.MarkerSeverity.Warning) warnings++;
+        });
+        
+        if (onEditorInfoChange) {
+          const model = editor.getModel();
+          onEditorInfoChange({
+            errors,
+            warnings,
+            language: model ? model.getLanguageId() : 'plaintext',
+            encoding: 'UTF-8',
+            cursorInfo: {
+              line: editor.getPosition().lineNumber,
+              column: editor.getPosition().column,
+              totalChars: model ? model.getValueLength() : 0
+            }
+          });
+        }
+        
+        if (onIssuesChange) {
+          const fileName = selectedFile.split(/[\\/]/).pop() || '';
+          const issuesData: IssueInfo = {
+            filePath: selectedFile,
+            fileName,
+            issues: markers.map((marker: any) => ({
+              severity: marker.severity === monaco.MarkerSeverity.Error ? 'error' : 
+                        marker.severity === monaco.MarkerSeverity.Warning ? 'warning' : 'info',
+              message: marker.message,
+              line: marker.startLineNumber,
+              column: marker.startColumn,
+              endLine: marker.endLineNumber,
+              endColumn: marker.endColumn,
+              source: marker.source,
+              code: marker.code
+            }))
+          };
+          
+          onIssuesChange([issuesData]);
+        }
+      }
+    };
+    
+    // Отслеживаем изменения маркеров
+    monaco.editor.onDidChangeMarkers(updateMarkers);
+    
+    // Отслеживаем изменения моделей
+    monaco.editor.onDidCreateModel((model: any) => {
+      // Когда создается новая модель, применяем конфигурацию Monaco
+      const filePath = model.uri.path;
+      console.log(`Создана новая модель для файла: ${filePath}`);
+    });
   };
 
   return (
@@ -352,12 +443,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                     automaticLayout: true,
                     wordWrap: 'on'
                   }}
-                  onMount={(editor, monaco) => {
-                    setEditorInstance(editor);
-                    setMonacoInstance(monaco);
-                    editor.focus();
-                  }}
-                  beforeMount={handleBeforeMount}
+                  onMount={handleEditorDidMount}
                 />
               </div>
             </div>

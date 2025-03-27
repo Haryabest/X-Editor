@@ -394,7 +394,7 @@ export async function setupAutoTypes(monaco: Monaco, openedFiles: FileItem[]) {
     
     // Обрабатываем каждый открытый файл
     for (const file of openedFiles) {
-      if (file.isDirectory) continue;
+      if ((file as any).isDirectory) continue;
       
       // Читаем только TypeScript/JavaScript файлы
       if (!/\.(ts|tsx|js|jsx)$/i.test(file.path)) continue;
