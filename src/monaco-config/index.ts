@@ -55,7 +55,6 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
     
     // Другие важные ошибки
     2391, // Duplicate names
-    2322, // Type mismatch
     2349, // No constructor
   ];
   
@@ -97,7 +96,44 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
     2362,  // The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
     2503,  // Cannot find namespace 'React'.
     2363,  // The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
-    18004   // No value exists in scope for the shorthand property 'x'. Either declare one or provide an initializer.
+    18004,  // No value exists in scope for the shorthand property 'x'. Either declare one or provide an initializer.
+    7027,   // Unreachable code detected
+    2322,   // Type mismatch
+    2741,   // Property missing in type
+    2345,   // Argument type not assignable
+    2451,   // Cannot redeclare block-scoped variable
+    2612,   // Property will overwrite the base property
+    2454,   // Variable is used before being assigned
+    2306,   // File not a module
+    6133,   // 'variable' is declared but its value is never read
+    2769,   // No overload matches this call
+    7005,   // Variable implicitly has an 'any[]' type
+    2355,   // A function whose declared type is not 'void' must return a value
+    2540,   // Cannot assign to readonly property
+    2665,   // Invalid module name
+    2694,   // Namespace name cannot be 'any'
+    1108,   // A rest parameter must be of an array type
+    6196,   // 'xxxxx' is declared but never used
+    80001,  // File contains unsupported features
+    80002,  // Semantic coloring service disabled
+    80003,  // Wrong number of type arguments
+    18002,  // The 'this' context of type ... is not assignable
+    18003,  // No value exists in scope for the shorthand property 'x'
+    2614,   // Module has no default export
+    2459,   // Module exports has no XXX member
+    2580,   // Cannot find name 'require'
+    2487,   // Object is possibly undefined
+    // Добавляем новые коды для игнорирования в проекте centerContainer
+    7053,   // Element implicitly has an 'any' type 
+    2602,   // JSX element implicitly has type 'any'
+    2551,   // Property is missing in type but required
+    2578,   // Unused variable
+    7008,   // Member is possibly undefined
+    2525,   // Initializer provides no value
+    2683,   // This file is being processed
+    2821,   // Unknown property in interface
+    1011,   // An element access expression should take an argument
+    8016,   // Type assertion expressions can only be used in TypeScript files
   ];
   
   // Для JSX файлов игнорируем больше ошибок, связанных с синтаксисом JSX и типами
@@ -110,7 +146,11 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
         2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
         2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
         1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-        1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+        1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004, 7027,
+        2741, 2345, 2451, 2612, 2454, 2306, 6133, 2769, 7005, 2355,
+        2540, 2665, 2694, 1108, 6196, 80001, 80002, 80003, 18002, 18003,
+        7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821, 2614, 2459, 2580, 2487,
+        1011, 8016
       ]
     });
     
@@ -124,20 +164,27 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
           2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
           2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
           1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004, 7027,
+          2741, 2345, 2451, 2612, 2454, 2306, 6133, 2769, 7005, 2355,
+          2540, 2665, 2694, 1108, 6196, 80001, 80002, 80003, 18002, 18003,
+          7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821, 2614, 2459, 2580, 2487,
+          1011, 8016
         ]
       });
     }
   } else {
-    // Для обычных TS файлов используем более строгую проверку
+    // Для обычных TS файлов используем более строгую проверку, но всё равно игнорируем ошибки модулей
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: false,
       noSyntaxValidation: false,
-      // Для не-JSX файлов игнорируем меньше ошибок
-      diagnosticCodesToIgnore: diagnosticCodesToIgnore.filter(code => 
-        // Не игнорируем некоторые коды в обычных TS файлах
-        ![2322, 2339].includes(code)
-      ),
+      // Для не-JSX файлов игнорируем коды типовых ошибок
+      diagnosticCodesToIgnore: [
+        2307, 2792, 2688, 7027, 2304, 1005, 
+        2451, 6133, 2769, 7005, 2355, 18002, 18003, 
+        2306, 2665, 6196, 2614, 2459, 2580, 2487,
+        7053, 2602, 2551, 2578, 7008, 2525, 2683, 2821,
+        1011, 8016
+      ]
     });
   }
   
@@ -180,6 +227,9 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
         setupSmartCodeAnalyzer(monaco, filePath);
       }
     });
+    
+    // Загружаем VSCode-подобные настройки если они есть
+    tryLoadVSCodeSettings();
 
     // Определяем константы для типов JSX
     const JsxEmit = {
@@ -236,7 +286,36 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
       noEmit: true,
       allowJs: true,
       typeRoots: ['node_modules/@types'],
-      allowSyntheticDefaultImports: true
+      allowSyntheticDefaultImports: true,
+      resolveJsonModule: true,
+      esModuleInterop: true,
+      skipLibCheck: true,
+      noImplicitAny: false,
+      strict: false,
+      alwaysStrict: false,
+      noUnusedLocals: false,
+      noUnusedParameters: false,
+      checkJs: false,
+      strictNullChecks: false,
+      noImplicitThis: false,
+      noImplicitReturns: false,
+      baseUrl: ".",
+      suppressImplicitAnyIndexErrors: true,
+      noStrictGenericChecks: true,
+      paths: {
+        "*": ["*", "node_modules/*", "src/*"],
+        "@/*": ["./src/*", "./components/*"],
+        "../*": ["../src/*", "../*"],
+        "~/*": ["./*"],
+        "next": ["./node_modules/next", "./src/types/next"],
+        "next/*": ["./node_modules/next/*", "./src/types/next/*"],
+        "react": ["./node_modules/react", "./src/types/react"],
+        "react/*": ["./node_modules/react/*", "./src/types/react/*"],
+        "react-dom": ["./node_modules/react-dom", "./src/types/react-dom"],
+        "react-dom/*": ["./node_modules/react-dom/*", "./src/types/react-dom/*"],
+        "@prisma/client": ["./node_modules/@prisma/client", "./src/types/prisma-client"],
+        "../components/*": ["../components/*", "../src/components/*", "./components/*"]
+      }
     });
     
     // Настройка отображения полного пути модуля при наведении
@@ -1048,6 +1127,122 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
     // @ts-ignore - игнорируем несоответствие типов для configureJSXTypes
     configureJSXTypes(monaco);
     
+    // Добавляем определение общих модулей и компонентов, которые могут отсутствовать
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      `
+      declare module '../components/app_topbar/topbar' {
+        export interface TopbarProps {
+          [key: string]: any;
+        }
+        const Topbar: React.FC<TopbarProps>;
+        export default Topbar;
+      }
+      
+      declare module '../components/*' {
+        const Component: React.FC<any>;
+        export default Component;
+      }
+
+      declare module '@/components/*' {
+        const Component: React.FC<any>;
+        export default Component;
+      }
+
+      declare module 'components/*' {
+        const Component: React.FC<any>;
+        export default Component;
+      }
+      `,
+      'file:///node_modules/app-components.d.ts'
+    );
+    
+    // Добавляем определения для Next.js
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      `
+      declare module 'next' {
+        export type NextPage<P = {}, IP = P> = React.FC<P>;
+        export type GetServerSideProps<P = {}> = (context: any) => Promise<{ props: P }>;
+        export type GetStaticProps<P = {}> = (context: any) => Promise<{ props: P }>;
+        export type GetStaticPaths = () => Promise<{ paths: any[], fallback: boolean | 'blocking' }>;
+        export default function createNext(options?: any): any;
+      }
+      
+      declare module 'next/app' {
+        export type AppProps = any;
+        export default function App(props: AppProps): JSX.Element;
+      }
+      
+      declare module 'next/head' {
+        export default function Head(props: any): JSX.Element;
+      }
+      
+      declare module 'next/link' {
+        export interface LinkProps {
+          href: string;
+          as?: string;
+          replace?: boolean;
+          scroll?: boolean;
+          shallow?: boolean;
+          passHref?: boolean;
+          prefetch?: boolean;
+          locale?: string | false;
+          [key: string]: any;
+        }
+        export default function Link(props: LinkProps): JSX.Element;
+      }
+      
+      declare module 'next/router' {
+        export interface Router {
+          route: string;
+          pathname: string;
+          query: any;
+          asPath: string;
+          push(url: string, as?: string, options?: any): Promise<boolean>;
+          replace(url: string, as?: string, options?: any): Promise<boolean>;
+          reload(): void;
+          back(): void;
+          prefetch(url: string, as?: string, options?: any): Promise<void>;
+          events: {
+            on(event: string, callback: (...args: any[]) => void): void;
+            off(event: string, callback: (...args: any[]) => void): void;
+            emit(event: string, ...args: any[]): void;
+          };
+        }
+        export function useRouter(): Router;
+      }
+      `,
+      'file:///node_modules/@types/next/index.d.ts'
+    );
+    
+    // Добавляем определения для Prisma Client
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      `
+      declare module '@prisma/client' {
+        export class PrismaClient {
+          constructor(options?: any);
+          connect(): Promise<void>;
+          disconnect(): Promise<void>;
+          $use(middleware: any): void;
+          $on(eventType: any, callback: any): void;
+          $executeRaw(query: any, ...values: any[]): Promise<number>;
+          $queryRaw(query: any, ...values: any[]): Promise<any[]>;
+          $transaction<R>(fn: (prisma: PrismaClient) => Promise<R>): Promise<R>;
+          [modelName: string]: any;
+        }
+        export namespace Prisma {
+          export type Decimal = number;
+          export class Decimal {
+            constructor(value: number | string);
+            toFixed(precision?: number): string;
+            toString(): string;
+            toNumber(): number;
+          }
+        }
+      }
+      `,
+      'file:///node_modules/@types/prisma/index.d.ts'
+    );
+    
     // Конфигурация для JSON файлов, если они поддерживаются
     // @ts-ignore - игнорируем несоответствие типов для monaco.languages.json
     if (monaco.languages.json) {
@@ -1065,11 +1260,6 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
       jsxIntrinsicElementsDefinitions,
       'file:///node_modules/@types/react/index.d.ts'
     );
-    
-    monaco.languages.typescript.javascriptDefaults.addExtraLib(
-      jsxIntrinsicElementsDefinitions,
-      'file:///node_modules/@types/react/index.d.ts'
-    );
 
     // Если режим разработки, добавляем тестовую кнопку и отладочные инструменты
     if (isDevelopmentMode) {
@@ -1084,7 +1274,182 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
         }
       }, 1000);
     }
+
+    // Добавляем определения для распространенных веб-платформенных типов, 
+    // которые могут использоваться с type assertions в .js/.jsx файлах
+    monaco.languages.typescript.javascriptDefaults.addExtraLib(
+      `
+      interface HTMLElement {
+        id: string;
+        className: string;
+        style: any;
+        dataset: any;
+        addEventListener(event: string, callback: Function): void;
+        removeEventListener(event: string, callback: Function): void;
+        appendChild(node: any): any;
+        removeChild(node: any): any;
+        getAttribute(name: string): string | null;
+        setAttribute(name: string, value: string): void;
+        removeAttribute(name: string): void;
+        focus(): void;
+        blur(): void;
+        click(): void;
+      }
+      
+      interface CSSStyleDeclaration {
+        backgroundColor: string;
+        color: string;
+        display: string;
+        position: string;
+        width: string;
+        height: string;
+        margin: string;
+        padding: string;
+        border: string;
+        fontSize: string;
+        fontFamily: string;
+        [key: string]: any;
+      }
+      
+      interface UIFileItem {
+        name: string;
+        path: string;
+        isFolder?: boolean;
+        expanded?: boolean;
+        loaded?: boolean;
+        icon?: string;
+        type?: string;
+        isDirectory?: boolean;
+        content?: string;
+      }
+      `,
+      'file:///global-types.d.ts'
+    );
+
+    // Добавляем расширенные типы для JSX
   } catch (error) {
     console.error('Error configuring Monaco:', error);
+  }
+}
+
+/**
+ * Пытается загрузить VSCode-подобные настройки линтера из проекта
+ */
+function tryLoadVSCodeSettings() {
+  try {
+    console.log('Пытаюсь загрузить настройки VSCode...');
+    // Проверка на наличие локальных настроек VSCode
+    fetch('.vscode/settings.json')
+      .then(response => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error('Файл настроек VSCode не найден');
+      })
+      .then(settings => {
+        console.log('Загружены настройки VSCode:', settings);
+        
+        // Создаём объект с настройками компилятора
+        const compilerOptions: any = {};
+                
+        // Применяем настройки форматирования
+        if (settings['editor.formatOnSave']) {
+          console.log('Включено форматирование при сохранении');
+        }
+        
+        // Применяем настройки линтера TypeScript
+        if (settings['typescript.tsdk']) {
+          console.log('Используется пользовательский TypeScript SDK:', settings['typescript.tsdk']);
+        }
+        
+        // Применяем настройки tabSize к редактору
+        if (settings['editor.tabSize']) {
+          const models = monaco.editor.getModels();
+          for (let i = 0; i < models.length; i++) {
+            models[i].updateOptions({
+              tabSize: settings['editor.tabSize']
+            });
+          }
+        }
+        
+        // Применяем настройки noImplicitAny
+        if (settings['typescript.preferences.noImplicitAny'] === false) {
+          compilerOptions.noImplicitAny = false;
+        }
+        
+        // Применяем строгую проверку типов
+        if (settings['typescript.preferences.strictNullChecks'] === false) {
+          compilerOptions.strictNullChecks = false;
+        }
+        
+        // Применяем настройки moduleResolution
+        if (settings['typescript.preferences.moduleResolution']) {
+          const moduleResolution = settings['typescript.preferences.moduleResolution'];
+          if (moduleResolution === 'node') {
+            compilerOptions.moduleResolution = 2; // NodeJs
+          } else if (moduleResolution === 'classic') {
+            compilerOptions.moduleResolution = 1; // Classic
+          } else if (moduleResolution === 'nodenext') {
+            compilerOptions.moduleResolution = 3; // NodeNext
+          }
+        }
+        
+        // Игнорируемые диагностические коды
+        if (settings['typescript.tsserver.ignoreDiagnostics']) {
+          const ignoreDiagnostics = settings['typescript.tsserver.ignoreDiagnostics'];
+          // Коды ошибок, которые нужно игнорировать
+          let codesToIgnore: number[] = [];
+          
+          if (Array.isArray(ignoreDiagnostics)) {
+            codesToIgnore = ignoreDiagnostics.map(code => Number(code));
+          } else if (typeof ignoreDiagnostics === 'string') {
+            codesToIgnore = ignoreDiagnostics.split(',').map(code => parseInt(code.trim(), 10));
+          }
+          
+          if (codesToIgnore.length > 0) {
+            // Добавляем игнорируемые коды к существующим диагностическим настройкам
+            monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+              noSemanticValidation: false,
+              noSyntaxValidation: false,
+              diagnosticCodesToIgnore: [
+                2307, 2792, 2688, 7027, 2304, 1005, 
+                2451, 6133, 2769, 7005, 2355, 18002, 18003, 
+                2306, 2665, 6196,
+                ...codesToIgnore
+              ]
+            });
+          }
+        }
+        
+        // Применяем обновленные настройки компилятора если есть изменения
+        if (Object.keys(compilerOptions).length > 0) {
+          monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+            ...compilerOptions,
+            jsx: 2, // React
+            target: 99, // ESNext
+            moduleResolution: 2, // NodeJs
+            module: 99, // ESNext
+            allowNonTsExtensions: true,
+            experimentalDecorators: true,
+            noEmit: true,
+            allowJs: true,
+            typeRoots: ['node_modules/@types'],
+            allowSyntheticDefaultImports: true,
+            resolveJsonModule: true,
+            esModuleInterop: true,
+            skipLibCheck: true,
+            noImplicitAny: false,
+            strict: false,
+            alwaysStrict: false
+          });
+        }
+        
+        console.log('Настройки VSCode применены к Monaco Editor');
+      })
+      .catch(error => {
+        console.log('Не удалось загрузить настройки VSCode:', error.message);
+      });
+  } catch (error) {
+    console.log('Ошибка при попытке загрузки настроек VSCode:', error);
   }
 }

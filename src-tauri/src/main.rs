@@ -24,6 +24,7 @@ fn main() {
             commands::file_operations::create_file,
             commands::file_operations::create_folder,
             commands::file_operations::save_file,
+            commands::file_operations::check_path_exists,
             types::get_directory_tree,
             types::get_subdirectory,
             reading::read_text_file,

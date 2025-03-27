@@ -4,7 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ReactPlayer from 'react-player';
 import { FileItem } from '../../types';
-import { configureMonaco } from '../../monaco-config';
+import { configureMonaco } from './monacoConfig';
 import { getLanguageFromExtension } from '../../utils/languageDetector';
 import { fileFilters } from '../../utils/fileFilters';
 import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions } from '../../utils/fileExtensions';
@@ -88,10 +88,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
   useEffect(() => {
     if (window.monaco) {
-      configureMonaco(openedFiles.map(file => ({
-        ...file,
-        filePath: file.path
-      })));
+      configureMonaco(window.monaco);
     }
   }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
 
@@ -324,10 +321,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
   const handleBeforeMount = (monaco: any) => {
     window.monaco = monaco;
-    configureMonaco(openedFiles.map(file => ({
-      ...file,
-      filePath: file.path
-    })));
+    configureMonaco(monaco);
   };
 
   return (

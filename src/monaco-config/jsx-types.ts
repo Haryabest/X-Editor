@@ -4,461 +4,95 @@ import { Monaco } from '@monaco-editor/react';
  * Конфигурирует продвинутые типы для JSX/TSX файлов
  */
 export function configureJSXTypes(monaco: Monaco) {
-  // Настраиваем специальные параметры для JSX/TSX
-  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-    ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
-    jsx: monaco.languages.typescript.JsxEmit.React,
-    jsxFactory: 'React.createElement',
-    jsxFragmentFactory: 'React.Fragment',
-    allowNonTsExtensions: true,
-    allowJs: true,
-    target: monaco.languages.typescript.ScriptTarget.ESNext,
-    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-    esModuleInterop: true
-  });
-  
-  // Настраиваем JavaScript для поддержки JSX
-  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-    ...monaco.languages.typescript.javascriptDefaults.getCompilerOptions(),
-    jsx: monaco.languages.typescript.JsxEmit.React,
-    jsxFactory: 'React.createElement',
-    jsxFragmentFactory: 'React.Fragment',
-    allowNonTsExtensions: true,
-    allowJs: true
-  });
-  
-  // Отключаем проверки для ускорения работы и избежания ложных ошибок
-  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-    noSemanticValidation: false,
-    noSyntaxValidation: false,
-    noSuggestionDiagnostics: true,
-    diagnosticCodesToIgnore: [
-      2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-      2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-      1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-      1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-    ]
-  });
-  
-  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-    noSemanticValidation: false,
-    noSyntaxValidation: false,
-    noSuggestionDiagnostics: true,
-    diagnosticCodesToIgnore: [
-      2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-      2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-      1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-      1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-    ]
-  });
-
-  // Настраиваем анализатор для JSX
-  monaco.languages.typescript.typescriptDefaults.setInlayHintsOptions({
-    includeInlayParameterNameHints: 'all',
-    includeInlayParameterNameHintsWhenArgumentMatchesName: true,
-    includeInlayFunctionParameterTypeHints: true,
-    includeInlayVariableTypeHints: true,
-    includeInlayPropertyDeclarationTypeHints: true,
-    includeInlayFunctionLikeReturnTypeHints: true,
-    includeInlayEnumMemberValueHints: true
-  });
-
-  // Добавляем расширенные определения JSX/TSX
-  monaco.languages.typescript.typescriptDefaults.addExtraLib(
-    `
-    // Определяем базовые типы для событий
-    interface SyntheticEvent {
-      bubbles: boolean;
-      cancelable: boolean;
-      currentTarget: EventTarget;
-      defaultPrevented: boolean;
-      eventPhase: number;
-      isTrusted: boolean;
-      nativeEvent: Event;
-      preventDefault(): void;
-      stopPropagation(): void;
-      target: EventTarget;
-      timeStamp: number;
-      type: string;
-    }
+  try {
+    // Настраиваем специальные параметры для JSX/TSX
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
+      jsx: monaco.languages.typescript.JsxEmit.React,
+      jsxFactory: 'React.createElement',
+      jsxFragmentFactory: 'React.Fragment',
+      allowNonTsExtensions: true,
+      allowJs: true,
+      target: monaco.languages.typescript.ScriptTarget.ESNext,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      esModuleInterop: true
+    });
     
-    // Добавляем явное определение React, чтобы избежать ошибки 2503 "Cannot find namespace 'React'"
-    declare namespace React {
-      function createElement(type: any, props?: any, ...children: any[]): any;
-      
-      interface FC<P = {}> {
-        (props: P): any;
-        displayName?: string;
-      }
-      
-      const Fragment: any;
-      
-      interface CSSProperties {
-        [key: string]: any;
-      }
-      
-      interface ReactDOM {
-        render(element: any, container: any): void;
-      }
-      
-      /**
-       * Объявляем интерфейс для HTML атрибутов с детальными описаниями
-       */
-      interface HTMLAttributes {
-        /** CSS класс элемента (аналог атрибута class в HTML) */
-        className?: string;
-        
-        /** Объект со стилями для элемента. Свойства записываются в camelCase */
-        style?: CSSProperties;
-        
-        /** Идентификатор элемента */
-        id?: string;
-        
-        /** Обработчик события клика */
-        onClick?: (event: MouseEvent<any>) => void;
-        
-        /** Обработчик события наведения указателя мыши */
-        onMouseOver?: (event: MouseEvent<any>) => void;
-        
-        /** Обработчик события ухода указателя мыши */
-        onMouseOut?: (event: MouseEvent<any>) => void;
-        
-        /** Обработчик события изменения значения (для элементов формы) */
-        onChange?: (event: ChangeEvent<any>) => void;
-        
-        /** Обработчик события отправки формы */
-        onSubmit?: (event: FormEvent<any>) => void;
-        
-        /** Обработчик события нажатия клавиши */
-        onKeyDown?: (event: KeyboardEvent<any>) => void;
-        
-        /** Обработчик события отпускания клавиши */
-        onKeyUp?: (event: KeyboardEvent<any>) => void;
-        
-        /** Обработчик события нажатия (для мобильных устройств) */
-        onTouchStart?: (event: SyntheticEvent) => void;
-        
-        /** Обработчик события перемещения (для мобильных устройств) */
-        onTouchMove?: (event: SyntheticEvent) => void;
-        
-        /** Обработчик события отпускания (для мобильных устройств) */
-        onTouchEnd?: (event: SyntheticEvent) => void;
-        
-        /** Значение элемента формы */
-        value?: string | number | readonly string[];
-        
-        /** Заполнитель (подсказка внутри поля ввода) */
-        placeholder?: string;
-        
-        /** Флаг, указывающий что элемент отключен */
-        disabled?: boolean;
-        
-        /** Заголовок (всплывающая подсказка) */
-        title?: string;
-        
-        /** Ссылка на элемент DOM */
-        ref?: any;
-        
-        /** Уникальный ключ для идентификации элемента в списке */
-        key?: string | number;
-        
-        /** Ширина элемента */
-        width?: string | number;
-        
-        /** Высота элемента */
-        height?: string | number;
-        
-        /** Имя элемента формы */
-        name?: string;
-        
-        /** Тип элемента (для input) */
-        type?: string;
-        
-        /** Путь к ресурсу (для img, script, iframe) */
-        src?: string;
-        
-        /** Альтернативный текст для изображения */
-        alt?: string;
-        
-        /** URL ссылки */
-        href?: string;
-        
-        /** Куда открывать ссылку (_blank, _self, _parent, _top) */
-        target?: string;
-        
-        /** HTML-содержимое (заменяет children) */
-        dangerouslySetInnerHTML?: { __html: string };
-        
-        /** Табличный индекс (для навигации с клавиатуры) */
-        tabIndex?: number;
-        
-        /** Флаг, указывающий что поле обязательно для заполнения */
-        required?: boolean;
-        
-        /** Флаг, указывающий что чекбокс или радиокнопка отмечены */
-        checked?: boolean;
-        
-        /** Максимальная длина текста */
-        maxLength?: number;
-        
-        /** Минимальная длина текста */
-        minLength?: number;
-        
-        /** Атрибут data-* для хранения произвольных данных */
-        [key: string]: any;
-      }
-      
-      interface ChangeEvent<T = Element> {
-        target: T;
-        currentTarget: T;
-        preventDefault(): void;
-        stopPropagation(): void;
-      }
-      
-      interface FormEvent<T = Element> {
-        target: T;
-        currentTarget: T;
-        preventDefault(): void;
-        stopPropagation(): void;
-      }
-      
-      interface MouseEvent<T = Element> {
-        target: T;
-        currentTarget: T;
-        preventDefault(): void;
-        stopPropagation(): void;
-        clientX: number;
-        clientY: number;
-      }
-      
-      interface KeyboardEvent<T = Element> {
-        target: T;
-        currentTarget: T;
-        key: string;
-        keyCode: number;
-        preventDefault(): void;
-        stopPropagation(): void;
-      }
-      
-      interface RefObject<T> {
-        readonly current: T | null;
-      }
-      
-      interface Ref<T> {
-        current: T | null;
-      }
-      
-      /**
-       * Создает ref-объект
-       * @returns объект с полем current, изначально null
-       */
-      function createRef<T = any>(): Ref<T>;
-      
-      /**
-       * Хук для создания ref-объекта
-       * @param initialValue начальное значение
-       * @returns объект с полем current
-       */
-      function useRef<T = any>(initialValue?: T): Ref<T>;
-      
-      /**
-       * Хук для управления состоянием компонента
-       * @param initialState начальное состояние или функция, возвращающая начальное состояние
-       * @returns кортеж из текущего состояния и функции для его обновления
-       */
-      function useState<T>(initialState: T | (() => T)): [T, (newValue: T | ((prevState: T) => T)) => void];
-      
-      /**
-       * Хук для выполнения побочных эффектов
-       * @param effect функция эффекта
-       * @param deps массив зависимостей
-       */
-      function useEffect(effect: () => void | (() => void), deps?: any[]): void;
-      
-      /**
-       * Хук для мемоизации функций
-       * @param callback функция для мемоизации
-       * @param deps массив зависимостей
-       * @returns мемоизированная функция
-       */
-      function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
-      
-      /**
-       * Хук для мемоизации значений
-       * @param factory функция, создающая значение
-       * @param deps массив зависимостей
-       * @returns мемоизированное значение
-       */
-      function useMemo<T>(factory: () => T, deps: any[]): T;
-      
-      // Добавляем определение для объектов с сокращенными свойствами, чтобы избежать ошибки 18004
-      type PropsWithChildren<P> = P & { children?: any };
-      
-      // Разрешить использование арифметических операций с разными типами
-      // для обхода ошибок 2362 и 2363
-      type ArithmeticOperand = any | number | bigint;
-    }
+    // Настраиваем JavaScript для поддержки JSX
+    monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+      ...monaco.languages.typescript.javascriptDefaults.getCompilerOptions(),
+      jsx: monaco.languages.typescript.JsxEmit.React,
+      jsxFactory: 'React.createElement',
+      jsxFragmentFactory: 'React.Fragment',
+      allowNonTsExtensions: true,
+      allowJs: true
+    });
     
-    // Определяем JSX пространство имен
-    declare namespace JSX {
-      interface Element {}
-      
-      // Определяем базовые HTML элементы
-      interface IntrinsicElements {
-        /** <div> - блочный элемент-контейнер */
-        div: React.HTMLAttributes;
-        
-        /** <span> - строчный элемент-контейнер */
-        span: React.HTMLAttributes;
-        
-        /** <p> - параграф текста */
-        p: React.HTMLAttributes;
-        
-        /** <a> - гиперссылка */
-        a: React.HTMLAttributes;
-        
-        /** <button> - кнопка */
-        button: React.HTMLAttributes;
-        
-        /** <input> - поле ввода */
-        input: React.HTMLAttributes;
-        
-        /** <textarea> - многострочное поле ввода */
-        textarea: React.HTMLAttributes;
-        
-        /** <select> - выпадающий список */
-        select: React.HTMLAttributes;
-        
-        /** <option> - элемент выпадающего списка */
-        option: React.HTMLAttributes;
-        
-        /** <form> - форма для отправки данных */
-        form: React.HTMLAttributes;
-        
-        /** <img> - изображение */
-        img: React.HTMLAttributes;
-        
-        /** <h1> - заголовок первого уровня */
-        h1: React.HTMLAttributes;
-        
-        /** <h2> - заголовок второго уровня */
-        h2: React.HTMLAttributes;
-        
-        /** <h3> - заголовок третьего уровня */
-        h3: React.HTMLAttributes;
-        
-        /** <h4> - заголовок четвертого уровня */
-        h4: React.HTMLAttributes;
-        
-        /** <h5> - заголовок пятого уровня */
-        h5: React.HTMLAttributes;
-        
-        /** <h6> - заголовок шестого уровня */
-        h6: React.HTMLAttributes;
-        
-        /** <hr> - горизонтальная линия */
-        hr: React.HTMLAttributes;
-        
-        /** <br> - перенос строки */
-        br: React.HTMLAttributes;
-        
-        /** <table> - таблица */
-        table: React.HTMLAttributes;
-        
-        /** <thead> - заголовок таблицы */
-        thead: React.HTMLAttributes;
-        
-        /** <tbody> - тело таблицы */
-        tbody: React.HTMLAttributes;
-        
-        /** <tr> - строка таблицы */
-        tr: React.HTMLAttributes;
-        
-        /** <td> - ячейка таблицы */
-        td: React.HTMLAttributes;
-        
-        /** <th> - ячейка заголовка таблицы */
-        th: React.HTMLAttributes;
-        
-        /** <ul> - маркированный список */
-        ul: React.HTMLAttributes;
-        
-        /** <ol> - нумерованный список */
-        ol: React.HTMLAttributes;
-        
-        /** <li> - элемент списка */
-        li: React.HTMLAttributes;
-        
-        /** <nav> - навигационный блок */
-        nav: React.HTMLAttributes;
-        
-        /** <main> - основной контент страницы */
-        main: React.HTMLAttributes;
-        
-        /** <section> - раздел страницы */
-        section: React.HTMLAttributes;
-        
-        /** <article> - независимый блок контента */
-        article: React.HTMLAttributes;
-        
-        /** <header> - верхняя часть страницы или секции */
-        header: React.HTMLAttributes;
-        
-        /** <footer> - нижняя часть страницы или секции */
-        footer: React.HTMLAttributes;
-        
-        /** <label> - метка для элемента формы */
-        label: React.HTMLAttributes;
-        
-        /** <fieldset> - группа элементов формы */
-        fieldset: React.HTMLAttributes;
-        
-        /** <legend> - заголовок группы элементов формы */
-        legend: React.HTMLAttributes;
-        
-        /** <pre> - блок предварительного форматирования */
-        pre: React.HTMLAttributes;
-        
-        /** <code> - фрагмент кода */
-        code: React.HTMLAttributes;
-        
-        /** <i> - курсивный текст */
-        i: React.HTMLAttributes;
-        
-        /** <b> - жирный текст */
-        b: React.HTMLAttributes;
-        
-        /** <strong> - важный текст */
-        strong: React.HTMLAttributes;
-        
-        /** <em> - выделенный текст */
-        em: React.HTMLAttributes;
-        
-        /** <small> - маленький текст */
-        small: React.HTMLAttributes;
-        
-        /** <svg> - векторное изображение */
-        svg: React.HTMLAttributes;
-        
-        /** <path> - путь в векторном изображении */
-        path: React.HTMLAttributes;
-        
-        /** <canvas> - область рисования */
-        canvas: React.HTMLAttributes;
-        
-        /** <video> - видео */
-        video: React.HTMLAttributes;
-        
-        /** <audio> - аудио */
-        audio: React.HTMLAttributes;
-        
-        /** <iframe> - встроенный iframe */
-        iframe: React.HTMLAttributes;
-      }
-    }
-    `,
-    'file:///node_modules/@types/react-jsx-runtime/index.d.ts'
-  );
+    // Отключаем проверки для ускорения работы и избежания ложных ошибок
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      noSuggestionDiagnostics: true,
+      diagnosticCodesToIgnore: [
+        2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+        2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+        1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+        1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+      ]
+    });
+    
+    monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      noSuggestionDiagnostics: true,
+      diagnosticCodesToIgnore: [
+        2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
+        2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
+        1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
+        1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
+      ]
+    });
+
+    // Настраиваем анализатор для JSX
+    monaco.languages.typescript.typescriptDefaults.setInlayHintsOptions({
+      includeInlayParameterNameHints: 'all',
+      includeInlayParameterNameHintsWhenArgumentMatchesName: true,
+      includeInlayFunctionParameterTypeHints: true,
+      includeInlayVariableTypeHints: true,
+      includeInlayPropertyDeclarationTypeHints: true,
+      includeInlayFunctionLikeReturnTypeHints: true,
+      includeInlayEnumMemberValueHints: true
+    });
+
+    // Добавляем базовые определения для JSX
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      jsxIntrinsicElementsDefinitions,
+      'file:///node_modules/@types/react/jsx-runtime.d.ts'
+    );
+    
+    // Добавляем определения CSS свойств
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      cssPropertiesDefinition,
+      'file:///node_modules/@types/react/cssProperties.d.ts'
+    );
+
+    // Также добавляем и для JavaScript
+    monaco.languages.typescript.javascriptDefaults.addExtraLib(
+      jsxIntrinsicElementsDefinitions,
+      'file:///node_modules/@types/react/jsx-runtime.d.ts'
+    );
+    
+    // Добавляем определения CSS свойств и для JavaScript
+    monaco.languages.typescript.javascriptDefaults.addExtraLib(
+      cssPropertiesDefinition,
+      'file:///node_modules/@types/react/cssProperties.d.ts'
+    );
+
+    // Логируем успешную настройку
+    console.log('JSX types configured successfully');
+  } catch (e) {
+    console.error('Error configuring JSX types', e);
+  }
 }
 
 /**
@@ -654,4 +288,240 @@ declare namespace React {
       [key: string]: HTMLAttributes;
     }
   }
-}`; 
+}`;
+
+/**
+ * Определение CSS свойств для работы в JSX style атрибутах
+ */
+export const cssPropertiesDefinition = `
+  interface CSSProperties {
+    alignContent?: string;
+    alignItems?: string;
+    alignSelf?: string;
+    animation?: string;
+    animationDelay?: string;
+    animationDirection?: string;
+    animationDuration?: string;
+    animationFillMode?: string;
+    animationIterationCount?: string;
+    animationName?: string;
+    animationPlayState?: string;
+    animationTimingFunction?: string;
+    appearance?: string;
+    backfaceVisibility?: string;
+    background?: string;
+    backgroundAttachment?: string;
+    backgroundBlendMode?: string;
+    backgroundClip?: string;
+    backgroundColor?: string;
+    backgroundImage?: string;
+    backgroundOrigin?: string;
+    backgroundPosition?: string;
+    backgroundRepeat?: string;
+    backgroundSize?: string;
+    borderBottom?: string;
+    borderBottomColor?: string;
+    borderBottomLeftRadius?: string | number;
+    borderBottomRightRadius?: string | number;
+    borderBottomStyle?: string;
+    borderBottomWidth?: string | number;
+    borderCollapse?: string;
+    borderColor?: string;
+    borderImage?: string;
+    borderImageOutset?: string;
+    borderImageRepeat?: string;
+    borderImageSlice?: string;
+    borderImageSource?: string;
+    borderImageWidth?: string | number;
+    borderLeft?: string;
+    borderLeftColor?: string;
+    borderLeftStyle?: string;
+    borderLeftWidth?: string | number;
+    borderRadius?: string | number;
+    borderRight?: string;
+    borderRightColor?: string;
+    borderRightStyle?: string;
+    borderRightWidth?: string | number;
+    borderSpacing?: string;
+    borderStyle?: string;
+    borderTop?: string;
+    borderTopColor?: string;
+    borderTopLeftRadius?: string | number;
+    borderTopRightRadius?: string | number;
+    borderTopStyle?: string;
+    borderTopWidth?: string | number;
+    borderWidth?: string | number;
+    bottom?: string | number;
+    boxShadow?: string;
+    boxSizing?: string;
+    captionSide?: string;
+    caretColor?: string;
+    clear?: string;
+    clip?: string;
+    color?: string;
+    columnCount?: number;
+    columnFill?: string;
+    columnGap?: string | number;
+    columnRule?: string;
+    columnRuleColor?: string;
+    columnRuleStyle?: string;
+    columnRuleWidth?: string | number;
+    columnSpan?: string;
+    columnWidth?: string | number;
+    columns?: string;
+    content?: string;
+    counterIncrement?: string;
+    counterReset?: string;
+    cursor?: string;
+    direction?: string;
+    display?: string;
+    emptyCells?: string;
+    filter?: string;
+    flex?: string | number;
+    flexBasis?: string | number;
+    flexDirection?: string;
+    flexFlow?: string;
+    flexGrow?: number;
+    flexShrink?: number;
+    flexWrap?: string;
+    float?: string;
+    font?: string;
+    fontFamily?: string;
+    fontSize?: string | number;
+    fontSizeAdjust?: string | number;
+    fontStretch?: string;
+    fontStyle?: string;
+    fontVariant?: string;
+    fontWeight?: string | number;
+    gap?: string | number;
+    grid?: string;
+    gridArea?: string;
+    gridAutoColumns?: string;
+    gridAutoFlow?: string;
+    gridAutoRows?: string;
+    gridColumn?: string;
+    gridColumnEnd?: string;
+    gridColumnGap?: string | number;
+    gridColumnStart?: string;
+    gridGap?: string | number;
+    gridRow?: string;
+    gridRowEnd?: string;
+    gridRowGap?: string | number;
+    gridRowStart?: string;
+    gridTemplate?: string;
+    gridTemplateAreas?: string;
+    gridTemplateColumns?: string;
+    gridTemplateRows?: string;
+    height?: string | number;
+    hyphens?: string;
+    imageRendering?: string;
+    inset?: string | number;
+    isolation?: string;
+    justifyContent?: string;
+    justifyItems?: string;
+    justifySelf?: string;
+    left?: string | number;
+    letterSpacing?: string | number;
+    lineHeight?: string | number;
+    listStyle?: string;
+    listStyleImage?: string;
+    listStylePosition?: string;
+    listStyleType?: string;
+    margin?: string | number;
+    marginBottom?: string | number;
+    marginLeft?: string | number;
+    marginRight?: string | number;
+    marginTop?: string | number;
+    maxHeight?: string | number;
+    maxWidth?: string | number;
+    minHeight?: string | number;
+    minWidth?: string | number;
+    mixBlendMode?: string;
+    objectFit?: string;
+    objectPosition?: string;
+    opacity?: string | number;
+    order?: string | number;
+    outline?: string;
+    outlineColor?: string;
+    outlineOffset?: string | number;
+    outlineStyle?: string;
+    outlineWidth?: string | number;
+    overflow?: string;
+    overflowAnchor?: string;
+    overflowWrap?: string;
+    overflowX?: string;
+    overflowY?: string;
+    padding?: string | number;
+    paddingBottom?: string | number;
+    paddingLeft?: string | number;
+    paddingRight?: string | number;
+    paddingTop?: string | number;
+    pageBreakAfter?: string;
+    pageBreakBefore?: string;
+    pageBreakInside?: string;
+    perspective?: string | number;
+    perspectiveOrigin?: string;
+    placeContent?: string;
+    placeItems?: string;
+    placeSelf?: string;
+    pointerEvents?: string;
+    position?: string;
+    quotes?: string;
+    resize?: string;
+    right?: string | number;
+    rowGap?: string | number;
+    scrollBehavior?: string;
+    tabSize?: string | number;
+    tableLayout?: string;
+    textAlign?: string;
+    textAlignLast?: string;
+    textDecoration?: string;
+    textDecorationColor?: string;
+    textDecorationLine?: string;
+    textDecorationStyle?: string;
+    textIndent?: string | number;
+    textJustify?: string;
+    textOverflow?: string;
+    textShadow?: string;
+    textTransform?: string;
+    top?: string | number;
+    transform?: string;
+    transformOrigin?: string;
+    transformStyle?: string;
+    transition?: string;
+    transitionDelay?: string;
+    transitionDuration?: string;
+    transitionProperty?: string;
+    transitionTimingFunction?: string;
+    unicodeBidi?: string;
+    userSelect?: string;
+    verticalAlign?: string | number;
+    visibility?: string;
+    whiteSpace?: string;
+    width?: string | number;
+    wordBreak?: string;
+    wordSpacing?: string | number;
+    wordWrap?: string;
+    writingMode?: string;
+    zIndex?: string | number;
+    // SVG specific properties
+    fill?: string;
+    fillOpacity?: string | number;
+    fillRule?: string;
+    stroke?: string;
+    strokeDasharray?: string;
+    strokeDashoffset?: string | number;
+    strokeLinecap?: string;
+    strokeLinejoin?: string;
+    strokeMiterlimit?: string | number;
+    strokeOpacity?: string | number;
+    strokeWidth?: string | number;
+    // CSS Variables
+    [key: string]: string | number | undefined;
+  }
+
+  // Для использования в React.CSSProperties
+  namespace React {
+    interface CSSProperties extends CSSProperties {}
+  }
+`; 

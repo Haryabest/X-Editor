@@ -3,24 +3,15 @@ import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { Unicode11Addon } from "xterm-addon-unicode11";
-import "xterm/css/xterm.css";
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from "@tauri-apps/api/event";
-import { 
-  Minimize, 
-  Eraser,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  ChevronRight,
-  ChevronDown,
-  File,
-  AlertCircle,
-  AlertTriangle,
-  Info
-} from "lucide-react";
+import { RefreshCw, Search, ChevronRight, ChevronDown, File, AlertCircle, AlertTriangle, Info , X} from "lucide-react";
 import { getFileIcon } from "../leftBar/fileIcons";
+import { AiOutlineClear } from "react-icons/ai";
+import { FaFilter } from "react-icons/fa";
+
 import "./style.css";
+import "xterm/css/xterm.css";
 
 interface Issue {
   severity: 'error' | 'warning' | 'info';
@@ -395,7 +386,7 @@ const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssu
                 onClick={clearTerminal}
                 title="Очистить терминал"
               >
-                <Eraser size={16} />
+                <AiOutlineClear size={16} />
               </button>
               <button
                 className="action-button"
@@ -409,7 +400,7 @@ const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssu
                 onClick={hideTerminalPanel}
                 title="Скрыть панель"
               >
-                <Minimize size={16} />
+                <X size={16} />
               </button>
             </>
           ) : (
@@ -429,14 +420,14 @@ const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssu
                 onClick={() => setShowIssueFilters(!showIssueFilters)}
                 title="Фильтры проблем"
               >
-                <SlidersHorizontal size={16} />
+                <FaFilter size={16} />
               </button>
               <button
                 className="action-button"
                 onClick={hideTerminalPanel}
                 title="Скрыть панель"
               >
-                <Minimize size={16} />
+                <X size={16} />
               </button>
             </>
           )}

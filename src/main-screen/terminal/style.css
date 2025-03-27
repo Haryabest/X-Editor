@@ -50,7 +50,6 @@
   cursor: pointer;
   color: #9ca3af;
   border: none;
-  background-color: #374151;
   transition: all 0.2s ease;
   border-bottom: 2px solid transparent;
 }
@@ -58,7 +57,7 @@
 .tab-button.active {
   color: white;
   background-color: #1e1e1e;
-  border-bottom: 2px solid #10b981;
+  border-bottom: 2px solid #0078d4;
 }
 
 .tab-button:hover:not(.active) {
@@ -82,13 +81,10 @@
 
 .action-button:hover {
   background-color: #4b4b4b;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .action-button:active {
   background-color: #2b2b2b;
-  transform: translateY(0);
   box-shadow: none;
 }
 
@@ -127,7 +123,7 @@
 }
 
 .terminal-instance.active {
-  border-color: #10b981;
+  border-color: #0078d4;
 }
 
 .terminal-instance-content {

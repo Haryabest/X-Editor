@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CircleX, CircleAlert, Bell, Check } from "lucide-react";
+import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest } from "lucide-react";
 
 import EncodingDropdown from "./modals/Encoding/ModalEncoding";
 import LanguageDropdown from "./modals/Language/ModalsLanguage";
@@ -14,7 +14,9 @@ const tooltips = {
   indent: "Настройки отступа",
   position: "Позиция курсора",
   language: "Выбрать язык",
-  notifications: "Уведомления"
+  notifications: "Уведомления",
+  gitPush: "Git Push",
+  gitPull: "Git Pull",
 };
 
 type VisibleElementKeys = "encoding" | "position" | "language" | "notifications";
@@ -30,6 +32,7 @@ interface BottomToolbarProps {
       column: number;
       totalChars: number;
     };
+    gitBranch?: string; // Добавляем информацию о ветке
   };
 }
 
@@ -51,7 +54,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
     notifications: true,
   });
 
-  // Обработчик ESC
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -63,7 +65,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
-  // Закрытие контекстного меню
   const closeContextMenu = () => {
     const menu = document.getElementById("context-menu");
     if (menu) {
@@ -72,7 +73,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
     }
   };
 
-  // Глобальный обработчик кликов
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const menu = document.getElementById("context-menu");
@@ -80,7 +80,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
         closeContextMenu();
       }
     };
-    
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
   }, []);
@@ -123,9 +122,18 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
     }));
   };
 
+  const handleGitPush = () => {
+    console.log("Git Push clicked");
+    // Здесь можно добавить логику для git push
+  };
+
+  const handleGitPull = () => {
+    console.log("Git Pull clicked");
+    // Здесь можно добавить логику для git pull
+  };
+
   return (
     <>
-      {/* Контекстное меню */}
       <div
         id="context-menu"
         className="context-menu"
@@ -135,36 +143,36 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
           <span>Кодировка</span>
           <Check
             color="#fff"
-            width={14} 
-            height={14} 
-            className={`check ${visibleElements.encoding ? "active" : ""}`} 
+            width={14}
+            height={14}
+            className={`check ${visibleElements.encoding ? "active" : ""}`}
           />
         </div>
         <div onClick={(e) => handleToggleVisibility("position", e)}>
           <span>Позиция</span>
-          <Check 
+          <Check
             color="#fff"
-            width={14} 
-            height={14} 
-            className={`check ${visibleElements.position ? "active" : ""}`} 
+            width={14}
+            height={14}
+            className={`check ${visibleElements.position ? "active" : ""}`}
           />
         </div>
         <div onClick={(e) => handleToggleVisibility("language", e)}>
           <span>Выбор редактора</span>
-          <Check 
+          <Check
             color="#fff"
-            width={14} 
-            height={14} 
-            className={`check ${visibleElements.language ? "active" : ""}`} 
+            width={14}
+            height={14}
+            className={`check ${visibleElements.language ? "active" : ""}`}
           />
         </div>
         <div onClick={(e) => handleToggleVisibility("notifications", e)}>
           <span>Уведомления</span>
-          <Check 
+          <Check
             color="#fff"
-            width={14} 
-            height={14} 
-            className={`check ${visibleElements.notifications ? "active" : ""}`} 
+            width={14}
+            height={14}
+            className={`check ${visibleElements.notifications ? "active" : ""}`}
           />
         </div>
       </div>
@@ -181,79 +189,87 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
       )}
 
       <div className="bottom-toolbar" onContextMenu={handleRightClick}>
-        {/* Левая часть */}
         <div className="left-info">
-          {visibleElements.encoding && (
-            <div className="status-item">
-              <CircleX width={14} height={14} color={editorInfo?.errors ? "#ff0000" : "#858585"} />
-              <span>{editorInfo?.errors || 0}</span>
-            </div>
-          )}
-          {visibleElements.position && (
-            <div className="status-item">
-              <CircleAlert width={14} height={14} color={editorInfo?.warnings ? "#FFA500" : "#858585"} />
-              <span>{editorInfo?.warnings || 0}</span>
-            </div>
-          )}
+          <div className={`status-item ${!visibleElements.encoding ? "hidden" : ""}`}>
+            <CircleX width={14} height={14} color={editorInfo?.errors ? "#ff0000" : "#858585"} />
+            <span>{editorInfo?.errors || 0}</span>
+          </div>
+          <div className={`status-item ${!visibleElements.position ? "hidden" : ""}`}>
+            <CircleAlert width={14} height={14} color={editorInfo?.warnings ? "#FFA500" : "#858585"} />
+            <span>{editorInfo?.warnings || 0}</span>
+          </div>
+          <div className="status-item git-branch">
+            <span>{editorInfo?.gitBranch || "main"}</span>
+          </div>
         </div>
 
-        {/* Правая часть */}
         <div className="right-info">
-          {visibleElements.encoding && (
-            <button
-              className="right-item"
-              onMouseEnter={() => handleMouseEnter("encoding")}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => handleButtonClick("encoding")}
-            >
-              {editorInfo?.encoding || "UTF-8"}
-              {visibleTooltip === "encoding" && (
-                <span className="tooltip">{tooltips.encoding}</span>
-              )}
-            </button>
-          )}
-
-          {visibleElements.position && (
-            <button
-              className="right-item"
-              onMouseEnter={() => handleMouseEnter("position")}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => handleButtonClick("position")}
-            >
-              Строка {editorInfo?.cursorInfo.line || 1} Столбец {editorInfo?.cursorInfo.column || 1} Всего {editorInfo?.cursorInfo.totalChars || 0}
-              {visibleTooltip === "position" && (
-                <span className="tooltip">{tooltips.position}</span>
-              )}
-            </button>
-          )}
-
-          {visibleElements.language && (
-            <button
-              className="right-item"
-              onMouseEnter={() => handleMouseEnter("language")}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => handleButtonClick("language")}
-            >
-              {editorInfo?.language || "Plain Text"}
-              {visibleTooltip === "language" && (
-                <span className="tooltip">{tooltips.language}</span>
-              )}
-            </button>
-          )}
-
-          {visibleElements.notifications && (
-            <button
-              className="right-item"
-              onMouseEnter={() => handleMouseEnter("notifications")}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => handleButtonClick("notifications")}
-            >
-              <Bell width={14} height={14} />
-              {visibleTooltip === "notifications" && (
-                <span className="tooltip">{tooltips.notifications}</span>
-              )}
-            </button>
-          )}
+          <button
+            className="right-item git-button"
+            onMouseEnter={() => handleMouseEnter("gitPush")}
+            onMouseLeave={handleMouseLeave}
+            onClick={handleGitPush}
+          >
+            <GitCommit width={14} height={14} />
+            {visibleTooltip === "gitPush" && (
+              <span className="tooltip">{tooltips.gitPush}</span>
+            )}
+          </button>
+          <button
+            className="right-item git-button"
+            onMouseEnter={() => handleMouseEnter("gitPull")}
+            onMouseLeave={handleMouseLeave}
+            onClick={handleGitPull}
+          >
+            <GitPullRequest width={14} height={14} />
+            {visibleTooltip === "gitPull" && (
+              <span className="tooltip">{tooltips.gitPull}</span>
+            )}
+          </button>
+          <button
+            className={`right-item ${!visibleElements.encoding ? "hidden" : ""}`}
+            onMouseEnter={() => handleMouseEnter("encoding")}
+            onMouseLeave={handleMouseLeave}
+            onClick={() => handleButtonClick("encoding")}
+          >
+            {editorInfo?.encoding || "UTF-8"}
+            {visibleTooltip === "encoding" && (
+              <span className="tooltip">{tooltips.encoding}</span>
+            )}
+          </button>
+          <button
+            className={`right-item ${!visibleElements.position ? "hidden" : ""}`}
+            onMouseEnter={() => handleMouseEnter("position")}
+            onMouseLeave={handleMouseLeave}
+            onClick={() => handleButtonClick("position")}
+          >
+            Строка {editorInfo?.cursorInfo.line || 1} Столбец {editorInfo?.cursorInfo.column || 1} Всего {editorInfo?.cursorInfo.totalChars || 0}
+            {visibleTooltip === "position" && (
+              <span className="tooltip">{tooltips.position}</span>
+            )}
+          </button>
+          <button
+            className={`right-item ${!visibleElements.language ? "hidden" : ""}`}
+            onMouseEnter={() => handleMouseEnter("language")}
+            onMouseLeave={handleMouseLeave}
+            onClick={() => handleButtonClick("language")}
+          >
+            {editorInfo?.language || "Plain Text"}
+            {visibleTooltip === "language" && (
+              <span className="tooltip">{tooltips.language}</span>
+            )}
+          </button>
+          <button
+            className={`right-item ${!visibleElements.notifications ? "hidden" : ""}`}
+            onMouseEnter={() => handleMouseEnter("notifications")}
+            onMouseLeave={handleMouseLeave}
+            onClick={() => handleButtonClick("notifications")}
+          >
+            <Bell width={14} height={14} />
+            {visibleTooltip === "notifications" && (
+              <span className="tooltip">{tooltips.notifications}</span>
+            )}
+          </button>
         </div>
       </div>
     </>

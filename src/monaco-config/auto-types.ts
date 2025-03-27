@@ -2,6 +2,17 @@ import { Monaco } from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileItem } from '../types';
 
+// Глобальные определения типов для JavaScript файлов
+// Эти определения помогут избежать ошибок 8016 (Type assertion expressions can only be used in TypeScript files)
+declare global {
+  // Определяем HTML элементы
+  interface HTMLElement {
+    id?: string;
+    className?: string;
+    style?: CSSStyleDeclaration;
+  }
+}
+
 // Регулярное выражение для поиска импортов
 const importRegex = /import\s+(?:(?:(?:{[^}]*}|\*\s+as\s+[^,]*|[^\s,]*)\s*,?\s*)(?:,\s*(?:{[^}]*}|\*\s+as\s+[^,]*|[^\s,]*))*\s*from\s+)?['"]([^'"]+)['"]/g;
 

@@ -34,7 +34,7 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "Открыть новое окно", shortcut: "Ctrl + S" },
     { text: "Последнее", shortcut: "" },
     { text: "Настройки", shortcut: "" },
-    { text: "Выход", shortcut: "Ctrl + Q" }
+    { text: "Выход", shortcut: "" }
   ],
   "Выделение": [
     { text: "Выбрать всё", shortcut: "Ctrl + A" },
@@ -129,18 +129,30 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
   // Обработчики для кнопок разделения экрана
   const handleSplitRight = () => {
     onSplitEditor?.('right');
+    setActiveMenu(null);
   };
 
   const handleSplitDown = () => {
     onSplitEditor?.('down');
+    setActiveMenu(null);
   };
 
   const handleSplitLeft = () => {
     onSplitEditor?.('left');
+    setActiveMenu(null);
   };
 
   const handleSplitUp = () => {
     onSplitEditor?.('up');
+    setActiveMenu(null);
+  };
+
+  // Обработчик для пунктов меню
+  const handleMenuItemClick = (menu: string, option: MenuItem) => {
+    if (menu === "Файл" && option.text === "Выход") {
+      handleClose(); // Закрываем приложение
+    }
+    setActiveMenu(null); // Закрываем меню после выбора
   };
 
   return (
@@ -162,7 +174,11 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
                 {activeMenu === item && (
                   <div className="dropdown-menu" ref={menuRef}>
                     {menuData[item].map((option, index) => (
-                      <button key={index} className="dropdown-btn">
+                      <button 
+                        key={index} 
+                        className="dropdown-btn"
+                        onClick={() => handleMenuItemClick(item, option)}
+                      >
                         {option.text} <span className="shortcut">{option.shortcut}</span>
                       </button>
                     ))}
@@ -197,7 +213,11 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
                         {activeMenu === item && (
                           <div className="dropdown-menu submenu">
                             {menuData[item].map((option, index) => (
-                              <button key={index} className="dropdown-btn">
+                              <button 
+                                key={index} 
+                                className="dropdown-btn"
+                                onClick={() => handleMenuItemClick(item, option)}
+                              >
                                 {option.text} <span className="shortcut">{option.shortcut}</span>
                               </button>
                             ))}
@@ -225,14 +245,14 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
           
           {showSearchDropdown && (
             <SearchDropdown
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            files={currentFiles.filter(file =>
-              file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              file.path.toLowerCase().includes(searchQuery.toLowerCase())
-            )}
-            onFileSelect={setSelectedFile}
-          />
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              files={currentFiles.filter(file =>
+                file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                file.path.toLowerCase().includes(searchQuery.toLowerCase())
+              )}
+              onFileSelect={setSelectedFile}
+            />
           )}
         </div>
       </div>

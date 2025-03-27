@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { 
   FolderTree, 
   GitBranch, 
   User, 
   Settings,
-  FileText,
 } from 'lucide-react';
 import './LeftToolBar.css';
 import AccountMenu from './accountmenu/AccountMenu';
@@ -77,13 +76,6 @@ const LeftToolBar: React.FC<LeftToolBarProps> = ({
           title="Ветви Git"
         >
           <GitBranch size={24} />
-        </button>
-        <button 
-          className={`toolbar-button ${activeButton === 'files' ? 'active' : ''}`}
-          onClick={() => handleButtonClick('files')}
-          title="Открытые файлы"
-        >
-          <FileText size={24} />
         </button>
       </div>
       

@@ -9,7 +9,7 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  z-index: 100000; /* Убедимся, что тулбар выше других элементов */
+  z-index: 100000;
   width: 100%;
 }
 
@@ -25,6 +25,10 @@
   color: #858585;
   font-size: 12px;
   gap: 5px;
+}
+
+.git-branch {
+  color: #8f8d8d;
 }
 
 /* Правая часть */
@@ -45,17 +49,26 @@
   font-family: "Inter";
   align-items: center;
   transition: 0.3s;
-  position: relative; /* Добавляем позиционирование для тултипа */
+  position: relative;
 }
 
 .right-item:hover {
   color: #c9c9c9;
 }
 
+.git-button {
+  margin-right: 10px; /* Уменьшаем отступ для кнопок Git */
+}
+
+/* Скрытие элементов без удаления из раскладки */
+.hidden {
+  visibility: hidden;
+}
+
 /* Стили для тултипов */
 .tooltip {
   position: absolute;
-  bottom: calc(100% + 5px); /* Смещаем тултип выше кнопки с небольшим отступом */
+  bottom: calc(100% + 5px);
   left: 50%;
   transform: translateX(-50%);
   background: #373737;
@@ -68,7 +81,7 @@
   pointer-events: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   animation: tooltipFade 0.3s ease;
-  z-index: 100001; /* Устанавливаем z-index выше тулбара */
+  z-index: 100001;
 }
 
 .tooltip::after {

@@ -243,6 +243,129 @@ async function loadNodeModulesTypes(monaco: Monaco, basePath: string | null): Pr
   }
 }
 
+/**
+ * Проверяет наличие модуля в node_modules проекта
+ * @param basePath Базовый путь проекта
+ * @param moduleName Имя модуля для проверки
+ */
+async function checkModuleExists(basePath: string, moduleName: string): Promise<boolean> {
+  try {
+    // Проверяем наличие директории модуля
+    const modulePath = `${basePath}/node_modules/${moduleName}`;
+    const exists = await invoke<boolean>('check_path_exists', { path: modulePath });
+    return exists;
+  } catch (error) {
+    console.warn(`Error checking for module ${moduleName}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Автоматически определяет и добавляет типы для распространённых зависимостей
+ * @param monaco Monaco экземпляр
+ * @param basePath Путь к корневой директории проекта
+ */
+async function detectAndAddCommonPackages(monaco: Monaco, basePath: string | null): Promise<void> {
+  if (!basePath) return;
+  
+  // Список популярных пакетов для автоматического добавления типов
+  const commonPackages = [
+    { name: 'prisma/client', declaration: `
+      declare module '@prisma/client' {
+        export const PrismaClient: any;
+        export type PrismaClient = any;
+        export type Prisma = any;
+      }
+    `},
+    { name: 'next', declaration: `
+      declare module 'next' {
+        export default function(options?: any): any;
+        export type NextPage<P = {}, IP = P> = React.FC<P>;
+        export type GetServerSideProps<P = {}> = (context: any) => Promise<{ props: P }>;
+        export type GetStaticProps<P = {}> = (context: any) => Promise<{ props: P }>;
+        export type GetStaticPaths = () => Promise<{ paths: any[], fallback: boolean | 'blocking' }>;
+      }
+      declare module 'next/app' {
+        export type AppProps = any;
+        export default function App(props: AppProps): JSX.Element;
+      }
+    `},
+    { name: 'react', declaration: `
+      declare module 'react' {
+        export = React;
+        export as namespace React;
+        
+        declare namespace React {
+          export type ReactNode = string | number | boolean | null | undefined | React.ReactElement | React.ReactFragment | React.ReactPortal;
+          export interface ReactElement<P = any> {
+            type: string | React.ComponentType<P>;
+            props: P;
+            key: string | number | null;
+          }
+          export type ComponentType<P = {}> = React.ComponentClass<P> | React.FunctionComponent<P>;
+          export interface FunctionComponent<P = {}> {
+            (props: P): ReactElement | null;
+          }
+          export const useState: <T>(initialState: T | (() => T)) => [T, (newState: T | ((prev: T) => T)) => void];
+          export const useEffect: (effect: () => void | (() => void), deps?: readonly any[]) => void;
+          export const useCallback: <T extends (...args: any[]) => any>(callback: T, deps: readonly any[]) => T;
+          export const useMemo: <T>(factory: () => T, deps: readonly any[]) => T;
+          export const useRef: <T>(initialValue: T) => { current: T };
+        }
+      }
+    `},
+    { name: 'mongoose', declaration: `
+      declare module 'mongoose' {
+        export function connect(uri: string, options?: any): Promise<any>;
+        export function model<T>(name: string, schema: Schema): Model<T>;
+        export class Schema {
+          constructor(definition: any, options?: any);
+        }
+        export interface Model<T> {
+          find(conditions: any): Promise<T[]>;
+          findOne(conditions: any): Promise<T | null>;
+          findById(id: any): Promise<T | null>;
+          create(doc: any): Promise<T>;
+          updateOne(conditions: any, doc: any): Promise<any>;
+          deleteOne(conditions: any): Promise<any>;
+        }
+      }
+    `},
+    { name: 'express', declaration: `
+      declare module 'express' {
+        export default function(): any;
+        export interface Request {
+          params: any;
+          query: any;
+          body: any;
+        }
+        export interface Response {
+          status(code: number): this;
+          json(data: any): this;
+          send(data: any): this;
+        }
+      }
+    `}
+  ];
+  
+  for (const pkg of commonPackages) {
+    try {
+      const exists = await checkModuleExists(basePath, pkg.name);
+      
+      if (exists) {
+        // Если пакет найден, добавляем его типы
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          pkg.declaration,
+          `file:///node_modules/${pkg.name}/index.d.ts`
+        );
+        console.log(`Added types for detected package: ${pkg.name}`);
+      }
+    } catch (error) {
+      console.warn(`Error detecting package ${pkg.name}:`, error);
+    }
+  }
+}
+
 export async function configureTypes(monaco: Monaco, basePath: string | null = null) {
   // Базовая конфигурация компилятора
   monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -302,6 +425,20 @@ export async function configureTypes(monaco: Monaco, basePath: string | null = n
     commonTypeDefs,
     'file:///node_modules/@types/common/index.d.ts'
   );
+
+  // Добавляем базовые объявления типов
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    commonTypeDefs,
+    'file:///common-typedefs.d.ts'
+  );
+
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    nodeModuleDefs,
+    'file:///node-modules.d.ts'
+  );
+
+  // Автоматическое определение и добавление типов для распространённых пакетов
+  await detectAndAddCommonPackages(monaco, basePath);
 
   // Добавляем расширенные типы React
   monaco.languages.typescript.typescriptDefaults.addExtraLib(
@@ -375,7 +512,7 @@ export async function configureTypes(monaco: Monaco, basePath: string | null = n
     'file:///node_modules/@types/react/index.d.ts'
   );
   
-  // Загружаем типы из node_modules, если путь указан
+  // Загружаем типы из node_modules, если доступен путь
   if (basePath) {
     await loadNodeModulesTypes(monaco, basePath);
   }

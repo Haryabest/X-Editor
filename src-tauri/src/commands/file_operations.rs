@@ -31,3 +31,9 @@ pub fn save_file(path: String, content: String) -> Result<(), String> {
         Err(e) => Err(format!("Ошибка при сохранении файла: {}", e)),
     }
 }
+
+#[command]
+pub fn check_path_exists(path: String) -> Result<bool, String> {
+    let path = Path::new(&path);
+    Ok(path.exists())
+}

@@ -54,12 +54,12 @@
   top: 5px;
   bottom: 5px;
   width: 2px;
-  background-color: #10b981;
+  background-color: #0078d4;
   border-radius: 0 2px 2px 0;
 }
 
 .toolbar-button.active.open::before {
-  background-color: #10b981;
+  background-color: #0078d4;
 }
 
 /* Анимация при нажатии */
