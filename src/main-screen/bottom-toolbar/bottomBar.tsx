@@ -19,7 +19,21 @@ const tooltips = {
 
 type VisibleElementKeys = "encoding" | "position" | "language" | "notifications";
 
-const BottomToolbar: React.FC = () => {
+interface BottomToolbarProps {
+  editorInfo?: {
+    errors: number;
+    warnings: number;
+    language: string;
+    encoding: string;
+    cursorInfo: {
+      line: number;
+      column: number;
+      totalChars: number;
+    };
+  };
+}
+
+const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
   const [visibleTooltip, setVisibleTooltip] = useState<string | null>(null);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -171,14 +185,14 @@ const BottomToolbar: React.FC = () => {
         <div className="left-info">
           {visibleElements.encoding && (
             <div className="status-item">
-              <CircleX width={14} height={14} />
-              <span>0</span>
+              <CircleX width={14} height={14} color={editorInfo?.errors ? "#ff0000" : "#858585"} />
+              <span>{editorInfo?.errors || 0}</span>
             </div>
           )}
           {visibleElements.position && (
             <div className="status-item">
-              <CircleAlert width={14} height={14} />
-              <span>0</span>
+              <CircleAlert width={14} height={14} color={editorInfo?.warnings ? "#FFA500" : "#858585"} />
+              <span>{editorInfo?.warnings || 0}</span>
             </div>
           )}
         </div>
@@ -192,7 +206,7 @@ const BottomToolbar: React.FC = () => {
               onMouseLeave={handleMouseLeave}
               onClick={() => handleButtonClick("encoding")}
             >
-              UTF-8
+              {editorInfo?.encoding || "UTF-8"}
               {visibleTooltip === "encoding" && (
                 <span className="tooltip">{tooltips.encoding}</span>
               )}
@@ -206,7 +220,7 @@ const BottomToolbar: React.FC = () => {
               onMouseLeave={handleMouseLeave}
               onClick={() => handleButtonClick("position")}
             >
-              Строка 1 Столбец 1 Всего 312
+              Строка {editorInfo?.cursorInfo.line || 1} Столбец {editorInfo?.cursorInfo.column || 1} Всего {editorInfo?.cursorInfo.totalChars || 0}
               {visibleTooltip === "position" && (
                 <span className="tooltip">{tooltips.position}</span>
               )}
@@ -220,7 +234,7 @@ const BottomToolbar: React.FC = () => {
               onMouseLeave={handleMouseLeave}
               onClick={() => handleButtonClick("language")}
             >
-              Python
+              {editorInfo?.language || "Plain Text"}
               {visibleTooltip === "language" && (
                 <span className="tooltip">{tooltips.language}</span>
               )}

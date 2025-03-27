@@ -63,8 +63,33 @@
 
 .window-controls {
   display: flex;
-  gap: 10px;
-  -webkit-app-region: no-drag; /* Исключаем кнопки управления */
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.split-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 8px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.split-btn {
+  padding: 4px;
+  color: #858585;
+  transition: color 0.2s;
+}
+
+.split-btn:hover {
+  color: #ffffff;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
 }
 
 .control-btn {
@@ -214,12 +239,14 @@
   color: #aaa;
   border-radius: 40px;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   font-family: "Inter";
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
+  width: 100%;
 }
 
 .search-trigger:hover {
@@ -232,6 +259,12 @@
   top: 50%;
   transform: translateY(-50%);
   color: #aaa;
+}
+
+.search-trigger span {
+  flex: 1;
+  text-align: center;
+  margin-left: -32px; /* Компенсируем отступ иконки */
 }
 
 /* Стили дропдауна поиска */
@@ -289,34 +322,44 @@
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  border-radius: 4px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background-color 0.3s;
+  border-radius: 6px;
+  gap: 8px;
 }
 
 .file-item:hover {
-  background: #373737;
+  background-color: #575757;
 }
 
 .file-icon {
-  margin-right: 12px;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #858585;
+}
+
+.file-icon img {
+  width: 14px;
+  height: 14px;
 }
 
 .file-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .file-name {
-  font-size: 13px;
   color: #fff;
+  font-size: 13px;
 }
 
 .file-path {
-  font-size: 11px;
-  color: #666;
-  margin-top: 2px;
+  color: #858585;
+  font-size: 12px;
 }
 
 /* Кастомный скроллбар */
@@ -352,5 +395,58 @@
     width: 90vw;
     left: 50%;
     transform: translateX(-50%);
+  }
+}
+
+.split-menu-container {
+  position: relative;
+}
+
+.split-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #353535;
+  border: 1px solid #666666;
+  border-radius: 6px;
+  padding: 8px;
+  z-index: 1000;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.split-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.split-dropdown-btn:hover {
+  background: #575757;
+}
+
+.split-dropdown-btn svg {
+  width: 14px;
+  height: 14px;
+  color: #858585;
+}
+
+.split-dropdown-btn span {
+  font-size: 13px;
+  font-family: "Inter";
+}
+
+@media (max-width: 800px) {
+  .split-controls {
+    margin-right: 4px;
+    padding-right: 4px;
   }
 }

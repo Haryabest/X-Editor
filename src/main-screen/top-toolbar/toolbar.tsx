@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Square, X, Minus, MoreHorizontal } from "lucide-react";
+import { 
+  Square, 
+  X, 
+  Minus, 
+  MoreHorizontal,
+  PanelLeft,
+  PanelRight,
+  PanelTop,
+  PanelBottom,
+} from "lucide-react";
 import { MenuItem, FileItem } from './types/types';
 
 import SearchTrigger from './components/SearchTrigger';
@@ -11,6 +20,8 @@ import './style.css';
 interface TopToolbarProps {
   currentFiles: FileItem[];
   setSelectedFile: (path: string | null) => void;
+  selectedFolder?: string | null;
+  onSplitEditor?: (direction: 'right' | 'down' | 'left' | 'up') => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -57,26 +68,18 @@ const menuData: Record<string, MenuItem[]> = {
   ]
 };
 
-const fileList: FileItem[] = [
-  { name: 'style.css', path: 'src/main-screen/top-toolbar', icon: '📄' },
-  { name: 'toolbar.tsx', path: 'src/main-screen/top-toolbar', icon: '📄' },
-  { name: 'file_operations.rs', path: 'src-taur/src/commands', icon: '📄' },
-  { name: 'ModalsPosition.tsx', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
-  { name: 'main.rs', path: 'src-taur/src', icon: '📄' },
-  { name: 'bottomBar.tsx', path: 'src/main-screen/bottom-toolbar', icon: '📄' },
-  { name: 'styleEncoding.css', path: 'src/main-screen/bottom-toolbar/modals', icon: '📄' },
-];
-
-const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }) => {
+const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, selectedFolder, onSplitEditor }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSplitMenu, setShowSplitMenu] = useState(false);
   
   const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const splitMenuRef = useRef<HTMLDivElement>(null);
 
   // Window controls handlers
   const handleMinimize = async () => {
@@ -110,6 +113,9 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowSearchDropdown(false);
       }
+      if (splitMenuRef.current && !splitMenuRef.current.contains(e.target as Node)) {
+        setShowSplitMenu(false);
+      }
     };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
@@ -119,6 +125,23 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }
   const menuKeys = Object.keys(menuData);
   const mainMenuKeys = windowWidth > 1360 ? menuKeys : menuKeys.slice(0, -3);
   const hiddenMenuKeys = windowWidth > 1360 ? [] : menuKeys.slice(-3);
+
+  // Обработчики для кнопок разделения экрана
+  const handleSplitRight = () => {
+    onSplitEditor?.('right');
+  };
+
+  const handleSplitDown = () => {
+    onSplitEditor?.('down');
+  };
+
+  const handleSplitLeft = () => {
+    onSplitEditor?.('left');
+  };
+
+  const handleSplitUp = () => {
+    onSplitEditor?.('up');
+  };
 
   return (
     <div className="top-toolbar" data-tauri-drag-region>
@@ -197,6 +220,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }
               windowWidth < 1200 ? '300px' : '400px'
             }
             onClick={() => setShowSearchDropdown(true)}
+            selectedFolder={selectedFolder}
           />
           
           {showSearchDropdown && (
@@ -214,6 +238,54 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile }
       </div>
 
       <div className="window-controls">
+        <div className="split-controls" ref={splitMenuRef}>
+          {windowWidth > 800 ? (
+            <>
+              <button className="control-btn split-btn" onClick={handleSplitRight} title="Разделить справа">
+                <PanelRight size={14} />
+              </button>
+              <button className="control-btn split-btn" onClick={handleSplitDown} title="Разделить вниз">
+                <PanelBottom size={14} />
+              </button>
+              <button className="control-btn split-btn" onClick={handleSplitLeft} title="Разделить слева">
+                <PanelLeft size={14} className="rotate-180" />
+              </button>
+              <button className="control-btn split-btn" onClick={handleSplitUp} title="Разделить вверх">
+                <PanelTop size={14} className="rotate-180" />
+              </button>
+            </>
+          ) : (
+            <div className="split-menu-container">
+              <button 
+                className="control-btn split-btn" 
+                onClick={() => setShowSplitMenu(!showSplitMenu)}
+                title="Разделить экран"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+              {showSplitMenu && (
+                <div className="split-dropdown-menu">
+                  <button className="split-dropdown-btn" onClick={handleSplitRight}>
+                    <PanelRight size={14} />
+                    <span>Разделить справа</span>
+                  </button>
+                  <button className="split-dropdown-btn" onClick={handleSplitDown}>
+                    <PanelBottom size={14} />
+                    <span>Разделить вниз</span>
+                  </button>
+                  <button className="split-dropdown-btn" onClick={handleSplitLeft}>
+                    <PanelLeft size={14} />
+                    <span>Разделить слева</span>
+                  </button>
+                  <button className="split-dropdown-btn" onClick={handleSplitUp}>
+                    <PanelTop size={14} />
+                    <span>Разделить вверх</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <button className="control-btn" onClick={handleMinimize}>
           <Minus size={14} />
         </button>

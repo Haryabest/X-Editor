@@ -1,55 +1,144 @@
 .center-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    background-color: #2A2A2A; /* Dark background */
-  }
-  
-  .card-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .start-card {
-    background-color: #5E5C5C;
-    color: white;
-    border: none;
-    padding: 20px;
-    margin: 10px;
-    cursor: pointer;
-    position: relative;
-    text-align: left;
-    border-radius: 10px;
-    font-family: "Inter";
-    width: 350px;
-    transition: background-color 0.3s;
-  }
-  
-  .start-card:hover {
-    background-color: #4a4949; /* Darker shade on hover */
-  }
-  
-  .start-card p {
-    margin: 0;
-    font-size: 16px;
-    font-weight: bold;
-  }
-  
-  .hotkey {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #8C8C8C;
-    font-size: 12px;
-    background-color: #282828;
-    padding: 2px 5px;
-    border-radius: 3px;
-  }
-  
-  .start-card:hover .hotkey {
-    display: inline-block; /* Show on hover */
-  }
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1e1e1e;
+  height: 100%;
+}
+
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  background: #1e1e1e;
+  overflow: hidden;
+}
+
+.editor-split.active {
+  z-index: 1;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3d3d3d;
+  height: 30px;
+}
+
+.editor-title {
+  color: #cccccc;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monaco-editor-container {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+.monaco-editor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.terminal-container {
+  position: relative;
+  background: #1e1e1e;
+  height: auto;
+  min-height: 200px;
+  max-height: 500px;
+}
+
+.card-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+}
+
+.start-card {
+  background-color: #5E5C5C;
+  color: white;
+  border: none;
+  padding: 20px;
+  margin: 10px;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+  border-radius: 10px;
+  font-family: "Inter";
+  width: 350px;
+  transition: background-color 0.3s;
+}
+
+.start-card:hover {
+  background-color: #4a4949;
+}
+
+.start-card p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.hotkey {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8C8C8C;
+  font-size: 12px;
+  background-color: #282828;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+.start-card:hover .hotkey {
+  display: inline-block;
+}
+
+.save-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  background: #2d2d2d;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background: #3d3d3d;
+}
   

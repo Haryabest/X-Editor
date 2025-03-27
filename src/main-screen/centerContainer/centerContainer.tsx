@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ReactPlayer from 'react-player';
 import { FileItem } from '../../types';
 import { configureMonaco } from '../../monaco-config';
+import { getLanguageFromExtension } from '../../utils/languageDetector';
+import { fileFilters } from '../../utils/fileFilters';
+import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions } from '../../utils/fileExtensions';
 
 import "./style.css";
 
@@ -12,6 +15,32 @@ declare global {
   interface Window {
     monaco: any;
   }
+}
+
+interface MarkerData {
+  severity: number;
+  message: string;
+  startLineNumber: number;
+  startColumn: number;
+  endLineNumber: number;
+  endColumn: number;
+  source?: string;
+  code?: string;
+}
+
+interface IssueInfo {
+  filePath: string;
+  fileName: string;
+  issues: {
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    line: number;
+    column: number;
+    endLine: number;
+    endColumn: number;
+    source?: string;
+    code?: string;
+  }[];
 }
 
 interface CenterContainerProps {
@@ -22,6 +51,19 @@ interface CenterContainerProps {
   setOpenedFiles: (files: FileItem[] | ((prev: FileItem[]) => FileItem[])) => void;
   handleCreateFile: () => void;
   selectedFolder?: string | null;
+  onEditorInfoChange?: (info: {
+    errors: number;
+    warnings: number;
+    language: string;
+    encoding: string;
+    cursorInfo: {
+      line: number;
+      column: number;
+      totalChars: number;
+    };
+  }) => void;
+  onIssuesChange?: (issues: IssueInfo[]) => void;
+  handleFileSelect?: (filePath: string | null) => void;
 }
 
 const CenterContainer: React.FC<CenterContainerProps> = ({
@@ -31,56 +73,21 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   openedFiles,
   setOpenedFiles,
   handleCreateFile,
-  selectedFolder
+  selectedFolder,
+  onEditorInfoChange,
+  onIssuesChange,
+  handleFileSelect
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('# Start coding here...');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
-
-  const supportedTextExtensions = useMemo(() => [
-    '.txt', '.js', '.ts', '.jsx', '.tsx', '.json', '.html', '.css', '.py', '.java', '.cpp', '.c', '.md', '.dart'
-  ], []);
-
-  const supportedImageExtensions = useMemo(() => ['.png', '.jpg', '.jpeg', '.gif'], []);
-  const supportedVideoExtensions = useMemo(() => ['.mp4', '.avi', '.mov', '.webm', '.mkv'], []);
-
-  const getLanguageFromExtension = useCallback((filePath: string): string => {
-    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
-    switch (ext) {
-      case '.js':
-      case '.jsx':
-        return 'javascript';
-      case '.ts':
-      case '.tsx':
-        return 'typescript';
-      case '.json':
-        return 'json';
-      case '.html':
-        return 'html';
-      case '.css':
-        return 'css';
-      case '.py':
-        return 'python';
-      case '.java':
-        return 'java';
-      case '.cpp':
-      case '.c':
-        return 'cpp';
-      case '.md':
-        return 'markdown';
-      case '.dart':
-        return 'dart';
-      case '.txt':
-      default:
-        return 'plaintext';
-    }
-  }, []);
+  const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [monacoInstance, setMonacoInstance] = useState<any>(null);
 
   useEffect(() => {
     if (window.monaco) {
-      // Используем модульную конфигурацию Monaco с обновленной сигнатурой
       configureMonaco(openedFiles.map(file => ({
         ...file,
         filePath: file.path
@@ -155,10 +162,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     if (selectedFile && selectedFile.startsWith('untitled-')) {
       try {
         const filePath = await save({
-          filters: [
-            { name: 'Python Files', extensions: ['py'] },
-            { name: 'All Files', extensions: ['*'] }
-          ],
+          filters: fileFilters,
           defaultPath: selectedFolder || undefined,
           title: 'Save File As...',
         });
@@ -195,264 +199,174 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     return supportedVideoExtensions.some((ext) => filePath.toLowerCase().endsWith(ext));
   }, [supportedVideoExtensions]);
 
+  // Функция для преобразования маркеров в формат проблем
+  const convertMarkersToIssues = (markers: MarkerData[], filePath: string) => {
+    const fileName = filePath.split(/[\\/]/).pop() || '';
+    return {
+      filePath,
+      fileName,
+      issues: markers.map(marker => ({
+        severity: marker.severity === monacoInstance.MarkerSeverity.Error ? 'error' :
+                 marker.severity === monacoInstance.MarkerSeverity.Warning ? 'warning' : 'info',
+        message: marker.message,
+        line: marker.startLineNumber,
+        column: marker.startColumn,
+        endLine: marker.endLineNumber,
+        endColumn: marker.endColumn,
+        source: marker.source,
+        code: marker.code
+      }))
+    };
+  };
+
+  // Обновляем useEffect для отслеживания маркеров
+  useEffect(() => {
+    if (editorInstance && monacoInstance && (onEditorInfoChange || onIssuesChange)) {
+      // Подписываемся на изменения маркеров (ошибки/предупреждения)
+      const markersListener = monacoInstance.editor.onDidChangeMarkers((_uris: any[]) => {
+        const allIssues: IssueInfo[] = [];
+
+        // Собираем маркеры для всех открытых файлов
+        openedFiles.forEach(file => {
+          const uri = monacoInstance.Uri.parse(`file:///${file.path.replace(/\\/g, '/')}`);
+          const markers = monacoInstance.editor.getModelMarkers({ resource: uri }) as MarkerData[];
+          
+          if (markers.length > 0) {
+            const issues = convertMarkersToIssues(markers, file.path);
+            allIssues.push({
+              ...issues,
+              issues: issues.issues.map(issue => ({
+                ...issue,
+                severity: issue.severity as "error" | "warning" | "info"
+              }))
+            });
+          }
+        });
+
+        // Обновляем информацию о проблемах
+        if (onIssuesChange) {
+          onIssuesChange(allIssues);
+        }
+
+        // Обновляем информацию для текущего файла в нижней панели
+        if (onEditorInfoChange && editorInstance.getModel()) {
+          const currentFileMarkers = monacoInstance.editor.getModelMarkers({
+            resource: editorInstance.getModel().uri
+          }) as MarkerData[];
+
+          const errors = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Error).length;
+          const warnings = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Warning).length;
+          
+          updateEditorInfo({ errors, warnings });
+        }
+      });
+
+      // Подписываемся на изменения позиции курсора
+      const cursorListener = editorInstance.onDidChangeCursorPosition((_e: any) => {
+        const position = editorInstance.getPosition();
+        const model = editorInstance.getModel();
+        const totalChars = model.getValueLength();
+        
+        updateEditorInfo({
+          cursorInfo: {
+            line: position.lineNumber,
+            column: position.column,
+            totalChars
+          }
+        });
+      });
+
+      // Функция для обновления информации
+      const updateEditorInfo = (newInfo: any) => {
+        if (onEditorInfoChange) {
+          onEditorInfoChange({
+            errors: newInfo.errors ?? 0,
+            warnings: newInfo.warnings ?? 0,
+            language: getLanguageFromExtension(selectedFile || ''),
+            encoding: 'UTF-8', // В будущем можно добавить определение кодировки
+            cursorInfo: newInfo.cursorInfo ?? {
+              line: 1,
+              column: 1,
+              totalChars: editorInstance.getModel()?.getValueLength() ?? 0
+            }
+          });
+        }
+      };
+
+      return () => {
+        markersListener?.dispose();
+        cursorListener?.dispose();
+      };
+    }
+  }, [editorInstance, monacoInstance, selectedFile, onEditorInfoChange, onIssuesChange, openedFiles]);
+
+  // Функция для навигации к проблеме
+  const navigateToIssue = useCallback((filePath: string, line: number, column: number) => {
+    // Если файл не открыт, открываем его
+    if (!openedFiles.some(file => file.path === filePath)) {
+      setOpenedFiles(prev => [...prev, { name: filePath.split(/[\\/]/).pop() || '', path: filePath, isFolder: false }]);
+    }
+    
+    // Выбираем файл
+    if (selectedFile !== filePath && handleFileSelect) {
+      handleFileSelect(filePath);
+    }
+    
+    // После небольшой задержки для загрузки файла, переходим к нужной позиции
+    setTimeout(() => {
+      if (editorInstance) {
+        editorInstance.revealLineInCenter(line);
+        editorInstance.setPosition({ lineNumber: line, column: column });
+        editorInstance.focus();
+      }
+    }, 100);
+  }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
+
+  const handleBeforeMount = (monaco: any) => {
+    window.monaco = monaco;
+    configureMonaco(openedFiles.map(file => ({
+      ...file,
+      filePath: file.path
+    })));
+  };
+
   return (
     <div className="center-container" style={style}>
       {isEditorOpen || selectedFile ? (
         <>
           {isEditableFile(selectedFile || '') ? (
-            <>
-              <button onClick={handleSaveFile} className="save-btn">
-                Save
-              </button>
-              <MonacoEditor
-                height="100%"
-                language={getLanguageFromExtension(selectedFile || 'untitled-1')}
-                theme="vs-dark"
-                value={fileContent || code}
-                onChange={(value) => setCode(value ?? '')}
-                options={{
-                  automaticLayout: true,
-                  fontSize: 14,
-                  minimap: { enabled: true },
-                  quickSuggestions: {
-                    comments: true,
-                    strings: true,
-                    other: true
-                  },
-                  suggestOnTriggerCharacters: true,
-                  autoClosingBrackets: 'languageDefined',
-                  autoClosingQuotes: 'languageDefined',
-                  autoIndent: 'full',
-                  formatOnType: true,
-                  formatOnPaste: true,
-                  bracketPairColorization: { enabled: true },
-                  scrollBeyondLastLine: false,
-                  contextmenu: true,
-                  fontFamily: 'Fira Code, Menlo, Monaco, Consolas, Courier New, monospace',
-                  lineNumbers: 'on',
-                  roundedSelection: false,
-                  scrollbar: {
-                    vertical: 'auto',
-                    horizontal: 'auto'
-                  },
-                  suggest: {
-                    preview: true,
-                    showKeywords: true,
-                    showClasses: true,
-                    showFunctions: true,
-                    showVariables: true,
-                    showModules: true,
-                    snippetsPreventQuickSuggestions: false,
-                    localityBonus: true
-                  },
-                  wordBasedSuggestions: 'onlyOtherDocuments',
-                  parameterHints: { enabled: true, cycle: true },
-                  hover: { enabled: true, delay: 300 },
-                  inlineSuggest: { enabled: true },
-                  acceptSuggestionOnCommitCharacter: true,
-                  acceptSuggestionOnEnter: 'on',
-                  tabCompletion: 'on',
-                  snippetSuggestions: 'inline',
-                  semanticHighlighting: { enabled: true }
-                }}
-                beforeMount={(monaco) => {
-                  window.monaco = monaco;
-                  
-                  // Настраиваем Monaco заранее
-                  if (selectedFile) {
-                    try {
-                      // Отключаем ошибки на старте для всех типов файлов
-                      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-                        noSemanticValidation: false,
-                        noSyntaxValidation: false,
-                        noSuggestionDiagnostics: true,
-                        diagnosticCodesToIgnore: [
-                          2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                          2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                          1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-                          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-                        ]
-                      });
-                      
-                      // Для JavaScript тоже отключаем проверки на старте
-                      monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-                        noSemanticValidation: false,
-                        noSyntaxValidation: false,
-                        noSuggestionDiagnostics: true,
-                        diagnosticCodesToIgnore: [
-                          2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                          2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                          1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-                          1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-                        ]
-                      });
-                      
-                      // Проверяем, является ли файл JSX или TSX
-                      if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
-                        // Устанавливаем специфические настройки для JSX/TSX
-                        monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                          jsx: monaco.languages.typescript.JsxEmit.React,
-                          jsxFactory: 'React.createElement',
-                          jsxFragmentFactory: 'React.Fragment',
-                          allowNonTsExtensions: true,
-                          allowJs: true,
-                          target: monaco.languages.typescript.ScriptTarget.ESNext,
-                          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                          esModuleInterop: true
-                        });
-                        
-                        // JavaScript тоже настраиваем для JSX
-                        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-                          jsx: monaco.languages.typescript.JsxEmit.React,
-                          jsxFactory: 'React.createElement',
-                          jsxFragmentFactory: 'React.Fragment',
-                          allowNonTsExtensions: true,
-                          allowJs: true
-                        });
-                        
-                        // Добавляем базовое определение для React.createElement чтобы JSX заработал
-                        monaco.languages.typescript.typescriptDefaults.addExtraLib(
-                          `declare namespace React {
-                            function createElement(type: any, props?: any, ...children: any[]): any;
-                            const Fragment: any;
-                            
-                            interface HTMLAttributes {
-                              className?: string;
-                              onClick?: (event: any) => void;
-                              style?: any;
-                              [key: string]: any;
-                            }
-                            
-                            namespace JSX {
-                              interface Element {}
-                              interface IntrinsicElements {
-                                div: HTMLAttributes;
-                                span: HTMLAttributes;
-                                button: HTMLAttributes;
-                                // и другие элементы
-                                [key: string]: HTMLAttributes;
-                              }
-                            }
-                          }`,
-                          'file:///node_modules/@types/react-core/index.d.ts'
-                        );
-                      }
-                    } catch (error) {
-                      console.error("Error in beforeMount:", error);
-                    }
-                  }
-                }}
-                onMount={(editor, monaco) => {
-                  try {
-                    // Настройка редактора для текущего файла
-                    if (selectedFile) {
-                      const normalizedPath = selectedFile.replace(/\\/g, '/');
-                      const uri = monaco.Uri.parse(`file:///${normalizedPath}`);
-                      
-                      // Проверяем, существует ли уже модель для этого файла
-                      let model = monaco.editor.getModel(uri);
-                      
-                      // Если модель не существует или имеет неправильное содержимое, пересоздаем ее
-                      if (!model || model.getValue() !== (fileContent || code)) {
-                        // Если модель существует, удаляем ее
-                        if (model) {
-                          try {
-                            model.dispose();
-                          } catch (e) {
-                            console.error("Error disposing model:", e);
-                          }
-                        }
-                        
-                        // Определяем язык на основе расширения файла
-                        const language = getLanguageFromExtension(selectedFile);
-                        
-                        // Создаем новую модель с корректным содержимым
-                        model = monaco.editor.createModel(
-                          fileContent || code || "",
-                          language,
-                          uri
-                        );
-                        
-                        // Если это JSX/TSX файл, настраиваем специальные параметры
-                        if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
-                          monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                            ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
-                            jsx: monaco.languages.typescript.JsxEmit.React,
-                            jsxFactory: 'React.createElement',
-                            jsxFragmentFactory: 'React.Fragment',
-                            allowNonTsExtensions: true,
-                            allowJs: true,
-                            target: monaco.languages.typescript.ScriptTarget.ESNext,
-                            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                            esModuleInterop: true
-                          });
-                          
-                          // Дополнительно настраиваем диагностику для JSX/TSX
-                          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-                            noSemanticValidation: false,
-                            noSyntaxValidation: false,
-                            noSuggestionDiagnostics: true,
-                            diagnosticCodesToIgnore: [
-                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-                            ]
-                          });
-                          
-                          // Для JavaScript/JSX также настраиваем
-                          monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-                            ...monaco.languages.typescript.javascriptDefaults.getCompilerOptions(),
-                            jsx: monaco.languages.typescript.JsxEmit.React,
-                            jsxFactory: 'React.createElement',
-                            jsxFragmentFactory: 'React.Fragment',
-                            allowNonTsExtensions: true,
-                            allowJs: true
-                          });
-                          
-                          monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-                            noSemanticValidation: false,
-                            noSyntaxValidation: false,
-                            noSuggestionDiagnostics: true,
-                            diagnosticCodesToIgnore: [
-                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-                            ]
-                          });
-                        }
-                      }
-                      
-                      // Убеждаемся, что модель существует перед использованием
-                      if (model) {
-                        // Устанавливаем модель для редактора
-                        editor.setModel(model);
-                        
-                        // Повторно включаем проверки
-                        setTimeout(() => {
-                          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-                            noSemanticValidation: false,
-                            noSyntaxValidation: false,
-                            noSuggestionDiagnostics: true,
-                            diagnosticCodesToIgnore: [
-                              2669, 1046, 2307, 7031, 1161, 2304, 7026, 2322, 7006,
-                              2740, 2339, 2531, 2786, 2605, 1005, 1003, 17008, 2693, 1109,
-                              1128, 1434, 1136, 1110, 8006, 8010, 2688, 1039, 2792, 1183, 
-                              1254, 2695, 2365, 2714, 2552, 2362, 2503, 2363, 18004
-                            ]
-                          });
-                        }, 500);
-                      } else {
-                        console.error("Failed to create model for", selectedFile);
-                      }
-                    }
-                  } catch (error) {
-                    console.error("Error in onMount:", error);
-                  }
-                }}
-              />
-            </>
+            <div className="editor-container">
+              <div className="monaco-editor-container">
+                <MonacoEditor
+                  height="100%"
+                  width="100%"
+                  language={getLanguageFromExtension(selectedFile || '')}
+                  theme="vs-dark"
+                  value={fileContent || code}
+                  onChange={(value) => setCode(value || '')}
+                  options={{
+                    fontSize: 14,
+                    minimap: { enabled: true },
+                    quickSuggestions: true,
+                    scrollBeyondLastLine: false,
+                    fontFamily: 'Fira Code, Menlo, Monaco, Consolas, monospace',
+                    lineNumbers: 'on',
+                    roundedSelection: false,
+                    selectOnLineNumbers: true,
+                    readOnly: false,
+                    cursorStyle: 'line',
+                    automaticLayout: true,
+                    wordWrap: 'on'
+                  }}
+                  onMount={(editor, monaco) => {
+                    setEditorInstance(editor);
+                    setMonacoInstance(monaco);
+                    editor.focus();
+                  }}
+                  beforeMount={handleBeforeMount}
+                />
+              </div>
+            </div>
           ) : imageSrc !== null && isImageFile(selectedFile || '') ? (
             <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
           ) : videoSrc !== null && isVideoFile(selectedFile || '') ? (

@@ -58,10 +58,18 @@ export const fileIcons: FileIconConfig[] = [
   { name: "XML", ext: ".xml", icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/xml/xml-original.svg" width="14" height="14" /> },
   { name: "Простой текст", ext: ".plaintext", icon: <FileText width={14} height={14} /> },
   { name: "GIF", ext: ".gif", icon: <GifIcon width={14} height={14} /> },
-  { name: "mp4", ext: ".mp4", icon: <FileVideo width={14} height={14} /> },
-  { name: "mp3", ext: ".mp3", icon: <FileAudio width={14} height={14} /> },
-  { name: "AVI", ext: ".avi", icon: <FileVideo width={14} height={14} /> },
   { name: "PNG", ext: ".png", icon: <FileImage width={14} height={14} /> },
+  { name: "JPG", ext: ".jpg", icon: <FileImage width={14} height={14} /> },
+  { name: "JPEG", ext: ".jpeg", icon: <FileImage width={14} height={14} /> },
+  { name: "SVG", ext: ".svg", icon: <FileImage width={14} height={14} /> },
+  { name: "MP4", ext: ".mp4", icon: <FileVideo width={14} height={14} /> },
+  { name: "AVI", ext: ".avi", icon: <FileVideo width={14} height={14} /> },
+  { name: "MOV", ext: ".mov", icon: <FileVideo width={14} height={14} /> },
+  { name: "WEBM", ext: ".webm", icon: <FileVideo width={14} height={14} /> },
+  { name: "MKV", ext: ".mkv", icon: <FileVideo width={14} height={14} /> },
+  { name: "MP3", ext: ".mp3", icon: <FileAudio width={14} height={14} /> },
+  { name: "WAV", ext: ".wav", icon: <FileAudio width={14} height={14} /> },
+  { name: "OGG", ext: ".ogg", icon: <FileAudio width={14} height={14} /> },
   { name: "WORD", ext: ".docx", icon: <FaRegFileWord width={14} height={14} /> },
   { name: "PDF", ext: ".pdf", icon: <FaRegFilePdf width={14} height={14} /> },
   { name: "PowerPoint", ext: ".pptx", icon: <FaRegFilePowerpoint width={14} height={14} /> },
@@ -75,12 +83,28 @@ const iconMap = fileIcons.reduce((acc, curr) => {
 const specialCases: Record<string, JSX.Element> = {
   '.gitignore': fileIcons.find(f => f.ext === '.ignore')?.icon || <File width={14} height={14} />,
   'dockerfile': <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/docker/docker-plain.svg" width={14} height={14} />,
+  'package.json': <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg" width={14} height={14} />,
+  'package-lock.json': <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg" width={14} height={14} />,
+  'tsconfig.json': <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg" width={14} height={14} />,
+  'tsconfig.node.json': <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg" width={14} height={14} />,
+  'vite.config.ts': <img src="https://vitejs.dev/logo.svg" width={14} height={14} />
 };
 
 export const getFileIcon = (fileName: string): JSX.Element => {
-  if (fileName.toLowerCase() in specialCases) return specialCases[fileName.toLowerCase()];
+  // Сначала проверяем специальные случаи по точному имени файла
+  if (fileName.toLowerCase() in specialCases) {
+    return specialCases[fileName.toLowerCase()];
+  }
+  
+  // Затем проверяем расширение
   const extension = fileName.includes('.') ? `.${fileName.split('.').pop()?.toLowerCase()}` : '';
-  return iconMap[extension] || <File width={14} height={14} />;
+  const icon = iconMap[extension];
+  if (icon) {
+    return icon;
+  }
+  
+  // Если ничего не найдено, возвращаем стандартную иконку
+  return <File width={14} height={14} />;
 };
 
 export const FolderIcon = (props: React.SVGAttributes<SVGElement>) => (

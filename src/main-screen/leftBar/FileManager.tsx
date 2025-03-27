@@ -243,14 +243,20 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
   return (
     <div className="file-manager" onClick={() => setContextMenu(null)}>
       <div className="file-manager-header">
-        <h4>File Explorer</h4>
+        <h4 title="Проводник">Проводник</h4>
         <div className="header-buttons">
-          <FilePlus className="file-icons" width={18} height={18} />
-          <FolderPlusIcon className="file-icons" width={20} height={20} />
-          <RefreshCcw className="file-icons" width={18} height={18} />
+          <button className="file-icons" title="Новый файл">
+            <FilePlus width={18} height={18} />
+          </button>
+          <button className="file-icons" title="Новая папка">
+            <FolderPlusIcon width={20} height={20} />
+          </button>
+          <button className="file-icons" title="Обновить">
+            <RefreshCcw width={18} height={18} />
+          </button>
         </div>
       </div>
-      {fileTree.length > 0 ? renderTree(fileTree) : <p>Select a folder</p>}
+      {fileTree.length > 0 ? renderTree(fileTree) : <p>Выберите папку</p>}
       {contextMenu && (
         <>
           {contextMenu.isDirectory ? (

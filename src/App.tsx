@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config';
-import { getLanguageFromExtension } from './monaco-config/language-detector';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
@@ -18,6 +17,23 @@ interface UIFileItem extends FileItem {
   icon?: string;
   type?: string;
   isDirectory?: boolean;
+  content?: string;
+}
+
+// Добавляем интерфейс для проблем
+interface IssueInfo {
+  filePath: string;
+  fileName: string;
+  issues: {
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    line: number;
+    column: number;
+    endLine: number;
+    endColumn: number;
+    source?: string;
+    code?: string;
+  }[];
 }
 
 function App() {
@@ -30,14 +46,24 @@ function App() {
   const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
+  const [editorInfo, setEditorInfo] = useState({
+    errors: 0,
+    warnings: 0,
+    language: 'plaintext',
+    encoding: 'UTF-8',
+    cursorInfo: {
+      line: 1,
+      column: 1,
+      totalChars: 0
+    }
+  });
+  const [issues, setIssues] = useState<IssueInfo[]>([]);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
   const MAX_LEFT_PANEL_WIDTH = 400;
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
-
-  const supportedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.json'];
 
   useEffect(() => {
     if (monaco) {
@@ -142,9 +168,29 @@ function App() {
     setIsLeftPanelVisible(!isLeftPanelVisible);
   };
 
+  const handleIssueClick = (filePath: string, _line: number, _column: number) => {
+    // Открываем файл, если он не открыт
+    if (!openedFiles.some(file => file.path === filePath)) {
+      const fileName = filePath.split(/[\\/]/).pop() || '';
+      setOpenedFiles(prev => [...prev, { name: fileName, path: filePath, isFolder: false }]);
+    }
+    
+    // Выбираем файл и переходим к нужной строке
+    handleSetSelectedFile(filePath);
+    // TODO: Add logic to navigate to specific line
+  };
+
   return (
     <div className="app-container">
-      <TopToolbar currentFiles={currentFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))} setSelectedFile={handleSetSelectedFile} />
+      <TopToolbar 
+        currentFiles={currentFiles.map(file => ({
+          ...file, 
+          icon: file.isFolder ? 'folder' : 'file',
+          isFolder: file.isFolder || false
+        }))} 
+        setSelectedFile={handleSetSelectedFile}
+        selectedFolder={selectedFolder}
+      />
 
       <div className="main-content">
         <LeftToolBar 
@@ -168,29 +214,38 @@ function App() {
         )}
 
         <div className="center-and-terminal">
-          {openedFiles.length > 0 && (
-            <TopbarEditor
-              openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
-              activeFile={selectedFile}
-              setSelectedFile={handleSetSelectedFile}
-              closeFile={handleCloseFile}
-            />
-          )}
           <div className="monaco-editor-container">
-            <CenterContainer 
-              setSelectedFolder={setSelectedFolder} 
-              selectedFile={selectedFile}
-              openedFiles={openedFiles}
-              setOpenedFiles={setOpenedFiles}
-              handleCreateFile={handleCreateFile}
-              selectedFolder={selectedFolder} // Передаём selectedFolder
-            />
+            <div className="editor-container">
+              {openedFiles.length > 0 && (
+                <TopbarEditor
+                  openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
+                  activeFile={selectedFile}
+                  setSelectedFile={handleSetSelectedFile}
+                  closeFile={handleCloseFile}
+                />
+              )}
+              <CenterContainer
+                selectedFile={selectedFile}
+                openedFiles={openedFiles}
+                setOpenedFiles={setOpenedFiles}
+                handleCreateFile={handleCreateFile}
+                setSelectedFolder={setSelectedFolder}
+                selectedFolder={selectedFolder}
+                onEditorInfoChange={setEditorInfo}
+                onIssuesChange={setIssues}
+                handleFileSelect={setSelectedFile}
+              />
+            </div>
           </div>
 
           {isTerminalVisible ? (
             <div className="terminal-container" style={{ height: terminalHeight }}>
               <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
-              <Terminal terminalHeight={terminalHeight} />
+              <Terminal 
+                terminalHeight={terminalHeight} 
+                issues={issues} 
+                onIssueClick={handleIssueClick}
+              />
             </div>
           ) : (
             <button className="restore-button bottom" onClick={handleRestoreTerminal}>
@@ -200,7 +255,7 @@ function App() {
         </div>
       </div>
 
-      <BottomToolbar />
+      <BottomToolbar editorInfo={editorInfo} />
     </div>
   );
 }

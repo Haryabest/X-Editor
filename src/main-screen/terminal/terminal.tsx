@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
+import React, { useState, useEffect, useRef } from 'react';
+import { Terminal as XTerm } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { Unicode11Addon } from "xterm-addon-unicode11";
 import "xterm/css/xterm.css";
@@ -11,23 +11,55 @@ import {
   Eraser,
   RefreshCw,
   Search,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronRight,
+  ChevronDown,
+  File,
+  AlertCircle,
+  AlertTriangle,
+  Info
 } from "lucide-react";
+import { getFileIcon } from "../leftBar/fileIcons";
 import "./style.css";
+
+interface Issue {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  source?: string;
+  code?: string;
+}
+
+interface IssueInfo {
+  filePath: string;
+  fileName: string;
+  issues: Issue[];
+}
 
 interface XTermTerminalProps {
   terminalHeight?: number;
+  issues?: IssueInfo[];
+  onIssueClick?: (filePath: string, line: number, column: number) => void;
 }
 
-const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
+const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssueClick }) => {
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
   const terminalRef = useRef<HTMLDivElement>(null);
-  const terminal = useRef<Terminal | null>(null);
+  const terminal = useRef<XTerm | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
   const [isProcessRunning, setIsProcessRunning] = useState(false);
   const [issueSearch, setIssueSearch] = useState("");
   const [showIssueFilters, setShowIssueFilters] = useState(false);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState({
+    errors: true,
+    warnings: true,
+    info: true
+  });
 
   // Очистка терминала
   const clearTerminal = () => {
@@ -113,7 +145,7 @@ const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
         // Если терминал уже инициализирован, выходим
         if (terminal.current || !terminalRef.current) return;
 
-        const term = new Terminal({
+        const term = new XTerm({
           cursorBlink: true,
           fontSize: 14,
           fontFamily: 'Consolas, "Courier New", monospace',
@@ -234,14 +266,107 @@ const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
     }
   }, [terminalHeight, activeTab]);
 
-  // Обработчик поиска в проблемах
-  const handleIssueSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setIssueSearch(e.target.value);
+  const toggleFileExpand = (filePath: string) => {
+    setExpandedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(filePath)) {
+        newSet.delete(filePath);
+      } else {
+        newSet.add(filePath);
+      }
+      return newSet;
+    });
   };
 
-  // Переключение отображения фильтров
-  const toggleIssueFilters = () => {
-    setShowIssueFilters(!showIssueFilters);
+  // Функция для фильтрации проблем
+  const getFilteredIssues = () => {
+    if (!issues) return [];
+    
+    return issues
+      .map(fileIssue => ({
+        ...fileIssue,
+        issues: fileIssue.issues.filter(issue => {
+          const matchesSearch = issueSearch === "" ||
+            issue.message.toLowerCase().includes(issueSearch.toLowerCase()) ||
+            fileIssue.fileName.toLowerCase().includes(issueSearch.toLowerCase());
+          
+          const matchesFilter = (
+            (issue.severity === 'error' && filters.errors) ||
+            (issue.severity === 'warning' && filters.warnings) ||
+            (issue.severity === 'info' && filters.info)
+          );
+
+          return matchesSearch && matchesFilter;
+        })
+      }))
+      .filter(fileIssue => fileIssue.issues.length > 0);
+  };
+
+  // Функция для получения иконки по типу проблемы
+  const getSeverityIcon = (severity: 'error' | 'warning' | 'info') => {
+    switch (severity) {
+      case 'error':
+        return <AlertCircle size={14} className="severity-icon error" />;
+      case 'warning':
+        return <AlertTriangle size={14} className="severity-icon warning" />;
+      case 'info':
+        return <Info size={14} className="severity-icon info" />;
+    }
+  };
+
+  // Функция для отображения проблем
+  const renderIssues = () => {
+    const filteredIssues = getFilteredIssues();
+    
+    return (
+      <div className="issues-list">
+        {filteredIssues.map(fileIssue => (
+          <div key={fileIssue.filePath} className="file-issues">
+            <div 
+              className="file-header"
+              onClick={() => toggleFileExpand(fileIssue.filePath)}
+            >
+              {expandedFiles.has(fileIssue.filePath) ? 
+                <ChevronDown size={16} /> : 
+                <ChevronRight size={16} />
+              }
+              {getFileIcon(fileIssue.fileName) || <File size={16} />}
+              <span className="file-name">{fileIssue.fileName}</span>
+              <span className="issues-count">
+                {fileIssue.issues.length}
+              </span>
+            </div>
+            
+            {expandedFiles.has(fileIssue.filePath) && (
+              <div className="issue-items">
+                {fileIssue.issues.map((issue, index) => (
+                  <div 
+                    key={index} 
+                    className="issue-item"
+                    onClick={() => onIssueClick?.(fileIssue.filePath, issue.line, issue.column)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {getSeverityIcon(issue.severity)}
+                    <div className="issue-details">
+                      <div className="issue-message">{issue.message}</div>
+                      <div className="issue-location">
+                        Строка {issue.line}, Столбец {issue.column}
+                        {issue.source && <span className="issue-source"> [{issue.source}]</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {filteredIssues.length === 0 && (
+          <div className="no-issues">
+            {issueSearch ? "Нет результатов поиска" : "Проблем не найдено"}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -296,22 +421,15 @@ const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
                   className="issues-search-input" 
                   placeholder="Поиск проблем..." 
                   value={issueSearch}
-                  onChange={handleIssueSearch}
+                  onChange={(e) => setIssueSearch(e.target.value)}
                 />
               </div>
               <button
                 className="action-button"
-                onClick={toggleIssueFilters}
+                onClick={() => setShowIssueFilters(!showIssueFilters)}
                 title="Фильтры проблем"
               >
                 <SlidersHorizontal size={16} />
-              </button>
-              <button
-                className="action-button"
-                onClick={() => console.log("Обновить проблемы")}
-                title="Обновить список проблем"
-              >
-                <RefreshCw size={16} />
               </button>
               <button
                 className="action-button"
@@ -348,28 +466,44 @@ const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
         <div 
           className="issues-tab"
           style={{ 
-            display: activeTab === "issues" ? "flex" : "none"
+            display: activeTab === "issues" ? "flex" : "none",
+            flexDirection: "column"
           }}
         >
           {showIssueFilters && (
             <div className="issues-filters">
               <div className="filter-option">
-                <input type="checkbox" id="errors" />
+                <input 
+                  type="checkbox" 
+                  id="errors" 
+                  checked={filters.errors}
+                  onChange={(e) => setFilters(prev => ({ ...prev, errors: e.target.checked }))}
+                />
                 <label htmlFor="errors">Ошибки</label>
               </div>
               <div className="filter-option">
-                <input type="checkbox" id="warnings" />
+                <input 
+                  type="checkbox" 
+                  id="warnings" 
+                  checked={filters.warnings}
+                  onChange={(e) => setFilters(prev => ({ ...prev, warnings: e.target.checked }))}
+                />
                 <label htmlFor="warnings">Предупреждения</label>
               </div>
               <div className="filter-option">
-                <input type="checkbox" id="info" />
+                <input 
+                  type="checkbox" 
+                  id="info" 
+                  checked={filters.info}
+                  onChange={(e) => setFilters(prev => ({ ...prev, info: e.target.checked }))}
+                />
                 <label htmlFor="info">Информация</label>
               </div>
             </div>
           )}
           
           <div className="issues-content">
-            <p>Здесь будет отображаться список проблем.</p>
+            {renderIssues()}
           </div>
         </div>
       </div>
@@ -382,4 +516,4 @@ const XTermTerminal: React.FC<XTermTerminalProps> = ({ terminalHeight }) => {
   );
 };
 
-export default XTermTerminal;
+export default Terminal;

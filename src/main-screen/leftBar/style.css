@@ -38,6 +38,7 @@
     cursor: pointer;
     padding: 0px 8px;
     margin: 2px 0;
+    min-width: 0; /* Для корректной работы text-overflow */
   }
   
   /* File item */
@@ -46,13 +47,24 @@
     align-items: center;
     padding: 0px 8px;
     margin: 2px 0;
+    gap: 8px;
+    min-width: 0; /* Для корректной работы text-overflow */
   }
   
   /* Icons and chevrons */
   .icon {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    margin-right: 8px;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  
+  .icon img,
+  .icon svg {
+    width: 14px;
+    height: 14px;
   }
   
   .chevron {
@@ -61,6 +73,7 @@
     align-items: center;
     color: #858585;
     margin-right: 4px;
+    flex-shrink: 0;
   }
   
   /* Name text */
@@ -69,6 +82,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding: 2px 0;
+    flex: 1;
+    min-width: 0; /* Для корректной работы text-overflow */
   }
   
   /* Children container */
@@ -76,6 +91,7 @@
     margin-left: 20px;
     border-left: 1px solid #333;
     padding-left: 12px;
+    min-width: 0; /* Для корректной работы text-overflow */
   }
   
   /* Context menu */
@@ -118,18 +134,84 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-
+    padding: 8px 12px;
+    background-color: #252526;
+    border-bottom: 1px solid #333;
+    min-width: 0; /* Для корректной работы text-overflow */
   }
 
-  .header-buttons{
+  .file-manager-header h4 {
+    margin: 0;
+    color: #d4d4d4;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0; /* Для корректной работы text-overflow */
+  }
+
+  .header-buttons {
     display: flex;
     gap: 5px;
+    margin-left: 8px;
+    flex-shrink: 0; /* Предотвращаем сжатие кнопок */
   }
+
   .file-icons {
+    color: #858585;
+    cursor: pointer;
+    transition: color 0.3s, background-color 0.3s;
     padding: 4px;
-    transition: 0.3s;
-    border-radius: 5px;
+    border-radius: 4px;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
+
   .file-icons:hover {
-    background-color: #5a5a5a;
+    color: #fff;
+    background-color: #575757;
   }
+
+  .file-icons svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* Адаптивные стили для разных размеров */
+  @media (max-width: 300px) {
+    .file-manager-header h4 {
+      font-size: 12px;
+    }
+    
+    .header-buttons {
+      gap: 0px;
+    }
+    
+    .file-icons {
+      padding: 2px;
+    }
+  }
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #252525;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
