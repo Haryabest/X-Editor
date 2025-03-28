@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config';
+import { setCurrentProject } from './main-screen/centerContainer/monacoConfig';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
@@ -70,6 +71,12 @@ function App() {
       configureMonaco(openedFiles);
     }
   }, [monaco, openedFiles]);
+
+  useEffect(() => {
+    if (selectedFolder) {
+      setCurrentProject(selectedFolder);
+    }
+  }, [selectedFolder]);
 
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {

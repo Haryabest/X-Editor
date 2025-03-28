@@ -4,7 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ReactPlayer from 'react-player';
 import { FileItem } from '../../types';
-import { configureMonaco } from './monacoConfig';
+import { configureMonaco, setCurrentProject, setOpenedFilesList } from './monacoConfig';
 import { getLanguageFromExtension } from '../../utils/languageDetector';
 import { fileFilters } from '../../utils/fileFilters';
 import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions } from '../../utils/fileExtensions';
@@ -484,6 +484,20 @@ useEffect(() => {
       console.error('Критическая ошибка при инициализации редактора:', mountError);
     }
   };
+
+  useEffect(() => {
+    // Передаем текущую директорию в monacoConfig
+    if (selectedFolder) {
+      setCurrentProject(selectedFolder);
+    }
+  }, [selectedFolder]);
+
+  // Следим за открытыми файлами
+  useEffect(() => {
+    if (openedFiles.length > 0) {
+      setOpenedFilesList(openedFiles);
+    }
+  }, [openedFiles]);
 
   return (
     <div className="center-container" style={style}>

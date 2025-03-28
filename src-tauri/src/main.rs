@@ -20,9 +20,11 @@ fn get_args() -> Vec<String> {
 
 #[tauri::command]
 fn close_current_window() {
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // Увеличиваем задержку до 1 секунды
+    std::thread::sleep(std::time::Duration::from_secs(1));
     std::process::exit(0);
 }
+
 
 #[tauri::command]
 fn create_new_file1(path: String) -> Result<(), String> {
@@ -36,10 +38,18 @@ fn new_folder(path: String) -> Result<(), String> {
     let exe = std::env::current_exe()
         .map_err(|e| e.to_string())?;
     
-    Command::new(exe)
+    // Добавляем флаг для Windows
+    #[cfg(target_os = "windows")]
+    let status = Command::new("cmd")
+        .args(&["/C", "start", "xeditor", "--path", &path])
+        .status()
+        .map_err(|e| e.to_string())?;
+    
+    #[cfg(not(target_os = "windows"))]
+    let status = Command::new(exe)
         .arg("--path")
         .arg(path)
-        .spawn()
+        .status()
         .map_err(|e| e.to_string())?;
     
     Ok(())

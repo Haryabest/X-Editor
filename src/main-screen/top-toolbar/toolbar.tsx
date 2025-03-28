@@ -255,29 +255,29 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
 
   
 
-  const handleOpenFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Выберите рабочую папку',
-      });
-  
-      if (selected) {
-        // Запускаем новый процесс
+// toolbar.tsx
+const handleOpenFolder = async () => {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Выберите рабочую папку',
+    });
+
+    if (selected) {
+      // Сначала закрываем текущее окно
+      await invoke('close_current_window');
+      
+      // Затем запускаем новый процесс с задержкой
+      setTimeout(async () => {
         await invoke('new_folder', { path: selected });
-        
-        // Даем время на запуск нового процесса
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        
-        // Закрываем текущее окно
-        await invoke('close_current_window');
-      }
-    } catch (error) {
-      console.error('Ошибка открытия папки:', error);
-      alert(`Ошибка открытия папки: ${error}`);
+      }, 1500); // Увеличиваем задержку до 1.5 секунд
     }
-  };
+  } catch (error) {
+    console.error('Ошибка открытия папки:', error);
+    alert(`Ошибка открытия папки: ${error}`);
+  }
+};
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
     if (menu === "Файл") {
       switch(option.text) {
