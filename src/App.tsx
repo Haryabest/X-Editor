@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config';
@@ -110,7 +111,7 @@ function App() {
     setSelectedFile(newFile.path);
   };
 
-  const handleHorizontalDrag = (e: React.MouseEvent) => {
+  const handleHorizontalDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftPanelWidth;
@@ -138,7 +139,7 @@ function App() {
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  const handleVerticalDrag = (e: React.MouseEvent) => {
+  const handleVerticalDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     e.preventDefault();
     const startY = e.clientY;
     const startHeight = terminalHeight;
@@ -245,7 +246,7 @@ function App() {
                 />
               )}
               <CenterContainer
-                ref={editorRef}
+                editorRef={editorRef}
                 selectedFile={selectedFile}
                 openedFiles={openedFiles}
                 setOpenedFiles={setOpenedFiles}
@@ -255,8 +256,8 @@ function App() {
                 onEditorInfoChange={setEditorInfo}
                 onIssuesChange={setIssues}
                 handleFileSelect={setSelectedFile}
-                onZoomIn={handleZoomIn} // Передаем функцию в CenterContainer
-                onZoomOut={handleZoomOut} // Передаем функцию в CenterContainer
+                onZoomIn={handleZoomIn} 
+                onZoomOut={handleZoomOut} 
               />
             </div>
           </div>

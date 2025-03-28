@@ -48,6 +48,14 @@ declare namespace monaco {
         Classic: 1
         NodeJs: 2
       }
+      JsxEmit: {
+        None: 0,
+        Preserve: 1,
+        React: 2,
+        ReactNative: 3,
+        ReactJSX: 4,
+        ReactJSXDev: 5
+      }
     }
   }
   export const MarkerSeverity: {
@@ -55,6 +63,27 @@ declare namespace monaco {
     Info: 2
     Warning: 4
     Error: 8
+  }
+  
+  // URI class для работы с URI в Monaco
+  export class Uri {
+    static parse(uri: string): Uri
+    static file(path: string): Uri
+    toString(): string
+    fsPath: string
+    scheme: string
+    authority: string
+    path: string
+    query: string
+    fragment: string
+    with(change: { scheme?: string, authority?: string, path?: string, query?: string, fragment?: string }): Uri
+  }
+  
+  // Для поддержки Emitter
+  export class Emitter<T> {
+    event: Event<T>
+    fire(event: T): void
+    dispose(): void
   }
 }
 

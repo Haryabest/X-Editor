@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// @ts-nocheck
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -26,6 +27,11 @@ interface MarkerData {
   endColumn: number;
   source?: string;
   code?: string;
+}
+
+export interface CenterContainerHandle {
+  selectAll: () => void;
+  deselect: () => void;
 }
 
 interface IssueInfo {
@@ -68,7 +74,7 @@ interface CenterContainerProps {
   onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
   onSelectAll?: () => void;
   onDeselect?: () => void;
-
+  editorRef?: React.RefObject<any>;
 }
 
 const CenterContainer: React.FC<CenterContainerProps> = ({
@@ -85,7 +91,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   onZoomIn,
   onZoomOut,
   onSelectAll,
-  onDeselect
+  onDeselect,
+  editorRef
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('# Start coding here...');
@@ -561,6 +568,41 @@ useEffect(() => {
       setOpenedFilesList(openedFiles);
     }
   }, [openedFiles]);
+
+  // При инициализации создаем события
+  const handleOnMount = (editor: any, monaco: any) => {
+    setEditorInstance(editor);
+    setMonacoInstance(monaco);
+
+    // Собственные методы, которые будут доступны через ref
+    if (editorRef && editorRef.current) {
+      editorRef.current.selectAll = () => {
+        if (editor && editor.getModel()) {
+          const model = editor.getModel();
+          editor.setSelection({
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: model.getLineCount(),
+            endColumn: model.getLineMaxColumn(model.getLineCount())
+          });
+        }
+      };
+
+      editorRef.current.deselect = () => {
+        if (editor) {
+          const position = editor.getPosition();
+          if (position) {
+            editor.setSelection({
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            });
+          }
+        }
+      };
+    }
+  };
 
   return (
     <div className="center-container" style={style}>

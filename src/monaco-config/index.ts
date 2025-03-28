@@ -3,6 +3,7 @@ import { getLanguageFromExtension } from './language-detector';
 import { configureJSXTypes, jsxIntrinsicElementsDefinitions } from './jsx-types';
 import { FileItem } from '../types';
 import { invoke } from '@tauri-apps/api/core';
+import { applyLanguageConfiguration, getFileExtension, isJavaScriptFile, isJSXFile, isScriptFile, isTypeScriptFile } from '../utils/fileExtensions';
 
 // Игнорирование ошибок импорта для интеграционного модуля
 // @ts-ignore
@@ -263,6 +264,75 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
  */
 export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
   try {
+    // Используем явное приведение типа для monaco
+    const monacoInstance: any = monaco;
+    
+    // Настраиваем базовые компиляторы для TypeScript и JavaScript
+    monacoInstance.languages.typescript.typescriptDefaults.setCompilerOptions({
+      target: monacoInstance.languages.typescript.ScriptTarget.ESNext,
+      module: monacoInstance.languages.typescript.ModuleKind.ESNext,
+      moduleResolution: monacoInstance.languages.typescript.ModuleResolutionKind.NodeJs,
+      jsx: monacoInstance.languages.typescript.JsxEmit.React,
+      allowJs: true,
+      checkJs: true,
+      esModuleInterop: true,
+      strict: false,
+      allowSyntheticDefaultImports: true,
+      forceConsistentCasingInFileNames: true,
+      resolveJsonModule: true,
+      isolatedModules: true,
+      noEmit: true,
+      skipLibCheck: true,
+      typeRoots: ['node_modules/@types']
+    });
+
+    monacoInstance.languages.typescript.javascriptDefaults.setCompilerOptions({
+      target: monacoInstance.languages.typescript.ScriptTarget.ESNext,
+      module: monacoInstance.languages.typescript.ModuleKind.ESNext,
+      moduleResolution: monacoInstance.languages.typescript.ModuleResolutionKind.NodeJs,
+      jsx: monacoInstance.languages.typescript.JsxEmit.React,
+      allowJs: true,
+      checkJs: true,
+      esModuleInterop: true,
+      strict: false,
+      allowSyntheticDefaultImports: true,
+      forceConsistentCasingInFileNames: true,
+      resolveJsonModule: true,
+      isolatedModules: true,
+      noEmit: true,
+      skipLibCheck: true,
+      allowNonTsExtensions: true
+    });
+    
+    // Исправляем ошибки типа "import type" и Type annotations в JS файлах
+    monacoInstance.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      diagnosticCodesToIgnore: [
+        // Исправляем ошибки 8006 и 8010 (TypeScript в JS файлах)
+        8006, // 'import type' declarations can only be used in TypeScript files
+        8010, // Type annotations can only be used in TypeScript files
+        // Другие коды ошибок, которые нужно игнорировать
+        2307, // Cannot find module 'X'
+        2304, // Cannot find name 'X'
+        2552, // Cannot find name 'require'
+        2580, // Cannot find name 'module'
+        2692, // Imports are only allowed in TypeScript files
+        7016, // Could not find a declaration file for module 'X'
+        // Другие общие ошибки
+        1005, 1003, 2551, 7006, 7031
+      ]
+    });
+    
+    // Также настраиваем TypeScript для совместимости с файлами JS
+    monacoInstance.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      diagnosticCodesToIgnore: [
+        8006, 8010, 2307, 2304, 2552, 2580, 2692, 7016, 1005, 1003, 2551, 7006, 7031
+      ]
+    });
+    
     // Логгируем информацию о версии
     console.log('Configuring Monaco with TypeScript support');
     
@@ -1378,7 +1448,28 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
       'file:///global-types.d.ts'
     );
 
-    // Добавляем расширенные типы для JSX
+    // Применяем специфичные настройки для каждого открытого файла
+    openedFiles.forEach(file => {
+      try {
+        const filePath = file.path || file.filePath || '';
+        if (!filePath) return;
+        
+        // Применяем конфигурацию языка для файла - это включает настройку компилятора и 
+        // обработку модели, включая игнорирование ошибок TypeScript в JS файлах
+        applyLanguageConfiguration(filePath, monacoInstance);
+        
+        // Определяем тип файла и язык
+        const extension = getFileExtension(filePath);
+        const language = getLanguageFromExtension(extension);
+        
+        // Настраиваем JSX поддержку если нужно
+        if (isJSXFile(filePath)) {
+          configureJSXTypes(monaco);
+        }
+      } catch (err) {
+        console.error(`Error configuring file: ${file.path}`, err);
+      }
+    });
   } catch (error) {
     console.error('Error configuring Monaco:', error);
   }

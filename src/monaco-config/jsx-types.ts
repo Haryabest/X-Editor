@@ -3,7 +3,7 @@ import { Monaco } from '@monaco-editor/react';
 /**
  * Конфигурирует продвинутые типы для JSX/TSX файлов
  */
-export function configureJSXTypes(monaco: Monaco) {
+export function configureJSXTypes(monaco: any) {
   try {
     // Настраиваем специальные параметры для JSX/TSX
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
