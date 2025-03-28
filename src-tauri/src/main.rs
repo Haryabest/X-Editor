@@ -1,7 +1,7 @@
 // main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{command};
+use tauri::{command, Window};
 use std::process::Command;
 
 mod commands;
@@ -17,14 +17,35 @@ use commands::terminal::PtyState;
 fn get_args() -> Vec<String> {
     std::env::args().collect()
 }
-
 #[tauri::command]
-fn close_current_window() {
-    // Увеличиваем задержку до 1 секунды
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    std::process::exit(0);
+fn new_folder(path: String) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(&["/C", "start", "", exe.to_str().unwrap(), "--path", &path, "--no-devtools"])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new(exe)
+            .arg("--path")
+            .arg(path)
+            .arg("--no-devtools")
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
 }
 
+#[tauri::command]
+fn close_current_window(window: Window) {
+    window.close().unwrap();
+}
 
 #[tauri::command]
 fn create_new_file1(path: String) -> Result<(), String> {
@@ -33,27 +54,7 @@ fn create_new_file1(path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn new_folder(path: String) -> Result<(), String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| e.to_string())?;
-    
-    // Добавляем флаг для Windows
-    #[cfg(target_os = "windows")]
-    let status = Command::new("cmd")
-        .args(&["/C", "start", "xeditor", "--path", &path])
-        .status()
-        .map_err(|e| e.to_string())?;
-    
-    #[cfg(not(target_os = "windows"))]
-    let status = Command::new(exe)
-        .arg("--path")
-        .arg(path)
-        .status()
-        .map_err(|e| e.to_string())?;
-    
-    Ok(())
-}
+
 
 #[tauri::command]
 fn spawn_new_process(path: String) -> Result<(), String> {
@@ -103,17 +104,15 @@ fn main() {
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();
-            if let Some(path) = args.iter().skip(1).find(|arg| !arg.starts_with('-')) {
-                println!("Opening folder: {}", path);
-            }
             
+            // Открываем devtools только если нет флага --no-devtools
             #[cfg(debug_assertions)]
-            {
+            if !args.contains(&"--no-devtools".to_string()) {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             
-            Ok::<(), Box<dyn std::error::Error>>(())
+            Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

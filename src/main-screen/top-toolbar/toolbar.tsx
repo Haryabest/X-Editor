@@ -18,6 +18,8 @@ import Settings from '../lefttoolbar/settings/Settings';
 import './style.css';
 
 interface TopToolbarProps {
+  onSelectAll?: () => void;
+  onDeselect?: () => void;
   currentFiles: FileItem[];
   setSelectedFile: (path: string | null) => void;
   selectedFolder?: string | null;
@@ -35,7 +37,6 @@ const menuData: Record<string, MenuItem[]> = {
   "Файл": [
     { text: "Новый файл", shortcut: "Ctrl + N" },
     { text: "Открыть папку", shortcut: "Ctrl + O" },
-    { text: "Открыть файл", shortcut: "Ctrl + O" },
     { text: "Сохранить", shortcut: "Ctrl + S" },
     { text: "Сохранить как", shortcut: "Ctrl + SHIFT + S" },
     { text: "Сохранить все", shortcut: "Ctrl + S" },
@@ -73,8 +74,7 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "О программе", shortcut: "Alt + I" },
   ]
 };
-
-const TopToolbar: React.FC<TopToolbarProps> = ({ 
+const TopToolbar = ({ 
   currentFiles, 
   setSelectedFile, 
   selectedFolder,
@@ -85,7 +85,9 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onZoomIn, 
   onZoomOut,
   onCreateNewFile,
-  onFileSaved 
+  onFileSaved ,
+  onSelectAll,
+  onDeselect
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -255,29 +257,25 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
 
   
 
-// toolbar.tsx
-const handleOpenFolder = async () => {
-  try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: 'Выберите рабочую папку',
-    });
-
-    if (selected) {
-      // Сначала закрываем текущее окно
-      await invoke('close_current_window');
-      
-      // Затем запускаем новый процесс с задержкой
-      setTimeout(async () => {
+  const handleOpenFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Выберите рабочую папку',
+      });
+  
+      if (selected) {
+        // Добавляем небольшую задержку перед закрытием
+        await new Promise(resolve => setTimeout(resolve, 300));
         await invoke('new_folder', { path: selected });
-      }, 1500); // Увеличиваем задержку до 1.5 секунд
+        await invoke('close_current_window');
+      }
+    } catch (error) {
+      console.error('Ошибка открытия папки:', error);
+      alert(`Ошибка открытия папки: ${error}`);
     }
-  } catch (error) {
-    console.error('Ошибка открытия папки:', error);
-    alert(`Ошибка открытия папки: ${error}`);
-  }
-};
+  };
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
     if (menu === "Файл") {
       switch(option.text) {
@@ -316,6 +314,15 @@ const handleOpenFolder = async () => {
           break;
       }
     }
+    else if (menu === "Выделение") {
+      switch(option.text) {
+        case "Выбрать всё":
+          onSelectAll?.();
+          break;
+        case "Отменить выбор":
+          onDeselect?.();
+          break;
+      }
     setActiveMenu(null);
   };
 
@@ -491,5 +498,5 @@ const handleOpenFolder = async () => {
     </div>
   );
 };
-
+}
 export default TopToolbar;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config';
 import { setCurrentProject } from './main-screen/centerContainer/monacoConfig';
@@ -46,7 +46,8 @@ function App() {
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
   const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
-  
+  const editorRef = useRef<{ selectAll: () => void; deselect: () => void }>(null);
+
   const [editorInfo, setEditorInfo] = useState({
     errors: 0,
     warnings: 0,
@@ -206,6 +207,8 @@ function App() {
         selectedFolder={selectedFolder}
         onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
         onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
+        onSelectAll={() => editorRef.current?.selectAll()}
+        onDeselect={() => editorRef.current?.deselect()}
       />
 
       <div className="main-content">
@@ -242,6 +245,7 @@ function App() {
                 />
               )}
               <CenterContainer
+                ref={editorRef}
                 selectedFile={selectedFile}
                 openedFiles={openedFiles}
                 setOpenedFiles={setOpenedFiles}

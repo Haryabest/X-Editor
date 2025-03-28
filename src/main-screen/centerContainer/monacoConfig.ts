@@ -53,13 +53,21 @@ function fileExists(path: string): boolean {
     }
 
     // In browser environment we need to use available API
-    if (typeof window !== 'undefined' && window.__TAURI__) {
-      // In real code this would be an async check via Tauri API
-      // For simplicity we make it synchronous
-      return true;
+    if (typeof window !== 'undefined' && window.__TAURI__?.fs?.exists) {
+      try {
+        // Use Tauri's synchronous file existence check
+        // @ts-ignore - This is available in Tauri
+        const exists = window.__TAURI__.fs.existsSync(path);
+        console.log(`File existence check for ${path}: ${exists}`);
+        return exists;
+      } catch (e) {
+        console.log(`Error checking file with Tauri: ${e}`);
+        // Fall back to assuming it exists
+        return true;
+      }
     } else {
-      // For testing we assume file exists
-      console.log('Assuming file exists (test mode):', path);
+      // For testing we log and assume file exists
+      console.log('File existence check (test mode):', path);
       return true;
     }
   } catch (error) {
@@ -77,13 +85,21 @@ function directoryExists(path: string): boolean {
     }
 
     // In browser environment we need to use available API
-    if (typeof window !== 'undefined' && window.__TAURI__) {
-      // In real code this would be an async check via Tauri API
-      // For simplicity we make it synchronous
-      return true;
+    if (typeof window !== 'undefined' && window.__TAURI__?.fs?.exists) {
+      try {
+        // Use Tauri's synchronous directory existence check
+        // @ts-ignore - This is available in Tauri
+        const exists = window.__TAURI__.fs.existsSync(path);
+        console.log(`Directory existence check for ${path}: ${exists}`);
+        return exists;
+      } catch (e) {
+        console.log(`Error checking directory with Tauri: ${e}`);
+        // Fall back to assuming it exists
+        return true;
+      }
     } else {
-      // For testing we assume directory exists
-      console.log('Assuming directory exists (test mode):', path);
+      // For testing we log and assume directory exists
+      console.log('Directory existence check (test mode):', path);
       return true;
     }
   } catch (error) {
@@ -93,19 +109,19 @@ function directoryExists(path: string): boolean {
 }
 
 // Function to check file with different extensions
-function findFileWithExtensions(basePath: string, extensions: string[]): string {
+function findFileWithExtensions(basePath: string, extensions: string[]): { path: string, exists: boolean } {
   // Check for inmemory paths
   if (basePath.includes('inmemory:') || basePath.includes('model')) {
-    return basePath;
+    return { path: basePath, exists: true };
   }
 
   for (const ext of extensions) {
     const testPath = `${basePath}${ext}`;
     if (fileExists(testPath)) {
-      return testPath;
+      return { path: testPath, exists: true };
     }
   }
-  return basePath; // Return original path if file not found
+  return { path: basePath, exists: false }; // Return original path if file not found
 }
 
 // Get base project path based on current environment
@@ -345,10 +361,317 @@ export const configureMonaco = (monaco: any) => {
                 const uriString = model.uri ? model.uri.toString() : '';
                 if (!uriString) return null;
 
-                // Try to get absolute path for import
                 const projectRoot = currentProjectRoot || getBaseProjectPath();
-
-                // Create simple hover with path information
+                let fullPath = '';
+                let displayPath = '';
+                let wasFound = false;
+                let allCheckedPaths: { path: string, exists: boolean }[] = [];
+                
+                // Extensions to try when looking for files
+                const extensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.css', '.scss', '.less'];
+                
+                // List of known NPM packages that should be treated as node_modules packages
+                const knownNpmPackages = [
+                  'react', 'react-dom', 'react-router', 'react-router-dom',
+                  'axios', 'lodash', 'moment', 'redux', 'react-redux',
+                  'express', 'vue', 'angular', 'svelte', 'jquery',
+                  'typescript', 'babel', 'webpack', 'eslint', 'jest',
+                  'next', 'vite', 'tailwindcss', 'styled-components'
+                ];
+                
+                // Check if this is a known npm package
+                const isKnownNpmPackage = knownNpmPackages.some(pkg => {
+                  // Check exact match or scoped package (e.g., @types/react)
+                  if (importPath === pkg || importPath.startsWith(`${pkg}/`)) {
+                    return true;
+                  }
+                  // Check for scoped packages
+                  if (importPath.startsWith('@')) {
+                    const scopedParts = importPath.split('/');
+                    if (scopedParts.length >= 2) {
+                      return importPath === `@${scopedParts[0]}/${pkg}` || 
+                             importPath.startsWith(`@${scopedParts[0]}/${pkg}/`);
+                    }
+                  }
+                  return false;
+                });
+                
+                try {
+                  // Special handling for known npm packages
+                  if (isKnownNpmPackage && !importPath.startsWith('.')) {
+                    const nmPath = `${projectRoot}/node_modules/${importPath}`;
+                    fullPath = nmPath;
+                    
+                    // For known packages, we'll show it as found and in node_modules
+                    wasFound = true;
+                    allCheckedPaths.push({ path: nmPath, exists: true });
+                  }
+                  // Handle in-memory models
+                  else if (uriString.includes('inmemory:') || uriString.includes('model')) {
+                    // For in-memory models, construct path based on project root and importPath
+                    const cleanImportPath = importPath.startsWith('./') ? importPath.substring(2) : importPath;
+                    
+                    // Try multiple potential locations for the import, prioritizing node_modules for non-relative paths
+                    const potentialLocations = !importPath.startsWith('.') 
+                      ? [
+                          `${projectRoot}/node_modules/${cleanImportPath}`,
+                          `${projectRoot}/src/${cleanImportPath}`,
+                          `${projectRoot}/${cleanImportPath}`
+                        ]
+                      : [
+                          `${projectRoot}/src/${cleanImportPath}`,
+                          `${projectRoot}/${cleanImportPath}`,
+                          `${projectRoot}/node_modules/${cleanImportPath}`
+                        ];
+                    
+                    for (const location of potentialLocations) {
+                      // Try with extensions if needed
+                      const needsExtension = !extensions.some(ext => cleanImportPath.endsWith(ext));
+                      
+                      if (needsExtension) {
+                        for (const ext of extensions) {
+                          const testPath = `${location}${ext}`;
+                          const windowsPath = testPath.replace(/\//g, '\\');
+                          const exists = fileExists(windowsPath);
+                          allCheckedPaths.push({ path: testPath, exists });
+                          
+                          if (exists) {
+                            fullPath = testPath;
+                            wasFound = true;
+                            break;
+                          }
+                        }
+                      } else {
+                        const windowsPath = location.replace(/\//g, '\\');
+                        const exists = fileExists(windowsPath);
+                        allCheckedPaths.push({ path: location, exists });
+                        
+                        if (exists) {
+                          fullPath = location;
+                          wasFound = true;
+                        }
+                      }
+                      
+                      if (wasFound) break;
+                    }
+                    
+                    // If not found, use best guess
+                    if (!wasFound) {
+                      fullPath = !importPath.startsWith('.') 
+                        ? `${projectRoot}/node_modules/${cleanImportPath}`
+                        : `${projectRoot}/src/${cleanImportPath}`;
+                    }
+                  } else {
+                    // Special handling for built-in npm packages when not in-memory
+                    if (isKnownNpmPackage && !importPath.startsWith('.')) {
+                      const nmPath = `${projectRoot}/node_modules/${importPath}`;
+                      fullPath = nmPath;
+                      wasFound = true;
+                      allCheckedPaths.push({ path: nmPath, exists: true });
+                    }
+                    // Get the directory of the current file for relative paths
+                    else if (importPath.startsWith('./') || importPath.startsWith('../')) {
+                      const modelPath = uriString.replace('file:///', '');
+                      const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'));
+                      
+                      // Handle relative paths
+                      let basePath = '';
+                      
+                      if (importPath.startsWith('./')) {
+                        basePath = `${modelDir}/${importPath.substring(2)}`;
+                      } else {
+                        // Count how many levels to go up
+                        let upCount = 0;
+                        let tempPath = importPath;
+                        
+                        while (tempPath.startsWith('../')) {
+                          upCount++;
+                          tempPath = tempPath.substring(3);
+                        }
+                        
+                        // Go up that many directories
+                        let tempDir = modelDir;
+                        for (let i = 0; i < upCount; i++) {
+                          tempDir = tempDir.substring(0, tempDir.lastIndexOf('/'));
+                        }
+                        
+                        basePath = `${tempDir}/${tempPath}`;
+                      }
+                      
+                      // Try with extensions if needed
+                      const needsExtension = !extensions.some(ext => importPath.endsWith(ext));
+                      
+                      if (needsExtension) {
+                        for (const ext of extensions) {
+                          const testPath = `${basePath}${ext}`;
+                          const windowsPath = testPath.replace(/\//g, '\\');
+                          const exists = fileExists(windowsPath);
+                          allCheckedPaths.push({ path: testPath, exists });
+                          
+                          if (exists) {
+                            fullPath = testPath;
+                            wasFound = true;
+                            break;
+                          }
+                        }
+                      } else {
+                        const windowsPath = basePath.replace(/\//g, '\\');
+                        const exists = fileExists(windowsPath);
+                        allCheckedPaths.push({ path: basePath, exists });
+                        
+                        fullPath = basePath;
+                        wasFound = exists;
+                      }
+                    } else if (importPath.startsWith('@')) {
+                      // Handle aliased imports using common conventions
+                      // Try to resolve from project root and node_modules
+                      const aliasHandlers = [
+                        // @/path -> src/path
+                        { prefix: '@/', replacement: `${projectRoot}/src/` },
+                        // @components/path -> src/components/path
+                        { prefix: '@components/', replacement: `${projectRoot}/src/components/` },
+                        // @utils/path -> src/utils/path
+                        { prefix: '@utils/', replacement: `${projectRoot}/src/utils/` },
+                        // @assets/path -> src/assets/path
+                        { prefix: '@assets/', replacement: `${projectRoot}/src/assets/` }
+                      ];
+                      
+                      let foundAlias = false;
+                      
+                      // Try to resolve alias
+                      for (const handler of aliasHandlers) {
+                        if (importPath.startsWith(handler.prefix)) {
+                          const aliasPath = importPath.replace(handler.prefix, handler.replacement);
+                          
+                          // Try with extensions if needed
+                          const needsExtension = !extensions.some(ext => importPath.endsWith(ext));
+                          
+                          if (needsExtension) {
+                            for (const ext of extensions) {
+                              const testPath = `${aliasPath}${ext}`;
+                              const windowsPath = testPath.replace(/\//g, '\\');
+                              const exists = fileExists(windowsPath);
+                              allCheckedPaths.push({ path: testPath, exists });
+                              
+                              if (exists) {
+                                fullPath = testPath;
+                                wasFound = true;
+                                foundAlias = true;
+                                break;
+                              }
+                            }
+                          } else {
+                            const windowsPath = aliasPath.replace(/\//g, '\\');
+                            const exists = fileExists(windowsPath);
+                            allCheckedPaths.push({ path: aliasPath, exists });
+                            
+                            fullPath = aliasPath;
+                            wasFound = exists;
+                            foundAlias = exists;
+                          }
+                          
+                          if (foundAlias) break;
+                        }
+                      }
+                      
+                      // If alias not resolved, try node_modules
+                      if (!foundAlias) {
+                        const nmPath = `${projectRoot}/node_modules/${importPath}`;
+                        const windowsPath = nmPath.replace(/\//g, '\\');
+                        const exists = fileExists(windowsPath);
+                        allCheckedPaths.push({ path: nmPath, exists });
+                        
+                        fullPath = nmPath;
+                        wasFound = exists;
+                      }
+                    } else {
+                      // Non-relative, non-alias imports should typically be in node_modules
+                      const nmPath = `${projectRoot}/node_modules/${importPath}`;
+                      const windowsPath = nmPath.replace(/\//g, '\\');
+                      const exists = fileExists(windowsPath);
+                      allCheckedPaths.push({ path: nmPath, exists });
+                      
+                      if (exists) {
+                        fullPath = nmPath;
+                        wasFound = true;
+                      } else {
+                        // Try common locations as fallback
+                        const potentialLocations = [
+                          `${projectRoot}/src/${importPath}`,
+                          `${projectRoot}/${importPath}`
+                        ];
+                        
+                        for (const location of potentialLocations) {
+                          // Try with extensions if needed
+                          const needsExtension = !extensions.some(ext => importPath.endsWith(ext));
+                          
+                          if (needsExtension) {
+                            for (const ext of extensions) {
+                              const testPath = `${location}${ext}`;
+                              const windowsPath = testPath.replace(/\//g, '\\');
+                              const exists = fileExists(windowsPath);
+                              allCheckedPaths.push({ path: testPath, exists });
+                              
+                              if (exists) {
+                                fullPath = testPath;
+                                wasFound = true;
+                                break;
+                              }
+                            }
+                          } else {
+                            const windowsPath = location.replace(/\//g, '\\');
+                            const exists = fileExists(windowsPath);
+                            allCheckedPaths.push({ path: location, exists });
+                            
+                            if (exists) {
+                              fullPath = location;
+                              wasFound = true;
+                            }
+                          }
+                          
+                          if (wasFound) break;
+                        }
+                        
+                        // If not found, use node_modules as best guess
+                        if (!wasFound) {
+                          fullPath = nmPath;
+                        }
+                      }
+                    }
+                  }
+                } catch (pathError) {
+                  console.error('Error resolving path:', pathError);
+                  fullPath = `${projectRoot}/${importPath}`;
+                }
+                
+                // Ensure path uses forward slashes for display
+                fullPath = fullPath.replace(/\\/g, '/');
+                
+                // Format display path based on existence
+                if (wasFound) {
+                  displayPath = `✅ module "${fullPath}"`;
+                } else {
+                  displayPath = `❌ module "${fullPath}" (Not Found)`;
+                }
+                
+                // Create hover with detailed path information
+                const hoverContents = [
+                  { value: wasFound ? '**Import Module (Found)** ✅' : '**Import Module (Not Found)** ❌' },
+                  { value: `Original Path: \`${importPath}\`` },
+                  { value: `Full Path: \`${fullPath}\`` },
+                  { value: `Project Root: \`${projectRoot}\`` }
+                ];
+                
+                // Add checked paths if not too many
+                if (allCheckedPaths.length > 0 && allCheckedPaths.length <= 5) {
+                  hoverContents.push({ value: '**Checked Paths:**' });
+                  for (const {path, exists} of allCheckedPaths) {
+                    hoverContents.push({ value: `- ${exists ? '✅' : '❌'} \`${path}\`` });
+                  }
+                } else if (allCheckedPaths.length > 5) {
+                  hoverContents.push({ value: `**Checked ${allCheckedPaths.length} paths**` });
+                }
+                
                 return {
                   range: new monaco.Range(
                     position.lineNumber,
@@ -356,11 +679,7 @@ export const configureMonaco = (monaco: any) => {
                     position.lineNumber,
                     pathEnd + 1
                   ),
-                  contents: [
-                    { value: '**Import Module**' },
-                    { value: `Path: \`${importPath}\`` },
-                    { value: `Project Root: \`${projectRoot}\`` }
-                  ]
+                  contents: hoverContents
                 };
               }
             }

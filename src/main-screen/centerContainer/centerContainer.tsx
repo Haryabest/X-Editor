@@ -66,6 +66,9 @@ interface CenterContainerProps {
   handleFileSelect?: (filePath: string | null) => void;
   onZoomIn?: () => void; // Добавляем проп для увеличения масштаба
   onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
+  onSelectAll?: () => void;
+  onDeselect?: () => void;
+
 }
 
 const CenterContainer: React.FC<CenterContainerProps> = ({
@@ -81,6 +84,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   handleFileSelect,
   onZoomIn,
   onZoomOut,
+  onSelectAll,
+  onDeselect
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('# Start coding here...');
@@ -106,6 +111,64 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     }
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault();
+        if (editorInstance) {
+          const model = editorInstance.getModel();
+          if (model) {
+            const fullRange = model.getFullModelRange();
+            editorInstance.setSelection(fullRange);
+            editorInstance.focus();
+          }
+        }
+      } else if (e.key === 'Escape') {
+        if (editorInstance) {
+          editorInstance.setSelection({
+            startLineNumber: 0,
+            startColumn: 0,
+            endLineNumber: 0,
+            endColumn: 0
+          });
+          editorInstance.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editorInstance]);
+
+  useEffect(() => {
+    if (onSelectAll) {
+      onSelectAll(() => {
+        if (editorInstance) {
+          const model = editorInstance.getModel();
+          if (model) {
+            const fullRange = model.getFullModelRange();
+            editorInstance.setSelection(fullRange);
+            editorInstance.focus();
+          }
+        }
+      });
+    }
+
+    if (onDeselect) {
+      onDeselect(() => {
+        if (editorInstance) {
+          editorInstance.setSelection({
+            startLineNumber: 0,
+            startColumn: 0,
+            endLineNumber: 0,
+            endColumn: 0
+          });
+          editorInstance.focus();
+        }
+      });
+    }
+  }, [editorInstance, onSelectAll, onDeselect]);
 
   // Оставляем предыдущий useEffect для обновления при изменении параметров
   useEffect(() => {
