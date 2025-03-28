@@ -90,6 +90,24 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const [monacoInstance, setMonacoInstance] = useState<any>(null);
   const [fontSize, setFontSize] = useState(14); // Состояние для размера шрифта
+  
+  // Конфигурируем Monaco сразу при загрузке компонента
+  useEffect(() => {
+    console.log("Конфигурирую Monaco при монтировании компонента");
+    // Если Monaco уже загружен через window
+    if (window.monaco) {
+      try {
+        console.log("Monaco доступен через window.monaco");
+        const configuredMonaco = configureMonaco(window.monaco);
+        setMonacoInstance(configuredMonaco);
+        console.log("Monaco успешно сконфигурирован");
+      } catch (error) {
+        console.error('Ошибка при конфигурации Monaco через window:', error);
+      }
+    }
+  }, []);
+
+  // Оставляем предыдущий useEffect для обновления при изменении параметров
   useEffect(() => {
     if (window.monaco) {
       try {
@@ -355,23 +373,20 @@ useEffect(() => {
   }
 }, [fontSize, editorInstance]);
   const handleEditorDidMount = (editor: any, monaco: any) => {
+    console.log("Editor mounted, configuring Monaco...");
     try {
-      // Сохраняем экземпляры редактора и Monaco для дальнейшего использования
+      // Сохраняем экземпляр редактора
       setEditorInstance(editor);
-      setMonacoInstance(monaco);
+      
+      // Сохраняем ссылку на Monaco
       window.monaco = monaco;
+      setMonacoInstance(monaco);
       
-      // Применяем расширенные настройки Monaco
-      try {
-        const configuredMonaco = configureMonaco(monaco);
-      } catch (configError) {
-        console.error('Ошибка при конфигурации Monaco в handleEditorDidMount:', configError);
-      }
+      // Применяем конфигурацию Monaco
+      configureMonaco(monaco);
+      console.log("Monaco configured successfully in handleEditorDidMount");
       
-      // Фокусируем редактор
-      editor.focus();
-      
-      // Настраиваем поведение редактора
+      // Добавляем обработчик изменения позиции курсора
       editor.onDidChangeCursorPosition((e: any) => {
         try {
           // Обновляем информацию о позиции курсора

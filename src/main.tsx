@@ -5,7 +5,19 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './App.css';
+import { setupModulePaths } from './monaco-config';
 
+// Инициализируем Tauri интеграцию для модулей после загрузки
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    // Запускаем интеграцию с Tauri для путей модулей
+    const result = await setupModulePaths();
+    console.log('Интеграция модульных путей с Tauri:', result ? 'успешно' : 'не удалось');
+  } catch (error) {
+    console.error('Ошибка при инициализации интеграции с Tauri:', error);
+  }
+});
 
 // Определяем, нужно ли запустить тесты Monaco
 const urlParams = new URLSearchParams(window.location.search);
@@ -47,9 +59,14 @@ if (isTestMode) {
     });
 } else {
   // Обычный запуск приложения
-  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+  const rootElement = document.getElementById('root') as Element;
+  if (rootElement) {
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+  } else {
+    console.error('Корневой элемент #root не найден');
+  }
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { save , open } from '@tauri-apps/plugin-dialog';
 import { 
   Square, 
   X, 
@@ -11,20 +12,23 @@ import {
   PanelBottom,
 } from "lucide-react";
 import { MenuItem, FileItem } from './types/types';
-
 import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
-import Settings from '../lefttoolbar/settings/Settings'; // Убедитесь, что путь правильный
-
+import Settings from '../lefttoolbar/settings/Settings';
 import './style.css';
 
 interface TopToolbarProps {
   currentFiles: FileItem[];
   setSelectedFile: (path: string | null) => void;
   selectedFolder?: string | null;
+  lastOpenedFolder?: string;
+  selectedFile?: string | null;
+  currentContent?: string;
   onSplitEditor?: (direction: 'right' | 'down' | 'left' | 'up') => void;
-  onZoomIn?: () => void; // Добавляем проп для увеличения масштаба
-  onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onCreateNewFile?: (path: string) => void;
+  onFileSaved?: (path: string) => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -73,10 +77,15 @@ const menuData: Record<string, MenuItem[]> = {
 const TopToolbar: React.FC<TopToolbarProps> = ({ 
   currentFiles, 
   setSelectedFile, 
-  selectedFolder, 
+  selectedFolder,
+  lastOpenedFolder,
+  selectedFile,
+  currentContent,
   onSplitEditor, 
   onZoomIn, 
-  onZoomOut 
+  onZoomOut,
+  onCreateNewFile,
+  onFileSaved 
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -102,6 +111,67 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
 
   const handleClose = async () => {
     try { await invoke('close_window'); } catch (error) { console.error('Close error:', error); }
+  };
+
+  const handleSaveFile = async (saveAs: boolean = false) => {
+    try {
+      let targetPath: string | null = null;
+      
+      if (!saveAs && selectedFile) {
+        targetPath = selectedFile;
+      } else {
+        const result = await save({
+          title: 'Сохранить файл',
+          defaultPath: selectedFile || lastOpenedFolder || undefined,
+          filters: [{ name: 'Text Files', extensions: ['txt', 'js', 'ts', 'html', 'css'] }]
+        });
+        targetPath = result;
+      }
+
+      if (targetPath && currentContent !== undefined) {
+        await invoke('save_file', {
+          path: targetPath,
+          content: currentContent
+        });
+        
+        onFileSaved?.(targetPath);
+        alert(`Файл сохранён: ${targetPath}`);
+      }
+    } catch (error) {
+      console.error('Ошибка сохранения:', error);
+      alert(`Ошибка сохранения: ${error}`);
+    }
+  };
+
+  const handleCreateNewFile = async () => {
+    try {
+      const filePath = await save({
+        title: 'Создать новый файл',
+        defaultPath: lastOpenedFolder || undefined,
+        filters: [
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+
+      if (filePath) {
+        // Создаем пустой файл
+        await invoke('create_new_file1', { path: filePath });
+        
+        // Обновляем состояние
+        onCreateNewFile?.(filePath);
+        setSelectedFile(filePath);        
+      }
+    } catch (error) {
+      console.error('Ошибка создания файла:', error);
+      alert(`Ошибка создания файла: ${error}`);
+    }
+  };
+  const handleOpenNewWindow = async () => {
+    try {
+      await invoke('spawn_new_process');
+    } catch (error) {
+      console.error("Error opening new window:", error);
+    }
   };
 
   useEffect(() => {
@@ -147,11 +217,17 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
       if (e.ctrlKey && e.key === 'q') {
         e.preventDefault();
         handleClose();
+      } else if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        handleCreateNewFile();
+      } else if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        handleSaveFile(e.shiftKey);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [currentContent, selectedFile]);
 
   const menuKeys = Object.keys(menuData);
   const mainMenuKeys = windowWidth > 1360 ? menuKeys : menuKeys.slice(0, -3);
@@ -177,31 +253,68 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
     setActiveMenu(null);
   };
 
-  const handleOpenNewWindow = async () => {
+  
+
+  const handleOpenFolder = async () => {
     try {
-      await invoke('spawn_new_process');
-      console.log("New window opened via Rust");
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Выберите рабочую папку',
+      });
+  
+      if (selected) {
+        // Запускаем новый процесс
+        await invoke('new_folder', { path: selected });
+        
+        // Даем время на запуск нового процесса
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        // Закрываем текущее окно
+        await invoke('close_current_window');
+      }
     } catch (error) {
-      console.error("Error opening new window:", error);
+      console.error('Ошибка открытия папки:', error);
+      alert(`Ошибка открытия папки: ${error}`);
     }
   };
-
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
-    console.log(`Menu: ${menu}, Option: ${option.text}`);
-    if (menu === "Файл" && option.text === "Выход") {
-      handleClose();
-    } else if (menu === "Файл" && option.text === "Настройки") {
-      console.log("Opening Settings");
-      setShowSettings(true);
-    } else if (menu === "Файл" && option.text === "Открыть новое окно") {
-      console.log("Opening new window");
-      handleOpenNewWindow();
-    } else if (menu === "Вид" && option.text === "Масштаб +") {
-      console.log("Zoom In");
-      onZoomIn?.();
-    } else if (menu === "Вид" && option.text === "Масштаб -") {
-      console.log("Zoom Out");
-      onZoomOut?.();
+    if (menu === "Файл") {
+      switch(option.text) {
+        case "Новый файл":
+          handleCreateNewFile();
+          break;
+        case "Открыть файл":
+          // Реализация открытия файла
+          break;
+        case "Открыть папку":
+          handleOpenFolder();
+          break;
+        case "Сохранить":
+          handleSaveFile(false);
+          break;
+        case "Сохранить как":
+          handleSaveFile(true);
+          break;
+        case "Открыть новое окно":
+          handleOpenNewWindow();
+          break;
+        case "Настройки":
+          setShowSettings(true);
+          break;
+        case "Выход":
+          handleClose();
+          break;
+      }
+    } else if (menu === "Вид") {
+      switch(option.text) {
+        case "Масштаб +":
+          onZoomIn?.();
+          break;
+        case "Масштаб -":
+          onZoomOut?.();
+          break;
+      }
     }
     setActiveMenu(null);
   };

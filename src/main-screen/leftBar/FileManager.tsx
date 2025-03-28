@@ -21,11 +21,15 @@ interface FileItem {
 
 interface FileManagerProps {
   selectedFolder: string | null;
+  setSelectedFolder: (path: string | null) => void; // Добавляем проп
+
   setSelectedFile: (filePath: string | null) => void;
   setCurrentFiles: (files: FileItem[]) => void;
+  setLastOpenedFolder?: (path: string) => void; // Добавляем для отслеживания последней папки
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles }) => {
+const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles, setLastOpenedFolder,   setSelectedFolder, // Добавляем в деструктуризацию
+}) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -77,6 +81,26 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     };
     loadTree();
   }, [selectedFolder]);
+
+  // В компоненте FileManager
+  useEffect(() => {
+    const loadInitialFolder = async () => {
+      try {
+        const args = await invoke<string[]>("get_args");
+        const pathIndex = args.findIndex(arg => arg === "--path");
+        if (pathIndex !== -1 && args.length > pathIndex + 1) {
+          const folderPath = args[pathIndex + 1];
+          setSelectedFolder(folderPath);
+          if (setLastOpenedFolder) {
+            setLastOpenedFolder(folderPath);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading initial folder:', error);
+      }
+    };
+    loadInitialFolder();
+  }, [setSelectedFolder, setLastOpenedFolder]); // Добавлены зависимости
 
   // Toggle directory expansion and load children if needed
   const toggleDirectory = async (item: FileItem) => {

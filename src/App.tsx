@@ -44,6 +44,8 @@ function App() {
   const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
+  const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
+  
   const [editorInfo, setEditorInfo] = useState({
     errors: 0,
     warnings: 0,
@@ -210,6 +212,7 @@ function App() {
             <FileManager
               selectedFolder={selectedFolder}
               setSelectedFile={handleSetSelectedFile}
+              setSelectedFolder={setSelectedFolder} // Добавьте эту строку
               setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
             />
             <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />

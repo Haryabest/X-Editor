@@ -1904,3 +1904,90 @@ function getDeclarationDescription(type: string, name: string): string {
       return `Объявление '${name}'`;
   }
 }
+
+/**
+ * Регистрирует функции API для работы с модулями и файловой системой через Tauri
+ */
+export async function setupModulePaths() {
+  if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__?.invoke) {
+    console.log('Установка Tauri интеграции для разрешения путей модулей...');
+    try {
+      // Тестовый вызов, чтобы проверить доступность API
+      const exists = await window.__TAURI__.invoke('file_exists', { 
+        filePath: 'package.json' 
+      });
+      console.log('Тестовый вызов file_exists:', exists);
+      
+      // Определяем все необходимые функции для работы с модулями
+      const fileExists = async (path: string): Promise<boolean> => {
+        try {
+          const tauri = window.__TAURI__;
+          if (tauri && typeof tauri.invoke === 'function') {
+            return await tauri.invoke('file_exists', { filePath: path });
+          }
+          return false;
+        } catch (error) {
+          console.error('Ошибка при проверке существования файла:', error);
+          return false;
+        }
+      };
+      
+      // Добавляем функцию в глобальное пространство для использования в Monaco
+      (window as any).fileExists = fileExists;
+      
+      // Получаем корень проекта
+      const projectRoot = await window.__TAURI__.invoke('get_project_root', { 
+        currentFilePath: window.location.pathname 
+      });
+      console.log('Корень проекта через Tauri API:', projectRoot);
+      
+      return true;
+    } catch (error) {
+      console.error('Ошибка при установке Tauri интеграции:', error);
+      return false;
+    }
+  } else {
+    console.warn('Tauri API недоступен для интеграции с модулями');
+    // Создаем заглушку для fileExists, чтобы избежать ошибок
+    (window as any).fileExists = (path: string) => {
+      console.warn('fileExists заглушка вызвана для:', path);
+      return true; // Всегда возвращаем true в качестве заглушки
+    };
+    return false;
+  }
+}
+
+/**
+ * Асинхронная функция для разрешения пути модуля с помощью Rust
+ * @param modulePath Путь к модулю
+ * @returns Полный путь к файлу
+ */
+export async function resolveModulePath(modulePath: string): Promise<string> {
+  if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__?.invoke) {
+    try {
+      // Получаем корень проекта
+      const projectRoot = await window.__TAURI__.invoke('get_project_root', { 
+        currentFilePath: window.location.pathname 
+      });
+      
+      if (!projectRoot) {
+        console.warn('Не удалось определить корень проекта');
+        return modulePath;
+      }
+      
+      // Разрешаем путь модуля
+      const resolvedPath = await window.__TAURI__.invoke('resolve_module_path', { 
+        projectRoot, 
+        moduleName: modulePath 
+      });
+      
+      console.log(`Модуль "${modulePath}" разрешен как: ${resolvedPath}`);
+      return resolvedPath;
+    } catch (error) {
+      console.error('Ошибка при разрешении пути модуля:', error);
+      return modulePath;
+    }
+  }
+  
+  return modulePath;
+}
