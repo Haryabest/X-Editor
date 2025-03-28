@@ -74,7 +74,7 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "О программе", shortcut: "Alt + I" },
   ]
 };
-const TopToolbar = ({ 
+const TopToolbar: React.FC<TopToolbarProps> = ({ 
   currentFiles, 
   setSelectedFile, 
   selectedFolder,
@@ -323,6 +323,7 @@ const TopToolbar = ({
           onDeselect?.();
           break;
       }
+      }
     setActiveMenu(null);
   };
 
@@ -498,5 +499,5 @@ const TopToolbar = ({
     </div>
   );
 };
-}
+
 export default TopToolbar;
