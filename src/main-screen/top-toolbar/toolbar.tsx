@@ -14,7 +14,7 @@ import { MenuItem, FileItem } from './types/types';
 
 import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
-import Settings from '../lefttoolbar/settings/Settings'; // Импортируем компонент Settings
+import Settings from '../lefttoolbar/settings/Settings'; // Убедитесь, что путь правильный
 
 import './style.css';
 
@@ -23,6 +23,8 @@ interface TopToolbarProps {
   setSelectedFile: (path: string | null) => void;
   selectedFolder?: string | null;
   onSplitEditor?: (direction: 'right' | 'down' | 'left' | 'up') => void;
+  onZoomIn?: () => void; // Добавляем проп для увеличения масштаба
+  onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -31,12 +33,12 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "Открыть папку", shortcut: "Ctrl + O" },
     { text: "Открыть файл", shortcut: "Ctrl + O" },
     { text: "Сохранить", shortcut: "Ctrl + S" },
-    { text: "Сохранить как", shortcut: "Ctrl + S" },
+    { text: "Сохранить как", shortcut: "Ctrl + SHIFT + S" },
     { text: "Сохранить все", shortcut: "Ctrl + S" },
     { text: "Открыть новое окно", shortcut: "Ctrl + S" },
     { text: "Последнее", shortcut: "" },
     { text: "Настройки", shortcut: "" },
-    { text: "Выход", shortcut: "Ctrl + Q" }
+    { text: "Выход", shortcut: "" }
   ],
   "Выделение": [
     { text: "Выбрать всё", shortcut: "Ctrl + A" },
@@ -64,28 +66,32 @@ const menuData: Record<string, MenuItem[]> = {
   ],
   "Справка": [
     { text: "Документация", shortcut: "F1" },
-    { text: "Сообщество", shortcut: "Alt + C" },
     { text: "О программе", shortcut: "Alt + I" },
-    { text: "Сообщить об ошибке", shortcut: "Alt + R" }
   ]
 };
 
-const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, selectedFolder, onSplitEditor }) => {
+const TopToolbar: React.FC<TopToolbarProps> = ({ 
+  currentFiles, 
+  setSelectedFile, 
+  selectedFolder, 
+  onSplitEditor, 
+  onZoomIn, 
+  onZoomOut 
+}) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSplitMenu, setShowSplitMenu] = useState(false);
-  const [showSettings, setShowSettings] = useState(false); // Состояние для модального окна настроек
+  const [showSettings, setShowSettings] = useState(false);
   
   const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const splitMenuRef = useRef<HTMLDivElement>(null);
-  const settingsRef = useRef<HTMLDivElement>(null); // Ref для модального окна
+  const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Window controls handlers
   const handleMinimize = async () => {
     try { await invoke('minimize_window'); } catch (error) { console.error('Minimize error:', error); }
   };
@@ -98,14 +104,12 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
     try { await invoke('close_window'); } catch (error) { console.error('Close error:', error); }
   };
 
-  // Resize handler
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Click outside handlers
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -120,15 +124,14 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
       if (splitMenuRef.current && !splitMenuRef.current.contains(e.target as Node)) {
         setShowSplitMenu(false);
       }
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
         setShowSettings(false);
       }
     };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, []);
+  }, [showSettings]);
 
-  // Esc key handler for closing settings
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -139,7 +142,6 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // Shortcut handler for Ctrl + Q
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'q') {
@@ -151,12 +153,10 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Menu configuration
   const menuKeys = Object.keys(menuData);
   const mainMenuKeys = windowWidth > 1360 ? menuKeys : menuKeys.slice(0, -3);
   const hiddenMenuKeys = windowWidth > 1360 ? [] : menuKeys.slice(-3);
 
-  // Обработчики для кнопок разделения экрана
   const handleSplitRight = () => {
     onSplitEditor?.('right');
     setActiveMenu(null);
@@ -177,15 +177,33 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
     setActiveMenu(null);
   };
 
-  const handleMenuItemClick = (menu: string, option: MenuItem) => {
-    console.log(`Menu: ${menu}, Option: ${option.text}`); // Отладка
-    if (menu === "Файл" && option.text === "Выход") {
-      handleClose(); // Закрываем приложение
-    } else if (menu === "Файл" && option.text === "Настройки") {
-      console.log("Opening Settings"); // Отладка
-      setShowSettings(true); // Открываем модальное окно настроек
+  const handleOpenNewWindow = async () => {
+    try {
+      await invoke('spawn_new_process');
+      console.log("New window opened via Rust");
+    } catch (error) {
+      console.error("Error opening new window:", error);
     }
-    setActiveMenu(null); // Закрываем меню после выбора
+  };
+
+  const handleMenuItemClick = (menu: string, option: MenuItem) => {
+    console.log(`Menu: ${menu}, Option: ${option.text}`);
+    if (menu === "Файл" && option.text === "Выход") {
+      handleClose();
+    } else if (menu === "Файл" && option.text === "Настройки") {
+      console.log("Opening Settings");
+      setShowSettings(true);
+    } else if (menu === "Файл" && option.text === "Открыть новое окно") {
+      console.log("Opening new window");
+      handleOpenNewWindow();
+    } else if (menu === "Вид" && option.text === "Масштаб +") {
+      console.log("Zoom In");
+      onZoomIn?.();
+    } else if (menu === "Вид" && option.text === "Масштаб -") {
+      console.log("Zoom Out");
+      onZoomOut?.();
+    }
+    setActiveMenu(null);
   };
 
   return (
@@ -350,12 +368,13 @@ const TopToolbar: React.FC<TopToolbarProps> = ({ currentFiles, setSelectedFile, 
         </button>
       </div>
 
-      {/* Добавляем модальное окно настроек */}
-      <Settings 
-        isVisible={showSettings} 
-        onClose={() => setShowSettings(false)}
-        ref={settingsRef} // Передаем ref для обработки кликов вне окна
-      />
+      {showSettings && (
+        <Settings 
+          isVisible={showSettings} 
+          onClose={() => setShowSettings(false)}
+          ref={settingsRef}
+        />
+      )}
     </div>
   );
 };

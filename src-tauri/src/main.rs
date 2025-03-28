@@ -1,6 +1,9 @@
 // main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use tauri::{command};
+use std::process::Command;
+
 mod commands;
 mod types;
 mod reading;
@@ -8,6 +11,17 @@ mod reading;
 use tauri::Manager;
 use std::sync::Arc;
 use commands::terminal::PtyState;
+
+#[command]
+fn spawn_new_process() -> Result<(), String> {
+    // Замените "my-app" на имя вашего бинарника (из tauri.conf.json -> package -> productName)
+    let mut cmd = Command::new("xeditor")
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    println!("Spawned new process with PID: {}", cmd.id());
+    Ok(())
+}
 
 fn main() {
     tauri::Builder::default()
@@ -18,6 +32,7 @@ fn main() {
             writer: Arc::new(tauri::async_runtime::Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
+            spawn_new_process,
             commands::window_commands::close_window,
             commands::window_commands::minimize_window,
             commands::window_commands::toggle_maximize,

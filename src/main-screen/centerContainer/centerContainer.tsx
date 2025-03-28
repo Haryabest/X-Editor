@@ -64,6 +64,8 @@ interface CenterContainerProps {
   }) => void;
   onIssuesChange?: (issues: IssueInfo[]) => void;
   handleFileSelect?: (filePath: string | null) => void;
+  onZoomIn?: () => void; // Добавляем проп для увеличения масштаба
+  onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
 }
 
 const CenterContainer: React.FC<CenterContainerProps> = ({
@@ -76,7 +78,9 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   selectedFolder,
   onEditorInfoChange,
   onIssuesChange,
-  handleFileSelect
+  handleFileSelect,
+  onZoomIn,
+  onZoomOut,
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [code, setCode] = useState('# Start coding here...');
@@ -85,10 +89,14 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const [monacoInstance, setMonacoInstance] = useState<any>(null);
-
+  const [fontSize, setFontSize] = useState(14); // Состояние для размера шрифта
   useEffect(() => {
     if (window.monaco) {
-      configureMonaco(window.monaco);
+      try {
+        configureMonaco(window.monaco);
+      } catch (error) {
+        console.error('Ошибка при конфигурации Monaco:', error);
+      }
     }
   }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
 
@@ -318,101 +326,148 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     }, 100);
   }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
+// Функции для изменения масштаба
+const handleZoomIn = useCallback(() => {
+  setFontSize(prev => {
+    const newFontSize = Math.min(prev + 2, 32); // Увеличиваем до максимум 32
+    if (editorInstance) {
+      editorInstance.updateOptions({ fontSize: newFontSize });
+    }
+    onZoomIn?.();
+    return newFontSize;
+  });
+}, [editorInstance, onZoomIn]);
 
+const handleZoomOut = useCallback(() => {
+  setFontSize(prev => {
+    const newFontSize = Math.max(prev - 2, 8); // Уменьшаем до минимум 8
+    if (editorInstance) {
+      editorInstance.updateOptions({ fontSize: newFontSize });
+    }
+    onZoomOut?.();
+    return newFontSize;
+  });
+}, [editorInstance, onZoomOut]);
+
+useEffect(() => {
+  if (editorInstance) {
+    editorInstance.updateOptions({ fontSize });
+  }
+}, [fontSize, editorInstance]);
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    // Сохраняем экземпляры редактора и Monaco для дальнейшего использования
-    setEditorInstance(editor);
-    setMonacoInstance(monaco);
-    window.monaco = monaco;
-    
-    // Применяем расширенные настройки Monaco
-    const configuredMonaco = configureMonaco(monaco);
-    
-    // Фокусируем редактор
-    editor.focus();
-    
-    // Настраиваем поведение редактора
-    editor.onDidChangeCursorPosition((e: any) => {
-      // Обновляем информацию о позиции курсора
-      if (onEditorInfoChange && editorInstance) {
-        const model = editor.getModel();
-        const totalChars = model ? model.getValueLength() : 0;
-        
-        onEditorInfoChange({
-          errors: 0, // будет обновлено при изменении маркеров
-          warnings: 0, // будет обновлено при изменении маркеров
-          language: model ? model.getLanguageId() : 'plaintext',
-          encoding: 'UTF-8',
-          cursorInfo: {
-            line: e.position.lineNumber,
-            column: e.position.column,
-            totalChars
+    try {
+      // Сохраняем экземпляры редактора и Monaco для дальнейшего использования
+      setEditorInstance(editor);
+      setMonacoInstance(monaco);
+      window.monaco = monaco;
+      
+      // Применяем расширенные настройки Monaco
+      try {
+        const configuredMonaco = configureMonaco(monaco);
+      } catch (configError) {
+        console.error('Ошибка при конфигурации Monaco в handleEditorDidMount:', configError);
+      }
+      
+      // Фокусируем редактор
+      editor.focus();
+      
+      // Настраиваем поведение редактора
+      editor.onDidChangeCursorPosition((e: any) => {
+        try {
+          // Обновляем информацию о позиции курсора
+          if (onEditorInfoChange && editorInstance) {
+            const model = editor.getModel();
+            const totalChars = model ? model.getValueLength() : 0;
+            
+            onEditorInfoChange({
+              errors: 0, // будет обновлено при изменении маркеров
+              warnings: 0, // будет обновлено при изменении маркеров
+              language: model ? model.getLanguageId() : 'plaintext',
+              encoding: 'UTF-8',
+              cursorInfo: {
+                line: e.position.lineNumber,
+                column: e.position.column,
+                totalChars
+              }
+            });
           }
-        });
-      }
-    });
-    
-    // Добавляем отслеживание маркеров (ошибок, предупреждений)
-    const updateMarkers = () => {
-      if (editor && selectedFile) {
-        const uri = monaco.Uri.parse(selectedFile);
-        const markers = monaco.editor.getModelMarkers({ resource: uri });
-        
-        let errors = 0;
-        let warnings = 0;
-        
-        markers.forEach((marker: any) => {
-          if (marker.severity === monaco.MarkerSeverity.Error) errors++;
-          if (marker.severity === monaco.MarkerSeverity.Warning) warnings++;
-        });
-        
-        if (onEditorInfoChange) {
-          const model = editor.getModel();
-          onEditorInfoChange({
-            errors,
-            warnings,
-            language: model ? model.getLanguageId() : 'plaintext',
-            encoding: 'UTF-8',
-            cursorInfo: {
-              line: editor.getPosition().lineNumber,
-              column: editor.getPosition().column,
-              totalChars: model ? model.getValueLength() : 0
+        } catch (cursorError) {
+          console.error('Ошибка при обновлении курсора:', cursorError);
+        }
+      });
+      
+      // Добавляем отслеживание маркеров (ошибок, предупреждений)
+      const updateMarkers = () => {
+        try {
+          if (editor && selectedFile) {
+            const uri = monaco.Uri.parse(selectedFile);
+            const markers = monaco.editor.getModelMarkers({ resource: uri });
+            
+            let errors = 0;
+            let warnings = 0;
+            
+            markers.forEach((marker: any) => {
+              if (marker.severity === monaco.MarkerSeverity.Error) errors++;
+              if (marker.severity === monaco.MarkerSeverity.Warning) warnings++;
+            });
+            
+            if (onEditorInfoChange) {
+              const model = editor.getModel();
+              onEditorInfoChange({
+                errors,
+                warnings,
+                language: model ? model.getLanguageId() : 'plaintext',
+                encoding: 'UTF-8',
+                cursorInfo: {
+                  line: editor.getPosition().lineNumber,
+                  column: editor.getPosition().column,
+                  totalChars: model ? model.getValueLength() : 0
+                }
+              });
             }
-          });
+            
+            if (onIssuesChange) {
+              const fileName = selectedFile.split(/[\\/]/).pop() || '';
+              const issuesData: IssueInfo = {
+                filePath: selectedFile,
+                fileName,
+                issues: markers.map((marker: any) => ({
+                  severity: marker.severity === monaco.MarkerSeverity.Error ? 'error' : 
+                            marker.severity === monaco.MarkerSeverity.Warning ? 'warning' : 'info',
+                  message: marker.message,
+                  line: marker.startLineNumber,
+                  column: marker.startColumn,
+                  endLine: marker.endLineNumber,
+                  endColumn: marker.endColumn,
+                  source: marker.source,
+                  code: marker.code
+                }))
+              };
+              
+              onIssuesChange([issuesData]);
+            }
+          }
+        } catch (markersError) {
+          console.error('Ошибка при обновлении маркеров:', markersError);
         }
+      };
+      
+      try {
+        // Отслеживаем изменения маркеров
+        monaco.editor.onDidChangeMarkers(updateMarkers);
         
-        if (onIssuesChange) {
-          const fileName = selectedFile.split(/[\\/]/).pop() || '';
-          const issuesData: IssueInfo = {
-            filePath: selectedFile,
-            fileName,
-            issues: markers.map((marker: any) => ({
-              severity: marker.severity === monaco.MarkerSeverity.Error ? 'error' : 
-                        marker.severity === monaco.MarkerSeverity.Warning ? 'warning' : 'info',
-              message: marker.message,
-              line: marker.startLineNumber,
-              column: marker.startColumn,
-              endLine: marker.endLineNumber,
-              endColumn: marker.endColumn,
-              source: marker.source,
-              code: marker.code
-            }))
-          };
-          
-          onIssuesChange([issuesData]);
-        }
+        // Отслеживаем изменения моделей
+        monaco.editor.onDidCreateModel((model: any) => {
+          // Когда создается новая модель, применяем конфигурацию Monaco
+          const filePath = model.uri.path;
+          console.log(`Создана новая модель для файла: ${filePath}`);
+        });
+      } catch (hookError) {
+        console.error('Ошибка при регистрации слушателей событий:', hookError);
       }
-    };
-    
-    // Отслеживаем изменения маркеров
-    monaco.editor.onDidChangeMarkers(updateMarkers);
-    
-    // Отслеживаем изменения моделей
-    monaco.editor.onDidCreateModel((model: any) => {
-      // Когда создается новая модель, применяем конфигурацию Monaco
-      const filePath = model.uri.path;
-      console.log(`Создана новая модель для файла: ${filePath}`);
-    });
+    } catch (mountError) {
+      console.error('Критическая ошибка при инициализации редактора:', mountError);
+    }
   };
 
   return (
@@ -430,8 +485,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                   value={fileContent || code}
                   onChange={(value) => setCode(value || '')}
                   options={{
-                    fontSize: 14,
-                    minimap: { enabled: true },
+                    fontSize: fontSize, // Используем динамическое значение из состояния                    minimap: { enabled: true },
                     quickSuggestions: true,
                     scrollBeyondLastLine: false,
                     fontFamily: 'Fira Code, Menlo, Monaco, Consolas, monospace',

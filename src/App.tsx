@@ -12,7 +12,6 @@ import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
 
 import './App.css';
 
-// Расширенный интерфейс для отображения файлов в UI
 interface UIFileItem extends FileItem {
   icon?: string;
   type?: string;
@@ -20,7 +19,6 @@ interface UIFileItem extends FileItem {
   content?: string;
 }
 
-// Добавляем интерфейс для проблем
 interface IssueInfo {
   filePath: string;
   fileName: string;
@@ -91,6 +89,7 @@ function App() {
       setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
     }
   };
+
   const handleCreateFile = () => {
     const newFile: UIFileItem = {
       name: 'Без названия 1',
@@ -168,16 +167,22 @@ function App() {
     setIsLeftPanelVisible(!isLeftPanelVisible);
   };
 
-  const handleIssueClick = (filePath: string, _line: number, _column: number) => {
-    // Открываем файл, если он не открыт
+  const handleIssueClick = (filePath: string, line: number, column: number) => {
     if (!openedFiles.some(file => file.path === filePath)) {
       const fileName = filePath.split(/[\\/]/).pop() || '';
       setOpenedFiles(prev => [...prev, { name: fileName, path: filePath, isFolder: false }]);
     }
     
-    // Выбираем файл и переходим к нужной строке
     handleSetSelectedFile(filePath);
-    // TODO: Add logic to navigate to specific line
+  };
+
+  // Функции для изменения масштаба
+  const handleZoomIn = () => {
+    // Логика теперь в CenterContainer
+  };
+
+  const handleZoomOut = () => {
+    // Логика теперь в CenterContainer
   };
 
   return (
@@ -190,6 +195,8 @@ function App() {
         }))} 
         setSelectedFile={handleSetSelectedFile}
         selectedFolder={selectedFolder}
+        onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
+        onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
       />
 
       <div className="main-content">
@@ -234,6 +241,8 @@ function App() {
                 onEditorInfoChange={setEditorInfo}
                 onIssuesChange={setIssues}
                 handleFileSelect={setSelectedFile}
+                onZoomIn={handleZoomIn} // Передаем функцию в CenterContainer
+                onZoomOut={handleZoomOut} // Передаем функцию в CenterContainer
               />
             </div>
           </div>

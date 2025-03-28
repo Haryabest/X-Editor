@@ -62,6 +62,25 @@ async fn read_directory(path: PathBuf, shallow: bool) -> std::io::Result<FileIte
 }
 
 #[tauri::command]
+pub async fn create_new_file(path: String, name: String) -> Result<FileItem, String> {
+    let file_path = PathBuf::from(&path).join(&name);
+    println!("Creating new file at {:?}", file_path);
+    
+    // Создаем пустой файл
+    fs::File::create(&file_path)
+        .await
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    
+    // Возвращаем информацию о новом файле
+    Ok(FileItem {
+        name,
+        is_directory: false,
+        path: file_path.to_string_lossy().into_owned(),
+        children: None,
+    })
+}
+
+#[tauri::command]
 pub async fn get_directory_tree(path: String) -> Result<FileItem, String> {
     let root_path = PathBuf::from(path);
     println!("Starting get_directory_tree for {:?}", root_path);
