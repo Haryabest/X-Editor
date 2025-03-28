@@ -17,6 +17,7 @@ import SearchDropdown from './components/SearchDropdown';
 import Settings from '../lefttoolbar/settings/Settings';
 import './style.css';
 
+
 interface TopToolbarProps {
   onSelectAll?: () => void;
   onDeselect?: () => void;
