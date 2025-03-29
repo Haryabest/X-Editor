@@ -148,35 +148,6 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editorInstance]);
 
-  useEffect(() => {
-    if (onSelectAll) {
-      onSelectAll(() => {
-        if (editorInstance) {
-          const model = editorInstance.getModel();
-          if (model) {
-            const fullRange = model.getFullModelRange();
-            editorInstance.setSelection(fullRange);
-            editorInstance.focus();
-          }
-        }
-      });
-    }
-
-    if (onDeselect) {
-      onDeselect(() => {
-        if (editorInstance) {
-          editorInstance.setSelection({
-            startLineNumber: 0,
-            startColumn: 0,
-            endLineNumber: 0,
-            endColumn: 0
-          });
-          editorInstance.focus();
-        }
-      });
-    }
-  }, [editorInstance, onSelectAll, onDeselect]);
-
   // Оставляем предыдущий useEffect для обновления при изменении параметров
   useEffect(() => {
     if (window.monaco) {
@@ -456,6 +427,36 @@ useEffect(() => {
       configureMonaco(monaco);
       console.log("Monaco configured successfully in handleEditorDidMount");
       
+      // Подготавливаем интерфейс для editorRef
+      if (editorRef) {
+        const editorInterface = {
+          selectAll: () => {
+            const model = editor.getModel();
+            if (model) {
+              const fullRange = model.getFullModelRange();
+              editor.setSelection(fullRange);
+              editor.focus();
+            }
+          },
+          deselect: () => {
+            editor.setSelection({
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: 1,
+              endColumn: 1
+            });
+            editor.focus();
+          }
+        };
+        
+        // Устанавливаем объект в ref
+        if (typeof editorRef === 'function') {
+          editorRef(editorInterface);
+        } else if (editorRef) {
+          editorRef.current = editorInterface;
+        }
+      }
+      
       // Добавляем обработчик изменения позиции курсора
       editor.onDidChangeCursorPosition((e: any) => {
         try {
@@ -568,41 +569,6 @@ useEffect(() => {
       setOpenedFilesList(openedFiles);
     }
   }, [openedFiles]);
-
-  // При инициализации создаем события
-  const handleOnMount = (editor: any, monaco: any) => {
-    setEditorInstance(editor);
-    setMonacoInstance(monaco);
-
-    // Собственные методы, которые будут доступны через ref
-    if (editorRef && editorRef.current) {
-      editorRef.current.selectAll = () => {
-        if (editor && editor.getModel()) {
-          const model = editor.getModel();
-          editor.setSelection({
-            startLineNumber: 1,
-            startColumn: 1,
-            endLineNumber: model.getLineCount(),
-            endColumn: model.getLineMaxColumn(model.getLineCount())
-          });
-        }
-      };
-
-      editorRef.current.deselect = () => {
-        if (editor) {
-          const position = editor.getPosition();
-          if (position) {
-            editor.setSelection({
-              startLineNumber: position.lineNumber,
-              startColumn: position.column,
-              endLineNumber: position.lineNumber,
-              endColumn: position.column
-            });
-          }
-        }
-      };
-    }
-  };
 
   return (
     <div className="center-container" style={style}>

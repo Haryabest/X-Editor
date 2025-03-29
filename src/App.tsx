@@ -206,6 +206,7 @@ function App() {
         }))} 
         setSelectedFile={handleSetSelectedFile}
         selectedFolder={selectedFolder}
+        selectedFile={selectedFile}
         onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
         onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
         onSelectAll={() => editorRef.current?.selectAll()}

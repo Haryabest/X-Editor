@@ -278,54 +278,49 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
     }
   };
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
+    setActiveMenu(null);
+    
     if (menu === "Файл") {
-      switch(option.text) {
-        case "Новый файл":
-          handleCreateNewFile();
-          break;
-        case "Открыть файл":
-          // Реализация открытия файла
-          break;
-        case "Открыть папку":
-          handleOpenFolder();
-          break;
-        case "Сохранить":
-          handleSaveFile(false);
-          break;
-        case "Сохранить как":
-          handleSaveFile(true);
-          break;
-        case "Открыть новое окно":
-          handleOpenNewWindow();
-          break;
-        case "Настройки":
-          setShowSettings(true);
-          break;
-        case "Выход":
-          handleClose();
-          break;
+      if (option.text === "Новый файл") {
+        handleCreateNewFile();
+      } else if (option.text === "Открыть папку") {
+        handleOpenFolder();
+      } else if (option.text === "Сохранить") {
+        handleSaveFile(false);
+      } else if (option.text === "Сохранить как") {
+        handleSaveFile(true);
+      } else if (option.text === "Сохранить все") {
+        // TODO: Implement save all
+      } else if (option.text === "Открыть новое окно") {
+        handleOpenNewWindow();
+      } else if (option.text === "Настройки") {
+        setShowSettings(true);
+      } else if (option.text === "Выход") {
+        handleClose();
+      }
+    } else if (menu === "Выделение") {
+      if (option.text === "Выбрать всё") {
+        if (onSelectAll) {
+          console.log('Выполняется команда "Выбрать всё"', selectedFile);
+          onSelectAll();
+        } else {
+          console.log('Функция onSelectAll не определена');
+        }
+      } else if (option.text === "Отменить выбор") {
+        if (onDeselect) {
+          console.log('Выполняется команда "Отменить выбор"', selectedFile);
+          onDeselect();
+        } else {
+          console.log('Функция onDeselect не определена');
+        }
       }
     } else if (menu === "Вид") {
-      switch(option.text) {
-        case "Масштаб +":
-          onZoomIn?.();
-          break;
-        case "Масштаб -":
-          onZoomOut?.();
-          break;
+      if (option.text === "Масштаб +") {
+        onZoomIn?.();
+      } else if (option.text === "Масштаб -") {
+        onZoomOut?.();
       }
     }
-    else if (menu === "Выделение") {
-      switch(option.text) {
-        case "Выбрать всё":
-          onSelectAll?.();
-          break;
-        case "Отменить выбор":
-          onDeselect?.();
-          break;
-      }
-      }
-    setActiveMenu(null);
   };
 
   return (
@@ -346,62 +341,35 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
                 </button>
                 {activeMenu === item && (
                   <div className="dropdown-menu" ref={menuRef}>
-                    {menuData[item].map((option, index) => (
-                      <button 
-                        key={index} 
-                        className="dropdown-btn"
-                        onClick={() => handleMenuItemClick(item, option)}
-                      >
-                        {option.text} <span className="shortcut">{option.shortcut}</span>
-                      </button>
-                    ))}
+                    {menuData[item].map((option, index) => {
+                      // Определяем, должен ли элемент быть отключен
+                      const isDisabled = 
+                        // Отключаем опции выделения, если нет активного файла в редакторе
+                        (item === "Выделение" && !selectedFile) ||
+                        // Отключаем опции сохранения, если нет активного файла
+                        (item === "Файл" && 
+                          (option.text === "Сохранить" || option.text === "Сохранить как") && 
+                          !selectedFile);
+                      
+                      return (
+                        <button 
+                          key={index} 
+                          className={`dropdown-btn ${isDisabled ? 'disabled' : ''}`}
+                          onClick={() => {
+                            if (!isDisabled) {
+                              handleMenuItemClick(item, option);
+                            }
+                          }}
+                          disabled={isDisabled}
+                        >
+                          {option.text} <span className="shortcut">{option.shortcut}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             ))}
-
-            {hiddenMenuKeys.length > 0 && (
-              <div className="menu-container" ref={hiddenMenuRef}>
-                <button
-                  className="menu-item"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowHiddenMenu(!showHiddenMenu);
-                  }}
-                >
-                  <MoreHorizontal size={16} />
-                </button>
-                {showHiddenMenu && (
-                  <div className="dropdown-menu hidden-menu-dropdown">
-                    {hiddenMenuKeys.map((item) => (
-                      <div
-                        key={item}
-                        className="hidden-menu-item-container"
-                        onMouseEnter={() => setActiveMenu(item)}
-                        onMouseLeave={() => setActiveMenu(null)}
-                      >
-                        <button className="dropdown-btn">
-                          {item}
-                        </button>
-                        {activeMenu === item && (
-                          <div className="dropdown-menu submenu">
-                            {menuData[item].map((option, index) => (
-                              <button 
-                                key={index} 
-                                className="dropdown-btn"
-                                onClick={() => handleMenuItemClick(item, option)}
-                              >
-                                {option.text} <span className="shortcut">{option.shortcut}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
