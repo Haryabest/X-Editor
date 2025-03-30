@@ -70,6 +70,16 @@ fn spawn_new_process(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn toggle_fullscreen(window: tauri::Window) {
+    if let Ok(is_fullscreen) = window.is_fullscreen() {
+        // Переключаем состояние полноэкранного режима
+        if let Err(err) = window.set_fullscreen(!is_fullscreen) {
+            eprintln!("Ошибка при переключении полноэкранного режима: {:?}", err);
+        }
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -100,7 +110,8 @@ fn main() {
             commands::terminal::resize_pty,
             modules::resolve_module_path,
             modules::get_project_root,
-            modules::file_exists
+            modules::file_exists,
+            toggle_fullscreen
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

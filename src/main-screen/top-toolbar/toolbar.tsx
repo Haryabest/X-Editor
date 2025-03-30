@@ -17,10 +17,7 @@ import SearchDropdown from './components/SearchDropdown';
 import Settings from '../lefttoolbar/settings/Settings';
 import './style.css';
 
-
-interface TopToolbarProps {
-  onSelectAll?: () => void;
-  onDeselect?: () => void;
+export interface TopToolbarProps {
   currentFiles: FileItem[];
   setSelectedFile: (path: string | null) => void;
   selectedFolder?: string | null;
@@ -30,8 +27,13 @@ interface TopToolbarProps {
   onSplitEditor?: (direction: 'right' | 'down' | 'left' | 'up') => void;
   onZoomIn?: () => void;
   onZoomOut?: () => void;
+  onResetZoom?: () => void;
   onCreateNewFile?: (path: string) => void;
   onFileSaved?: (path: string) => void;
+  onSelectAll?: () => void;
+  onDeselect?: () => void;
+  onInvertSelection?: () => void;
+  onExpandSelection?: () => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -75,20 +77,23 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "О программе", shortcut: "Alt + I" },
   ]
 };
-const TopToolbar: React.FC<TopToolbarProps> = ({ 
-  currentFiles, 
-  setSelectedFile, 
+const TopToolbar: React.FC<TopToolbarProps> = ({
+  currentFiles,
+  setSelectedFile,
   selectedFolder,
   lastOpenedFolder,
   selectedFile,
   currentContent,
-  onSplitEditor, 
-  onZoomIn, 
+  onSplitEditor,
+  onZoomIn,
   onZoomOut,
+  onResetZoom,
   onCreateNewFile,
-  onFileSaved ,
+  onFileSaved,
   onSelectAll,
-  onDeselect
+  onDeselect,
+  onInvertSelection,
+  onExpandSelection
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -277,49 +282,108 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
       alert(`Ошибка открытия папки: ${error}`);
     }
   };
+
+  // Функция для управления полноэкранным режимом
+  const handleToggleFullscreen = async () => {
+    try {
+      await invoke('toggle_fullscreen');
+    } catch (error) {
+      console.error('Ошибка переключения полноэкранного режима:', error);
+    }
+  };
+
+  // Функция для сброса масштаба (устанавливает размер шрифта по умолчанию)
+  const handleResetZoom = () => {
+    // Если есть обработчик из props, используем его
+    if (onResetZoom) {
+      onResetZoom();
+      return;
+    }
+    
+    // Запасной вариант если обработчик не передан
+    try {
+      if (window.monaco) {
+        // Устанавливаем стандартный размер шрифта (14)
+        window.monaco.editor.getEditors().forEach((editor: any) => {
+          editor.updateOptions({ fontSize: 14 });
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка сброса масштаба:', error);
+    }
+  };
+
   const handleMenuItemClick = (menu: string, option: MenuItem) => {
+    // Закрываем меню после выбора опции
     setActiveMenu(null);
     
-    if (menu === "Файл") {
-      if (option.text === "Новый файл") {
-        handleCreateNewFile();
-      } else if (option.text === "Открыть папку") {
-        handleOpenFolder();
-      } else if (option.text === "Сохранить") {
-        handleSaveFile(false);
-      } else if (option.text === "Сохранить как") {
-        handleSaveFile(true);
-      } else if (option.text === "Сохранить все") {
-        // TODO: Implement save all
-      } else if (option.text === "Открыть новое окно") {
-        handleOpenNewWindow();
-      } else if (option.text === "Настройки") {
-        setShowSettings(true);
-      } else if (option.text === "Выход") {
-        handleClose();
-      }
-    } else if (menu === "Выделение") {
-      if (option.text === "Выбрать всё") {
-        if (onSelectAll) {
-          console.log('Выполняется команда "Выбрать всё"', selectedFile);
-          onSelectAll();
-        } else {
-          console.log('Функция onSelectAll не определена');
+    // Обработка в зависимости от выбранного меню и опции
+    switch (menu) {
+      case "Файл":
+        switch (option.text) {
+          case "Новый файл":
+            handleCreateNewFile();
+            break;
+          case "Открыть папку":
+            handleOpenFolder();
+            break;
+          case "Сохранить":
+            handleSaveFile(false);
+            break;
+          case "Сохранить как":
+            handleSaveFile(true);
+            break;
+          case "Открыть новое окно":
+            handleOpenNewWindow();
+            break;
+          case "Настройки":
+            setShowSettings(true);
+            break;
+          case "Выход":
+            handleClose();
+            break;
+          default:
+            break;
         }
-      } else if (option.text === "Отменить выбор") {
-        if (onDeselect) {
-          console.log('Выполняется команда "Отменить выбор"', selectedFile);
-          onDeselect();
-        } else {
-          console.log('Функция onDeselect не определена');
+        break;
+      case "Выделение":
+        switch (option.text) {
+          case "Выбрать всё":
+            onSelectAll?.();
+            break;
+          case "Отменить выбор":
+            onDeselect?.();
+            break;
+          case "Инвертировать":
+            onInvertSelection?.();
+            break;
+          case "Расширенное выделение":
+            onExpandSelection?.();
+            break;
+          default:
+            break;
         }
-      }
-    } else if (menu === "Вид") {
-      if (option.text === "Масштаб +") {
-        onZoomIn?.();
-      } else if (option.text === "Масштаб -") {
-        onZoomOut?.();
-      }
+        break;
+      case "Вид":
+        switch (option.text) {
+          case "Полноэкранный режим":
+            handleToggleFullscreen();
+            break;
+          case "Масштаб +":
+            onZoomIn?.();
+            break;
+          case "Масштаб -":
+            onZoomOut?.();
+            break;
+          case "Сброс масштаба":
+            handleResetZoom();
+            break;
+          default:
+            break;
+        }
+        break;
+      default:
+        break;
     }
   };
 

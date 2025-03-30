@@ -47,7 +47,12 @@ function App() {
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
   const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
-  const editorRef = useRef<{ selectAll: () => void; deselect: () => void }>(null);
+  const editorRef = useRef<{ 
+    selectAll: () => void; 
+    deselect: () => void;
+    invertSelection: () => void;
+    expandSelection: () => void;
+  }>(null);
 
   const [editorInfo, setEditorInfo] = useState({
     errors: 0,
@@ -211,6 +216,8 @@ function App() {
         onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
         onSelectAll={() => editorRef.current?.selectAll()}
         onDeselect={() => editorRef.current?.deselect()}
+        onInvertSelection={() => editorRef.current?.invertSelection()}
+        onExpandSelection={() => editorRef.current?.expandSelection()}
       />
 
       <div className="main-content">

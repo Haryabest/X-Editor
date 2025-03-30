@@ -446,6 +446,65 @@ useEffect(() => {
               endColumn: 1
             });
             editor.focus();
+          },
+          // Добавляем метод для инвертированного выделения
+          invertSelection: () => {
+            const model = editor.getModel();
+            if (model) {
+              const selection = editor.getSelection();
+              if (selection) {
+                const fullRange = model.getFullModelRange();
+                
+                // Если есть текущее выделение
+                if (!selection.isEmpty()) {
+                  // Создаем два новых выделения (до и после текущего)
+                  const before = {
+                    startLineNumber: 1,
+                    startColumn: 1,
+                    endLineNumber: selection.startLineNumber,
+                    endColumn: selection.startColumn
+                  };
+                  
+                  const after = {
+                    startLineNumber: selection.endLineNumber,
+                    startColumn: selection.endColumn,
+                    endLineNumber: fullRange.endLineNumber,
+                    endColumn: fullRange.endColumn
+                  };
+                  
+                  // Устанавливаем новые выделения
+                  if (before.endLineNumber > 1 || (before.endLineNumber === 1 && before.endColumn > 1)) {
+                    editor.setSelection(before);
+                  } else if (after.startLineNumber < fullRange.endLineNumber || 
+                           (after.startLineNumber === fullRange.endLineNumber && after.startColumn < fullRange.endColumn)) {
+                    editor.setSelection(after);
+                  }
+                } else {
+                  // Если нет текущего выделения, выделяем всё
+                  editor.setSelection(fullRange);
+                }
+                editor.focus();
+              }
+            }
+          },
+          // Добавляем метод для расширенного выделения
+          expandSelection: () => {
+            const model = editor.getModel();
+            if (model) {
+              const selection = editor.getSelection();
+              if (selection) {
+                // Расширяем текущее выделение до границ строки
+                const expandedSelection = {
+                  startLineNumber: selection.startLineNumber,
+                  startColumn: 1,
+                  endLineNumber: selection.endLineNumber,
+                  endColumn: model.getLineMaxColumn(selection.endLineNumber)
+                };
+                
+                editor.setSelection(expandedSelection);
+                editor.focus();
+              }
+            }
           }
         };
         
