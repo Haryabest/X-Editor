@@ -312,13 +312,17 @@ function App() {
           setSelectedFile={handleSetSelectedFile}
           selectedFolder={selectedFolder}
           selectedFile={selectedFile}
-          onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
-          onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
-          onResetZoom={handleResetZoom} // Передаем функцию сброса масштаба
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onResetZoom={handleResetZoom}
           onSelectAll={() => editorRef.current?.selectAll()}
           onDeselect={() => editorRef.current?.deselect()}
           onInvertSelection={() => editorRef.current?.invertSelection()}
           onExpandSelection={() => editorRef.current?.expandSelection()}
+          onOpenConsole={() => setIsTerminalVisible(true)}
+          onClearConsole={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'clear' } }))}
+          onCloseConsole={() => setIsTerminalVisible(false)}
+          onConsoleSettings={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'settings' } }))}
         />
 
         <div className="main-content">

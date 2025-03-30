@@ -34,6 +34,11 @@ export interface TopToolbarProps {
   onDeselect?: () => void;
   onInvertSelection?: () => void;
   onExpandSelection?: () => void;
+  // New console command handlers
+  onOpenConsole?: () => void;
+  onClearConsole?: () => void;
+  onCloseConsole?: () => void;
+  onConsoleSettings?: () => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -93,7 +98,12 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onSelectAll,
   onDeselect,
   onInvertSelection,
-  onExpandSelection
+  onExpandSelection,
+  // New console command handlers
+  onOpenConsole,
+  onClearConsole,
+  onCloseConsole,
+  onConsoleSettings
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -390,6 +400,48 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
           case "Сброс масштаба":
             console.log("Toolbar: Reset Zoom clicked");
             if (onResetZoom) onResetZoom();
+            break;
+          default:
+            break;
+        }
+        break;
+      case "Консоль":
+        switch (option.text) {
+          case "Открыть консоль":
+            console.log("Opening console");
+            if (onOpenConsole) {
+              onOpenConsole();
+            }
+            break;
+          case "Очистить консоль":
+            console.log("Clearing console");
+            if (onClearConsole) {
+              onClearConsole();
+            }
+            break;
+          case "Закрыть консоль":
+            console.log("Closing console");
+            if (onCloseConsole) {
+              onCloseConsole();
+            }
+            break;
+          case "Настройки консоли":
+            console.log("Opening console settings");
+            if (onConsoleSettings) {
+              onConsoleSettings();
+            }
+            break;
+          default:
+            break;
+        }
+        break;
+      case "Справка":
+        switch (option.text) {
+          case "Документация":
+            // Implement documentation link
+            break;
+          case "О программе":
+            // Implement about program link
             break;
           default:
             break;

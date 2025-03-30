@@ -8,6 +8,17 @@ import App from './App';
 import './App.css';
 import { setupModulePaths } from './monaco-config';
 
+declare global {
+  interface Window {
+    monaco: any;
+    terminalInstance?: {
+      clear: () => void;
+      restart: () => void;
+      showSettings: () => void;
+    };
+  }
+}
+
 // Инициализируем Tauri интеграцию для модулей после загрузки
 document.addEventListener('DOMContentLoaded', async () => {
   try {

@@ -34,9 +34,11 @@ interface XTermTerminalProps {
   terminalHeight?: number;
   issues?: IssueInfo[];
   onIssueClick?: (filePath: string, line: number, column: number) => void;
+  terminalCommand?: string | null;
 }
 
-const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssueClick }) => {
+const Terminal: React.FC<XTermTerminalProps> = (props) => {
+  const { terminalHeight, issues, onIssueClick, terminalCommand } = props;
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<XTerm | null>(null);
@@ -359,6 +361,49 @@ const Terminal: React.FC<XTermTerminalProps> = ({ terminalHeight, issues, onIssu
       </div>
     );
   };
+
+  // Add a new useEffect to listen for custom terminal command events
+  useEffect(() => {
+    // Handler for custom terminal commands
+    const handleTerminalCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{command: string}>;
+      const { command } = customEvent.detail;
+      
+      switch (command) {
+        case 'clear':
+          clearTerminal();
+          break;
+        case 'settings':
+          // Handle terminal settings
+          console.log('Terminal settings requested');
+          // Show a settings modal or toggle a settings view
+          break;
+        case 'restart':
+          restartTerminalProcess();
+          break;
+        default:
+          console.log(`Unknown terminal command: ${command}`);
+          break;
+      }
+    };
+
+    // Add event listener for the terminal container
+    const terminalContainer = document.querySelector('.terminal-container') as HTMLElement | null;
+    if (terminalContainer) {
+      terminalContainer.addEventListener('terminal-command', handleTerminalCommand);
+    }
+    
+    // Also listen at document level (fallback)
+    document.addEventListener('terminal-command', handleTerminalCommand);
+
+    // Cleanup function
+    return () => {
+      if (terminalContainer) {
+        terminalContainer.removeEventListener('terminal-command', handleTerminalCommand);
+      }
+      document.removeEventListener('terminal-command', handleTerminalCommand);
+    };
+  }, []);
 
   return (
     <div className="terminal-container">
