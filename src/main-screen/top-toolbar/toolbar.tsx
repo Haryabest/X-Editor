@@ -39,6 +39,11 @@ export interface TopToolbarProps {
   onClearConsole?: () => void;
   onCloseConsole?: () => void;
   onConsoleSettings?: () => void;
+  // Settings handler
+  onOpenSettings?: () => void;
+  // Modal handlers
+  onOpenAboutModal?: () => void;
+  onOpenDocModal?: () => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -103,7 +108,12 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onOpenConsole,
   onClearConsole,
   onCloseConsole,
-  onConsoleSettings
+  onConsoleSettings,
+  // Settings handler
+  onOpenSettings,
+  // Modal handlers
+  onOpenAboutModal,
+  onOpenDocModal
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -357,7 +367,11 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
             handleOpenNewWindow();
             break;
           case "Настройки":
-            setShowSettings(true);
+            if (onOpenSettings) {
+              onOpenSettings();
+            } else {
+              setShowSettings(true);
+            }
             break;
           case "Выход":
             handleClose();
@@ -408,7 +422,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
       case "Консоль":
         switch (option.text) {
           case "Открыть консоль":
-            console.log("Opening console");
+            console.log("Opening console via menu");
             if (onOpenConsole) {
               onOpenConsole();
             }
@@ -438,10 +452,16 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
       case "Справка":
         switch (option.text) {
           case "Документация":
-            // Implement documentation link
+            console.log("Opening documentation");
+            if (onOpenDocModal) {
+              onOpenDocModal();
+            }
             break;
           case "О программе":
-            // Implement about program link
+            console.log("Opening about modal");
+            if (onOpenAboutModal) {
+              onOpenAboutModal();
+            }
             break;
           default:
             break;

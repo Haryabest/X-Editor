@@ -30,7 +30,10 @@ interface SettingsProps {
 
 // Используем forwardRef для передачи ref
 const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose }, ref) => {
-  const [activeTab, setActiveTab] = useState<string>('editor');
+  // Local state for active tab, initialized from context if available or default to 'editor'
+  const [activeTab, setActiveTab] = useState(
+    'editor'
+  );
   
   // Пример первоначальных настроек
   const [editorSettings, setEditorSettings] = useState<EditorSettings>({
@@ -52,8 +55,11 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
     theme: 'dark',
     customThemePath: ''
   });
-
-  if (!isVisible) return null;
+  
+  // Use hideSettings from context and call onClose from props
+  const handleClose = () => {
+    if (onClose) onClose(); 
+  };
 
   // Обработчики изменения настроек
   const handleEditorSettingChange = (key: keyof EditorSettings, value: any) => {
@@ -67,13 +73,16 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
   const handleThemeSettingChange = (key: keyof ThemeSettings, value: any) => {
     setThemeSettings(prev => ({ ...prev, [key]: value }));
   };
+  
+  // Check combined visibility after all hooks
+  if (!isVisible) return null;
 
   return (
     <div className="settings-overlay" onClick={(e) => e.stopPropagation()}>
       <div className="settings-modal" ref={ref}>
         <div className="settings-header">
           <h2>Настройки</h2>
-          <button className="close-button" onClick={onClose}>
+          <button className="close-button" onClick={handleClose}>
             <X size={18} />
           </button>
         </div>
@@ -292,8 +301,8 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
         </div>
         
         <div className="settings-footer">
-          <button className="save-button" onClick={onClose}>Сохранить</button>
-          <button className="cancel-button" onClick={onClose}>Отмена</button>
+          <button className="save-button" onClick={handleClose}>Сохранить</button>
+          <button className="cancel-button" onClick={handleClose}>Отмена</button>
         </div>
       </div>
     </div>

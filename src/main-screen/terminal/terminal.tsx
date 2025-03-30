@@ -188,7 +188,9 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         });
 
         if (terminalRef.current) {
-          resizeObserver.observe(terminalRef.current);
+          // Use type assertion to avoid the TypeScript error
+          const element = terminalRef.current as unknown as Element;
+          resizeObserver.observe(element);
         }
 
         // Слушатель вывода процесса
@@ -369,16 +371,40 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       const customEvent = event as CustomEvent<{command: string}>;
       const { command } = customEvent.detail;
       
+      console.log(`Received terminal command: ${command}`);
+      
       switch (command) {
         case 'clear':
+          console.log('Clearing terminal');
           clearTerminal();
           break;
         case 'settings':
-          // Handle terminal settings
-          console.log('Terminal settings requested');
-          // Show a settings modal or toggle a settings view
+          console.log('Opening terminal settings');
+          // Open settings through the left toolbar settings button
+          const settingsButton = document.querySelector('.left-toolbar .bottom-buttons button:last-child');
+          if (settingsButton) {
+            console.log('Clicking settings button');
+            (settingsButton as HTMLButtonElement).click();
+            
+            // After a short delay, switch to the Terminal tab
+            setTimeout(() => {
+              console.log('Switching to Terminal tab');
+              // Look for the terminal tab by text content
+              const terminalTabs = Array.from(document.querySelectorAll('.settings-sidebar .sidebar-item'));
+              const terminalTab = terminalTabs.find(tab => tab.textContent?.trim() === 'Терминал');
+              
+              if (terminalTab) {
+                (terminalTab as HTMLDivElement).click();
+              } else {
+                console.log('Terminal tab not found');
+              }
+            }, 100);
+          } else {
+            console.log('Settings button not found');
+          }
           break;
         case 'restart':
+          console.log('Restarting terminal process');
           restartTerminalProcess();
           break;
         default:
@@ -405,8 +431,14 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     };
   }, []);
 
+  // Handle closing the terminal panel
+  const closeTerminal = () => {
+    console.log("Closing terminal panel");
+    document.dispatchEvent(new Event('terminal-close'));
+  };
+
   return (
-    <div className="terminal-container">
+    <div className="terminal-container" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
       <div className="tab-buttons">
         <div className="left-tabs">
           <button
@@ -442,7 +474,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               </button>
               <button
                 className="action-button"
-                onClick={hideTerminalPanel}
+                onClick={closeTerminal}
                 title="Скрыть панель"
               >
                 <X size={16} />
@@ -469,7 +501,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               </button>
               <button
                 className="action-button"
-                onClick={hideTerminalPanel}
+                onClick={closeTerminal}
                 title="Скрыть панель"
               >
                 <X size={16} />
@@ -479,12 +511,19 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         </div>
       </div>
 
-      <div className="tab-content">
+      <div className="tab-content" style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        flex: '1 1 auto',
+        height: 'calc(100% - 38px)', // Updated to match new tab height
+        overflow: 'hidden'
+      }}>
         {/* Вкладка терминала */}
         <div 
           className="terminal"
           style={{ 
-            display: activeTab === "terminal" ? "block" : "none"
+            display: activeTab === "terminal" ? "block" : "none",
+            height: '100%'
           }}
         >
           {activeTab === "terminal" && (
@@ -492,7 +531,12 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               ref={terminalRef} 
               style={{ 
                 width: "100%",
-                height: "100%"
+                height: "100%",
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0
               }}
             />
           )}

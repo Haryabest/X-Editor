@@ -11,6 +11,8 @@ import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
 import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
+import AboutModal from './components/about/AboutModal';
+import DocumentationModal from './components/documentation/DocumentationModal';
 
 import './App.css';
 
@@ -76,6 +78,8 @@ function App() {
     }
   });
   const [issues, setIssues] = useState<IssueInfo[]>([]);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
@@ -261,7 +265,7 @@ function App() {
       const delta = startY - moveEvent.clientY;
       let newHeight = startHeight + delta;
 
-      newHeight = Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, newHeight));
+      newHeight = Math.min(Math.max(newHeight, MIN_TERMINAL_HEIGHT), MAX_TERMINAL_HEIGHT);
       
       if (newHeight <= MIN_TERMINAL_HEIGHT + COLLAPSE_THRESHOLD) {
         setIsTerminalVisible(false);
@@ -281,14 +285,14 @@ function App() {
   };
 
   const handleRestoreTerminal = () => {
+    console.log("Restoring terminal, current visibility:", isTerminalVisible);
+    // Force terminal to be visible regardless of previous state
     setIsTerminalVisible(true);
-    setTerminalHeight(prev => 
-      Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, prev))
-    );
-  };
-
-  const toggleFileExplorer = () => {
-    setIsLeftPanelVisible(!isLeftPanelVisible);
+    // Ensure terminal has a reasonable height
+    setTerminalHeight(prev => {
+      // Set terminal to at least 200px height
+      return Math.max(200, prev); 
+    });
   };
 
   const handleIssueClick = (filePath: string, line: number, column: number) => {
@@ -299,6 +303,53 @@ function App() {
     
     handleSetSelectedFile(filePath);
   };
+
+  // More explicit terminal toggle function
+  const toggleTerminal = () => {
+    console.log("Toggling terminal, current state:", isTerminalVisible);
+    if (isTerminalVisible) {
+      console.log("Hiding terminal");
+      setIsTerminalVisible(false);
+    } else {
+      console.log("Showing terminal");
+      handleRestoreTerminal();
+    }
+  };
+
+  // Explicit open terminal function
+  const openTerminal = () => {
+    console.log("Explicitly opening terminal");
+    if (!isTerminalVisible) {
+      console.log("Terminal was hidden, now showing it");
+    }
+    handleRestoreTerminal();
+  };
+
+  // Function to restart terminal process
+  const restartTerminalProcess = () => {
+    console.log("Restarting terminal process");
+    document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'restart' } }));
+  };
+
+  // Listen for terminal close events
+  useEffect(() => {
+    const handleTerminalClose = () => {
+      console.log("Terminal close event received");
+      setIsTerminalVisible(false);
+    };
+    
+    document.addEventListener('terminal-close', handleTerminalClose);
+    
+    return () => {
+      document.removeEventListener('terminal-close', handleTerminalClose);
+    };
+  }, []);
+
+  // Functions to open/close modals
+  const openAboutModal = () => setIsAboutModalOpen(true);
+  const closeAboutModal = () => setIsAboutModalOpen(false);
+  const openDocModal = () => setIsDocModalOpen(true);
+  const closeDocModal = () => setIsDocModalOpen(false);
 
   return (
     <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
@@ -319,80 +370,106 @@ function App() {
           onDeselect={() => editorRef.current?.deselect()}
           onInvertSelection={() => editorRef.current?.invertSelection()}
           onExpandSelection={() => editorRef.current?.expandSelection()}
-          onOpenConsole={() => setIsTerminalVisible(true)}
+          onOpenConsole={openTerminal}
           onClearConsole={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'clear' } }))}
           onCloseConsole={() => setIsTerminalVisible(false)}
           onConsoleSettings={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'settings' } }))}
+          onOpenAboutModal={openAboutModal}
+          onOpenDocModal={openDocModal}
         />
 
         <div className="main-content">
           <LeftToolBar 
-            onToggleFileExplorer={toggleFileExplorer} 
-            isFileExplorerOpen={isLeftPanelVisible} 
+            onToggleFileExplorer={() => setIsLeftPanelVisible(prev => !prev)}
+            isFileExplorerOpen={isLeftPanelVisible}
           />
           
-          {isLeftPanelVisible ? (
-            <div className="left-panel" style={{ width: leftPanelWidth }}>
-              <FileManager
-                selectedFolder={selectedFolder}
-                setSelectedFile={handleSetSelectedFile}
-                setSelectedFolder={setSelectedFolder} // Добавьте эту строку
-                setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
-              />
-              <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
-            </div>
-          ) : (
-            <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
-              ➤
-            </button>
-          )}
-
-          <div className="center-and-terminal">
-            <div className="monaco-editor-container">
-              <div className="editor-container">
-                {openedFiles.length > 0 && (
-                  <TopbarEditor
-                    openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
-                    activeFile={selectedFile}
-                    setSelectedFile={handleSetSelectedFile}
-                    closeFile={handleCloseFile}
-                  />
-                )}
-                <CenterContainer
-                  editorRef={editorRef}
-                  selectedFile={selectedFile}
-                  openedFiles={openedFiles}
-                  setOpenedFiles={setOpenedFiles}
-                  handleCreateFile={handleCreateFile}
-                  setSelectedFolder={setSelectedFolder}
+          <div className="mainwindow-container" style={{ height: '100%' }}>
+            {/* Left panel with file explorer */}
+            {isLeftPanelVisible ? (
+              <div
+                className="left-panel visible"
+                style={{ width: leftPanelWidth }}
+              >
+                <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
+                <FileManager
                   selectedFolder={selectedFolder}
-                  onEditorInfoChange={setEditorInfo}
-                  onIssuesChange={setIssues}
-                  handleFileSelect={setSelectedFile}
-                  onSelectAll={() => editorRef.current?.selectAll()}
-                  onDeselect={() => editorRef.current?.deselect()}
-                />
-              </div>
-            </div>
-
-            {isTerminalVisible ? (
-              <div className="terminal-container" style={{ height: terminalHeight }}>
-                <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
-                <Terminal 
-                  terminalHeight={terminalHeight} 
-                  issues={issues} 
-                  onIssueClick={handleIssueClick}
+                  setSelectedFile={handleSetSelectedFile}
+                  setSelectedFolder={setSelectedFolder}
+                  setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
                 />
               </div>
             ) : (
-              <button className="restore-button bottom" onClick={handleRestoreTerminal}>
-                ▲
+              <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
+                ➤
               </button>
             )}
+
+            <div className="center-and-terminal">
+              <div className="monaco-editor-container">
+                <div className="editor-container">
+                  {openedFiles.length > 0 && (
+                    <TopbarEditor
+                      openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
+                      activeFile={selectedFile}
+                      setSelectedFile={handleSetSelectedFile}
+                      closeFile={handleCloseFile}
+                    />
+                  )}
+                  <CenterContainer
+                    editorRef={editorRef}
+                    selectedFile={selectedFile}
+                    openedFiles={openedFiles}
+                    setOpenedFiles={setOpenedFiles}
+                    handleCreateFile={handleCreateFile}
+                    setSelectedFolder={setSelectedFolder}
+                    selectedFolder={selectedFolder}
+                    onEditorInfoChange={setEditorInfo}
+                    onIssuesChange={setIssues}
+                    handleFileSelect={setSelectedFile}
+                    onSelectAll={() => editorRef.current?.selectAll()}
+                    onDeselect={() => editorRef.current?.deselect()}
+                  />
+                </div>
+              </div>
+
+              {isTerminalVisible ? (
+                <div className="terminal-container" style={{ 
+                  height: terminalHeight,
+                  minHeight: '200px', 
+                  maxHeight: '50%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  backgroundColor: '#1e1e1e',
+                  borderTop: '1px solid #303030',
+                }}>
+                  <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
+                  <Terminal 
+                    terminalHeight={terminalHeight - 5}
+                    issues={issues} 
+                    onIssueClick={handleIssueClick}
+                  />
+                </div>
+              ) : (
+                <button 
+                  className="restore-button bottom" 
+                  onClick={openTerminal}
+                  style={{zIndex: 100}}
+                >
+                  ▲
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <BottomToolbar editorInfo={editorInfo} />
+        
+        {/* Modal components */}
+        <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
+        <DocumentationModal isOpen={isDocModalOpen} onClose={closeDocModal} />
       </div>
     </FontSizeContext.Provider>
   );
