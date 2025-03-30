@@ -141,4 +141,30 @@
 .save-btn:hover {
   background: #3d3d3d;
 }
+
+.zoom-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  gap: 5px;
+  background-color: rgba(30, 30, 30, 0.8);
+  padding: 5px;
+  border-radius: 4px;
+}
+
+.zoom-button {
+  background-color: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.zoom-button:hover {
+  background-color: #444;
+}
   

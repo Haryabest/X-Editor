@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,7 @@ import { configureMonaco, setCurrentProject, setOpenedFilesList } from './monaco
 import { getLanguageFromExtension } from '../../utils/languageDetector';
 import { fileFilters } from '../../utils/fileFilters';
 import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions } from '../../utils/fileExtensions';
+import { FontSizeContext } from '../../App';
 
 import "./style.css";
 
@@ -70,8 +71,6 @@ interface CenterContainerProps {
   }) => void;
   onIssuesChange?: (issues: IssueInfo[]) => void;
   handleFileSelect?: (filePath: string | null) => void;
-  onZoomIn?: () => void; // Добавляем проп для увеличения масштаба
-  onZoomOut?: () => void; // Добавляем проп для уменьшения масштаба
   onSelectAll?: () => void;
   onDeselect?: () => void;
   editorRef?: React.RefObject<any>;
@@ -88,8 +87,6 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   onEditorInfoChange,
   onIssuesChange,
   handleFileSelect,
-  onZoomIn,
-  onZoomOut,
   onSelectAll,
   onDeselect,
   editorRef
@@ -101,7 +98,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const [monacoInstance, setMonacoInstance] = useState<any>(null);
-  const [fontSize, setFontSize] = useState(14); // Состояние для размера шрифта
+  const { fontSize, setFontSize } = useContext(FontSizeContext);
   
   // Конфигурируем Monaco сразу при загрузке компонента
   useEffect(() => {
@@ -118,6 +115,25 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     }
   }, []);
+
+  // Оставляем предыдущий useEffect для обновления при изменении параметров
+  useEffect(() => {
+    if (window.monaco) {
+      try {
+        configureMonaco(window.monaco);
+      } catch (error) {
+        console.error('Ошибка при конфигурации Monaco:', error);
+      }
+    }
+  }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
+
+  // Применяем размер шрифта при изменении глобального fontSize
+  useEffect(() => {
+    if (editorInstance) {
+      console.log('Applying font size from context:', fontSize);
+      editorInstance.updateOptions({ fontSize });
+    }
+  }, [fontSize, editorInstance]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -147,17 +163,6 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editorInstance]);
-
-  // Оставляем предыдущий useEffect для обновления при изменении параметров
-  useEffect(() => {
-    if (window.monaco) {
-      try {
-        configureMonaco(window.monaco);
-      } catch (error) {
-        console.error('Ошибка при конфигурации Monaco:', error);
-      }
-    }
-  }, [openedFiles, supportedTextExtensions, selectedFolder, getLanguageFromExtension]);
 
   useEffect(() => {
     const loadFileContent = async () => {
@@ -385,34 +390,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     }, 100);
   }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
-// Функции для изменения масштаба
-const handleZoomIn = useCallback(() => {
-  setFontSize(prev => {
-    const newFontSize = Math.min(prev + 2, 32); // Увеличиваем до максимум 32
-    if (editorInstance) {
-      editorInstance.updateOptions({ fontSize: newFontSize });
-    }
-    onZoomIn?.();
-    return newFontSize;
-  });
-}, [editorInstance, onZoomIn]);
 
-const handleZoomOut = useCallback(() => {
-  setFontSize(prev => {
-    const newFontSize = Math.max(prev - 2, 8); // Уменьшаем до минимум 8
-    if (editorInstance) {
-      editorInstance.updateOptions({ fontSize: newFontSize });
-    }
-    onZoomOut?.();
-    return newFontSize;
-  });
-}, [editorInstance, onZoomOut]);
-
-useEffect(() => {
-  if (editorInstance) {
-    editorInstance.updateOptions({ fontSize });
-  }
-}, [fontSize, editorInstance]);
   const handleEditorDidMount = (editor: any, monaco: any) => {
     console.log("Editor mounted, configuring Monaco...");
     try {
@@ -426,6 +404,10 @@ useEffect(() => {
       // Применяем конфигурацию Monaco
       configureMonaco(monaco);
       console.log("Monaco configured successfully in handleEditorDidMount");
+      
+      // Применяем размер шрифта из контекста
+      editor.updateOptions({ fontSize });
+      console.log("Applied font size from context:", fontSize);
       
       // Подготавливаем интерфейс для editorRef
       if (editorRef) {
@@ -644,7 +626,8 @@ useEffect(() => {
                   value={fileContent || code}
                   onChange={(value) => setCode(value || '')}
                   options={{
-                    fontSize: fontSize, // Используем динамическое значение из состояния                    minimap: { enabled: true },
+                    fontSize: fontSize,
+                    minimap: { enabled: true },
                     quickSuggestions: true,
                     scrollBeyondLastLine: false,
                     fontFamily: 'Fira Code, Menlo, Monaco, Consolas, monospace',
@@ -657,6 +640,7 @@ useEffect(() => {
                     wordWrap: 'on'
                   }}
                   onMount={handleEditorDidMount}
+                  key={`monaco-editor-${selectedFile || 'default'}-${fontSize}`}
                 />
               </div>
             </div>

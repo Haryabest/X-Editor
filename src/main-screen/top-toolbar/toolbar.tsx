@@ -102,7 +102,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSplitMenu, setShowSplitMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  
+
   const hiddenMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -313,11 +313,21 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
     }
   };
 
-  const handleMenuItemClick = (menu: string, option: MenuItem) => {
-    // Закрываем меню после выбора опции
-    setActiveMenu(null);
+  const handleMenuItemClick = (menu: string, option: MenuItem, e?: React.MouseEvent<HTMLElement>) => {
+    // Always close the menu for all operations
+    setActiveMenu('');
     
-    // Обработка в зависимости от выбранного меню и опции
+    if (option.action) {
+      option.action();
+      return;
+    }
+
+    if (option.subMenu) {
+      // Handle submenu logic
+      return;
+    }
+
+    // Switch based on menu and option text
     switch (menu) {
       case "Файл":
         switch (option.text) {
@@ -370,13 +380,16 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
             handleToggleFullscreen();
             break;
           case "Масштаб +":
-            onZoomIn?.();
+            console.log("Toolbar: Zoom In clicked");
+            if (onZoomIn) onZoomIn();
             break;
           case "Масштаб -":
-            onZoomOut?.();
+            console.log("Toolbar: Zoom Out clicked");
+            if (onZoomOut) onZoomOut();
             break;
           case "Сброс масштаба":
-            handleResetZoom();
+            console.log("Toolbar: Reset Zoom clicked");
+            if (onResetZoom) onResetZoom();
             break;
           default:
             break;
@@ -419,9 +432,9 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
                         <button 
                           key={index} 
                           className={`dropdown-btn ${isDisabled ? 'disabled' : ''}`}
-                          onClick={() => {
+                          onClick={(e) => {
                             if (!isDisabled) {
-                              handleMenuItemClick(item, option);
+                              handleMenuItemClick(item, option, e as React.MouseEvent<HTMLElement>);
                             }
                           }}
                           disabled={isDisabled}

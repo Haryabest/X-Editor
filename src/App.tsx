@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config';
 import { setCurrentProject } from './main-screen/centerContainer/monacoConfig';
@@ -36,6 +36,12 @@ interface IssueInfo {
   }[];
 }
 
+// Create a context for sharing font size across components
+export const FontSizeContext = createContext({
+  fontSize: 14,
+  setFontSize: () => {}
+});
+
 function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(250);
   const [terminalHeight, setTerminalHeight] = useState(200);
@@ -47,6 +53,10 @@ function App() {
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
   const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
+  const [editorFontSize, setEditorFontSize] = useState<number>(() => {
+    const saved = localStorage.getItem('editor-font-size');
+    return saved ? parseInt(saved, 10) : 14;
+  });
   const editorRef = useRef<{ 
     selectAll: () => void; 
     deselect: () => void;
@@ -73,6 +83,64 @@ function App() {
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
 
+  // Функции для изменения масштаба
+  const handleZoomIn = () => {
+    console.log('App.tsx: handleZoomIn called');
+    const newFontSize = Math.min(editorFontSize + 2, 32);
+    setEditorFontSize(newFontSize);
+    localStorage.setItem('editor-font-size', newFontSize.toString());
+    
+    // Apply to all editors directly
+    setTimeout(() => {
+      if (window.monaco && window.monaco.editor) {
+        const editors = window.monaco.editor.getEditors();
+        if (editors.length > 0) {
+          editors.forEach(editor => {
+            editor.updateOptions({ fontSize: newFontSize });
+          });
+        }
+      }
+    }, 0);
+  };
+
+  const handleZoomOut = () => {
+    console.log('App.tsx: handleZoomOut called');
+    const newFontSize = Math.max(editorFontSize - 2, 8);
+    setEditorFontSize(newFontSize);
+    localStorage.setItem('editor-font-size', newFontSize.toString());
+    
+    // Apply to all editors directly
+    setTimeout(() => {
+      if (window.monaco && window.monaco.editor) {
+        const editors = window.monaco.editor.getEditors();
+        if (editors.length > 0) {
+          editors.forEach(editor => {
+            editor.updateOptions({ fontSize: newFontSize });
+          });
+        }
+      }
+    }, 0);
+  };
+
+  const handleResetZoom = () => {
+    console.log('App.tsx: handleResetZoom called');
+    const defaultFontSize = 14;
+    setEditorFontSize(defaultFontSize);
+    localStorage.setItem('editor-font-size', defaultFontSize.toString());
+    
+    // Apply to all editors directly
+    setTimeout(() => {
+      if (window.monaco && window.monaco.editor) {
+        const editors = window.monaco.editor.getEditors();
+        if (editors.length > 0) {
+          editors.forEach(editor => {
+            editor.updateOptions({ fontSize: defaultFontSize });
+          });
+        }
+      }
+    }, 0);
+  };
+
   useEffect(() => {
     if (monaco) {
       configureMonaco(openedFiles);
@@ -84,6 +152,46 @@ function App() {
       setCurrentProject(selectedFolder);
     }
   }, [selectedFolder]);
+
+  // Add global keyboard shortcuts for zooming
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          handleZoomIn();
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          handleZoomOut();
+        } else if (e.key === '0') {
+          e.preventDefault();
+          handleResetZoom();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleZoomIn, handleZoomOut, handleResetZoom]);
+
+  // Get Monaco instance when it's available
+  useEffect(() => {
+    const checkMonaco = () => {
+      if (window.monaco) {
+        console.log('Monaco is now available on window');
+        setMonaco(window.monaco);
+      } else {
+        console.log('Monaco not yet available, retrying in 1 second');
+        setTimeout(checkMonaco, 1000);
+      }
+    };
+    
+    checkMonaco();
+    
+    return () => {
+      // Clean up any timers if component unmounts
+    };
+  }, []);
 
   const handleSetSelectedFile = (filePath: string | null) => {
     if (filePath && !openedFiles.some(file => file.path === filePath)) {
@@ -192,103 +300,97 @@ function App() {
     handleSetSelectedFile(filePath);
   };
 
-  // Функции для изменения масштаба
-  const handleZoomIn = () => {
-    // Логика теперь в CenterContainer
-  };
-
-  const handleZoomOut = () => {
-    // Логика теперь в CenterContainer
-  };
-
   return (
-    <div className="app-container">
-      <TopToolbar 
-        currentFiles={currentFiles.map(file => ({
-          ...file, 
-          icon: file.isFolder ? 'folder' : 'file',
-          isFolder: file.isFolder || false
-        }))} 
-        setSelectedFile={handleSetSelectedFile}
-        selectedFolder={selectedFolder}
-        selectedFile={selectedFile}
-        onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
-        onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
-        onSelectAll={() => editorRef.current?.selectAll()}
-        onDeselect={() => editorRef.current?.deselect()}
-        onInvertSelection={() => editorRef.current?.invertSelection()}
-        onExpandSelection={() => editorRef.current?.expandSelection()}
-      />
-
-      <div className="main-content">
-        <LeftToolBar 
-          onToggleFileExplorer={toggleFileExplorer} 
-          isFileExplorerOpen={isLeftPanelVisible} 
+    <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
+      <div className="app-container">
+        <TopToolbar 
+          currentFiles={currentFiles.map(file => ({
+            ...file, 
+            icon: file.isFolder ? 'folder' : 'file',
+            isFolder: file.isFolder || false
+          }))} 
+          setSelectedFile={handleSetSelectedFile}
+          selectedFolder={selectedFolder}
+          selectedFile={selectedFile}
+          onZoomIn={handleZoomIn} // Передаем функцию в TopToolbar
+          onZoomOut={handleZoomOut} // Передаем функцию в TopToolbar
+          onResetZoom={handleResetZoom} // Передаем функцию сброса масштаба
+          onSelectAll={() => editorRef.current?.selectAll()}
+          onDeselect={() => editorRef.current?.deselect()}
+          onInvertSelection={() => editorRef.current?.invertSelection()}
+          onExpandSelection={() => editorRef.current?.expandSelection()}
         />
-        
-        {isLeftPanelVisible ? (
-          <div className="left-panel" style={{ width: leftPanelWidth }}>
-            <FileManager
-              selectedFolder={selectedFolder}
-              setSelectedFile={handleSetSelectedFile}
-              setSelectedFolder={setSelectedFolder} // Добавьте эту строку
-              setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
-            />
-            <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
-          </div>
-        ) : (
-          <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
-            ➤
-          </button>
-        )}
 
-        <div className="center-and-terminal">
-          <div className="monaco-editor-container">
-            <div className="editor-container">
-              {openedFiles.length > 0 && (
-                <TopbarEditor
-                  openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
-                  activeFile={selectedFile}
-                  setSelectedFile={handleSetSelectedFile}
-                  closeFile={handleCloseFile}
-                />
-              )}
-              <CenterContainer
-                editorRef={editorRef}
-                selectedFile={selectedFile}
-                openedFiles={openedFiles}
-                setOpenedFiles={setOpenedFiles}
-                handleCreateFile={handleCreateFile}
-                setSelectedFolder={setSelectedFolder}
+        <div className="main-content">
+          <LeftToolBar 
+            onToggleFileExplorer={toggleFileExplorer} 
+            isFileExplorerOpen={isLeftPanelVisible} 
+          />
+          
+          {isLeftPanelVisible ? (
+            <div className="left-panel" style={{ width: leftPanelWidth }}>
+              <FileManager
                 selectedFolder={selectedFolder}
-                onEditorInfoChange={setEditorInfo}
-                onIssuesChange={setIssues}
-                handleFileSelect={setSelectedFile}
-                onZoomIn={handleZoomIn} 
-                onZoomOut={handleZoomOut} 
+                setSelectedFile={handleSetSelectedFile}
+                setSelectedFolder={setSelectedFolder} // Добавьте эту строку
+                setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
               />
-            </div>
-          </div>
-
-          {isTerminalVisible ? (
-            <div className="terminal-container" style={{ height: terminalHeight }}>
-              <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
-              <Terminal 
-                terminalHeight={terminalHeight} 
-                issues={issues} 
-                onIssueClick={handleIssueClick}
-              />
+              <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
             </div>
           ) : (
-            <button className="restore-button bottom" onClick={handleRestoreTerminal}>
-              ▲
+            <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
+              ➤
             </button>
           )}
-        </div>
-      </div>
 
-      <BottomToolbar editorInfo={editorInfo} />
-    </div>
+          <div className="center-and-terminal">
+            <div className="monaco-editor-container">
+              <div className="editor-container">
+                {openedFiles.length > 0 && (
+                  <TopbarEditor
+                    openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
+                    activeFile={selectedFile}
+                    setSelectedFile={handleSetSelectedFile}
+                    closeFile={handleCloseFile}
+                  />
+                )}
+                <CenterContainer
+                  editorRef={editorRef}
+                  selectedFile={selectedFile}
+                  openedFiles={openedFiles}
+                  setOpenedFiles={setOpenedFiles}
+                  handleCreateFile={handleCreateFile}
+                  setSelectedFolder={setSelectedFolder}
+                  selectedFolder={selectedFolder}
+                  onEditorInfoChange={setEditorInfo}
+                  onIssuesChange={setIssues}
+                  handleFileSelect={setSelectedFile}
+                  onSelectAll={() => editorRef.current?.selectAll()}
+                  onDeselect={() => editorRef.current?.deselect()}
+                />
+              </div>
+            </div>
+
+            {isTerminalVisible ? (
+              <div className="terminal-container" style={{ height: terminalHeight }}>
+                <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
+                <Terminal 
+                  terminalHeight={terminalHeight} 
+                  issues={issues} 
+                  onIssueClick={handleIssueClick}
+                />
+              </div>
+            ) : (
+              <button className="restore-button bottom" onClick={handleRestoreTerminal}>
+                ▲
+              </button>
+            )}
+          </div>
+        </div>
+
+        <BottomToolbar editorInfo={editorInfo} />
+      </div>
+    </FontSizeContext.Provider>
   );
 }
 
