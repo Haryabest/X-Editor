@@ -1,20 +1,99 @@
 .center-container {
   position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #1e1e1e;
   height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
 }
 
-.editor-container {
+.welcome-message {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  overflow: hidden;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  min-height: 0;
+  text-align: center;
+  padding: 20px;
+}
+
+.welcome-message h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: #f0f0f0;
+}
+
+.welcome-message p {
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+  color: #a0a0a0;
+}
+
+.welcome-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.welcome-message button {
+  background-color: #0e639c;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.welcome-message button:hover {
+  background-color: #1177bb;
+}
+
+.welcome-message button:active {
+  background-color: #0b5086;
+}
+
+.welcome-message button:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.file-error-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 16px;
+  color: #e74c3c;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Стили для редактора */
+.editor-container {
+  height: 100%;
+  width: 100%;
+}
+
+/* Стили для предпросмотра изображений */
+img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Стили для видеоплеера */
+.video-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
 }
 
 .editor-split {

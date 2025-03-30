@@ -1,193 +1,146 @@
+/**
+ * Language detector utility for file extensions
+ */
+
+// Helper function to get language ID based on file extension
 export const getLanguageFromExtension = (filePath: string): string => {
-  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
-  switch (ext) {
-    // JavaScript
-    case '.js':
-    case '.jsx':
-    case '.mjs':
-    case '.cjs':
-      return 'javascript';
+  if (!filePath) return 'plaintext';
+  
+  const ext = filePath.toLowerCase().split('.').pop() || '';
+  
+  // Mapping file extensions to Monaco editor language IDs
+  const languageMap: Record<string, string> = {
+    // TypeScript/JavaScript
+    'ts': 'typescript',
+    'tsx': 'typescriptreact',
+    'js': 'javascript',
+    'jsx': 'javascriptreact',
+    'mjs': 'javascript',
+    'cjs': 'javascript',
     
-    // TypeScript
-    case '.ts':
-    case '.tsx':
-      return 'typescript';
+    // Web
+    'html': 'html',
+    'htm': 'html',
+    'xhtml': 'html',
+    'css': 'css',
+    'scss': 'scss',
+    'sass': 'scss',
+    'less': 'less',
+    'svg': 'xml',
+    
+    // Data formats
+    'json': 'json',
+    'jsonc': 'jsonc',
+    'yaml': 'yaml',
+    'yml': 'yaml',
+    'xml': 'xml',
+    'csv': 'plaintext',
+    'toml': 'plaintext',
+    
+    // C-family
+    'c': 'c',
+    'cpp': 'cpp',
+    'cc': 'cpp',
+    'h': 'cpp',
+    'hpp': 'cpp',
+    'cxx': 'cpp',
+    'cs': 'csharp',
+    'java': 'java',
     
     // Python
-    case '.py':
-    case '.pyi':
-    case '.pyw':
-    case '.pyx':
-    case '.pxd':
-    case '.pxi':
-    case '.pyd':
-      return 'python';
-    
-    // Java
-    case '.java':
-    case '.jav':
-      return 'java';
-    
-    // C/C++
-    case '.c':
-    case '.h':
-    case '.cpp':
-    case '.cc':
-    case '.cxx':
-    case '.hpp':
-    case '.hh':
-    case '.hxx':
-      return 'cpp';
-    
-    // C#
-    case '.cs':
-    case '.csx':
-      return 'csharp';
-    
-    // HTML
-    case '.html':
-    case '.htm':
-    case '.shtml':
-    case '.xhtml':
-      return 'html';
-    
-    // CSS
-    case '.css':
-    case '.scss':
-    case '.sass':
-    case '.less':
-      return 'css';
-    
-    // JSON
-    case '.json':
-    case '.jsonc':
-    case '.json5':
-      return 'json';
-    
-    // Markdown
-    case '.md':
-    case '.markdown':
-    case '.mdown':
-      return 'markdown';
-    
-    // XML
-    case '.xml':
-    case '.xsd':
-    case '.xsl':
-    case '.xslt':
-      return 'xml';
-    
-    // YAML
-    case '.yml':
-    case '.yaml':
-      return 'yaml';
-    
-    // Shell
-    case '.sh':
-    case '.bash':
-    case '.zsh':
-    case '.fish':
-    case '.ksh':
-      return 'shell';
-    
-    // PowerShell
-    case '.ps1':
-    case '.psm1':
-    case '.psd1':
-      return 'powershell';
+    'py': 'python',
+    'pyc': 'python',
+    'pyd': 'python',
+    'pyo': 'python',
+    'pyw': 'python',
     
     // PHP
-    case '.php':
-    case '.phtml':
-    case '.php3':
-    case '.php4':
-    case '.php5':
-    case '.php7':
-    case '.phps':
-      return 'php';
+    'php': 'php',
     
     // Ruby
-    case '.rb':
-    case '.rbx':
-    case '.rjs':
-    case '.gemspec':
-    case '.rake':
-    case '.ru':
-    case '.erb':
-      return 'ruby';
+    'rb': 'ruby',
     
     // Go
-    case '.go':
-      return 'go';
+    'go': 'go',
     
     // Rust
-    case '.rs':
-    case '.rlib':
-      return 'rust';
+    'rs': 'rust',
     
     // Swift
-    case '.swift':
-      return 'swift';
+    'swift': 'swift',
     
     // Kotlin
-    case '.kt':
-    case '.kts':
-      return 'kotlin';
+    'kt': 'kotlin',
+    'kts': 'kotlin',
     
-    // Scala
-    case '.scala':
-    case '.sc':
-      return 'scala';
+    // Shell scripts
+    'sh': 'shell',
+    'bash': 'shell',
+    'zsh': 'shell',
+    'bat': 'bat',
+    'cmd': 'bat',
+    'ps1': 'powershell',
     
-    // R
-    case '.r':
-    case '.rdata':
-    case '.rds':
-    case '.rda':
-      return 'r';
+    // Other programming languages
+    'r': 'r',
+    'lua': 'lua',
+    'perl': 'perl',
+    'pl': 'perl',
+    'pm': 'perl',
+    'hs': 'haskell',
+    'sql': 'sql',
     
-    // Dart
-    case '.dart':
-      return 'dart';
+    // Configurations
+    'ini': 'ini',
+    'conf': 'ini',
+    'properties': 'properties',
+    'env': 'properties',
     
-    // Lua
-    case '.lua':
-      return 'lua';
+    // Documentation
+    'md': 'markdown',
+    'markdown': 'markdown',
+    'txt': 'plaintext',
+    'rst': 'plaintext',
+    'tex': 'plaintext',
+    'log': 'plaintext',
     
-    // Perl
-    case '.pl':
-    case '.pm':
-    case '.pod':
-    case '.t':
-      return 'perl';
-    
-    // SQL
-    case '.sql':
-    case '.psql':
-    case '.plsql':
-    case '.mysql':
-    case '.sqlite':
-      return 'sql';
-    
-    // GraphQL
-    case '.graphql':
-    case '.gql':
-      return 'graphql';
-    
-    // Docker
-    case '.dockerfile':
-    case '.dockerignore':
-      return 'dockerfile';
-    
-    // Git
-    case '.gitignore':
-      return 'gitignore';
-    
-    // Plain text
-    case '.txt':
-    case '.text':
-    case '.log':
-    default:
-      return 'plaintext';
-  }
+    // Common config files (convention-based)
+    'gitignore': 'plaintext',
+    'dockerignore': 'plaintext',
+    'editorconfig': 'plaintext'
+  };
+  
+  // Check if this is a known file extension
+  return languageMap[ext] || 'plaintext';
+};
+
+// Export helper function to determine if a file is a text file
+export const isTextFile = (filePath: string): boolean => {
+  if (!filePath) return false;
+  
+  // Get the language for the file
+  const language = getLanguageFromExtension(filePath);
+  
+  // Any file that has a language other than plaintext
+  // or is explicitly a text format is considered a text file
+  return language !== 'plaintext' || 
+         filePath.toLowerCase().endsWith('.txt') ||
+         filePath.toLowerCase().endsWith('.md') ||
+         filePath.toLowerCase().endsWith('.log');
+};
+
+// Export helper to determine if a file is a TypeScript file
+export const isTypeScriptFile = (filePath: string): boolean => {
+  if (!filePath) return false;
+  
+  const language = getLanguageFromExtension(filePath);
+  return language === 'typescript' || language === 'typescriptreact';
+};
+
+// Export helper to determine if a file is a JavaScript file
+export const isJavaScriptFile = (filePath: string): boolean => {
+  if (!filePath) return false;
+  
+  const language = getLanguageFromExtension(filePath);
+  return language === 'javascript' || language === 'javascriptreact';
 }; 

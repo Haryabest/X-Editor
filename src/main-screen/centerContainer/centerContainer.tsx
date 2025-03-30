@@ -10,6 +10,12 @@ import { getLanguageFromExtension } from '../../utils/languageDetector';
 import { fileFilters } from '../../utils/fileFilters';
 import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions } from '../../utils/fileExtensions';
 import { FontSizeContext } from '../../App';
+import { initializeTypeScriptTypes, registerTypeScriptFile } from './monaco-types-loader';
+import { setupMonacoTheme } from './monaco-theme-loader';
+import { correctLanguageFromExtension } from './monaco-advanced-config';
+import { monacoLSPService } from './monaco-lsp-wrapper';
+import { initializeMonacoLSP, getMonacoLSPInstance } from './monaco-lsp-integration';
+import { debounce } from 'lodash';
 
 import "./style.css";
 
@@ -99,6 +105,11 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const [monacoInstance, setMonacoInstance] = useState<any>(null);
   const { fontSize, setFontSize } = useContext(FontSizeContext);
+  const [lspStatus, setLspStatus] = useState<{ initialized: boolean; connectedServers: string[] }>({
+    initialized: false,
+    connectedServers: []
+  });
+  const lspRef = useRef<any>(null);
   
   // Конфигурируем Monaco сразу при загрузке компонента
   useEffect(() => {
@@ -176,6 +187,17 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             setCode(content);
             setImageSrc(null);
             setVideoSrc(null);
+            
+            // Уведомляем LSP об открытии файла только если инициализация LSP выполнена
+            if (monacoInstance && editorInstance && lspStatus.initialized) {
+              monacoLSPService.handleFileOpen(selectedFile, content);
+              
+              // Устанавливаем правильный язык для текущей модели
+              const model = editorInstance.getModel();
+              if (model) {
+                correctLanguageFromExtension(monacoInstance, model, selectedFile);
+              }
+            }
           } else if (supportedImageExtensions.includes(ext)) {
             const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
             const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
@@ -210,51 +232,58 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     };
     loadFileContent();
-  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions]);
+  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions, lspStatus.initialized, monacoInstance, editorInstance]);
 
-  const handleOpenFolder = useCallback(async () => {
+  // Добавляем функцию для открытия папки
+  const handleOpenFolder = async () => {
     try {
-      const folderPath = await open({ directory: true, multiple: false });
-      if (folderPath) {
-        setSelectedFolder(folderPath as string);
-        setIsEditorOpen(false);
-      } else {
-        setSelectedFolder(null);
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Выберите рабочую папку',
+      });
+  
+      if (selected) {
+        setSelectedFolder(selected);
+        console.log('Открыта папка:', selected);
       }
     } catch (error) {
-      console.error('Error opening folder:', error);
-      alert(`Failed to open folder: ${error}`);
+      console.error('Ошибка открытия папки:', error);
     }
-  }, [setSelectedFolder]);
+  };
 
-  const handleSaveFile = useCallback(async () => {
-    if (selectedFile && selectedFile.startsWith('untitled-')) {
-      try {
-        const filePath = await save({
-          filters: fileFilters,
+  // Добавляем функцию для сохранения файла
+  const handleSaveFile = async () => {
+    try {
+      if (!selectedFile || !code) return;
+      
+      let targetPath: string | null = null;
+      
+      if (selectedFile.startsWith('untitled-')) {
+        // Если это новый файл, предлагаем выбрать имя
+        const result = await save({
+          title: 'Сохранить файл',
           defaultPath: selectedFolder || undefined,
-          title: 'Save File As...',
+          filters: [{ name: 'Text Files', extensions: ['txt', 'js', 'ts', 'html', 'css'] }]
         });
-
-        if (filePath) {
-          await invoke('save_file', { path: filePath as string, content: code });
-          setOpenedFiles((prev: FileItem[]) => 
-            prev.map((file: FileItem) =>
-              file.path === selectedFile
-                ? { 
-                    ...file, 
-                    name: (filePath as string).split(/[\\/]/).pop() || 'Untitled', 
-                    path: filePath as string 
-                  }
-                : file
-            ));
-        }
-      } catch (error) {
-        console.error('Error saving file:', error);
-        alert(`Failed to save file: ${error}`);
+        targetPath = result;
+      } else {
+        // Используем существующий путь
+        targetPath = selectedFile;
       }
+
+      if (targetPath) {
+        await invoke('save_file', {
+          path: targetPath,
+          content: code
+        });
+        
+        console.log(`Файл сохранён: ${targetPath}`);
+      }
+    } catch (error) {
+      console.error('Ошибка сохранения:', error);
     }
-  }, [selectedFile, selectedFolder, code, setOpenedFiles]);
+  };
 
   const isEditableFile = useCallback((filePath: string) => {
     return supportedTextExtensions.some((ext) => filePath.toLowerCase().endsWith(ext)) || filePath.startsWith('untitled-');
@@ -270,6 +299,14 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
   // Функция для преобразования маркеров в формат проблем
   const convertMarkersToIssues = (markers: MarkerData[], filePath: string) => {
+    if (!monacoInstance || !monacoInstance.MarkerSeverity) {
+      return {
+        filePath,
+        fileName: filePath.split(/[\\/]/).pop() || '',
+        issues: []
+      };
+    }
+    
     const fileName = filePath.split(/[\\/]/).pop() || '';
     return {
       filePath,
@@ -293,72 +330,107 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     if (editorInstance && monacoInstance && (onEditorInfoChange || onIssuesChange)) {
       // Подписываемся на изменения маркеров (ошибки/предупреждения)
       const markersListener = monacoInstance.editor.onDidChangeMarkers((_uris: any[]) => {
-        const allIssues: IssueInfo[] = [];
+        try {
+          const allIssues: IssueInfo[] = [];
 
-        // Собираем маркеры для всех открытых файлов
-        openedFiles.forEach(file => {
-          const uri = monacoInstance.Uri.parse(`file:///${file.path.replace(/\\/g, '/')}`);
-          const markers = monacoInstance.editor.getModelMarkers({ resource: uri }) as MarkerData[];
-          
-          if (markers.length > 0) {
-            const issues = convertMarkersToIssues(markers, file.path);
-            allIssues.push({
-              ...issues,
-              issues: issues.issues.map(issue => ({
-                ...issue,
-                severity: issue.severity as "error" | "warning" | "info"
-              }))
-            });
+          // Собираем маркеры для всех открытых файлов
+          openedFiles.forEach(file => {
+            if (!file || !file.path) return;
+            
+            try {
+              const uri = monacoInstance.Uri.parse(`file:///${file.path.replace(/\\/g, '/')}`);
+              const markers = monacoInstance.editor.getModelMarkers({ resource: uri }) as MarkerData[];
+              
+              if (markers && markers.length > 0) {
+                const issues = convertMarkersToIssues(markers, file.path);
+                allIssues.push({
+                  ...issues,
+                  issues: issues.issues.map(issue => ({
+                    ...issue,
+                    severity: issue.severity as "error" | "warning" | "info"
+                  }))
+                });
+              }
+            } catch (err) {
+              console.error(`Ошибка при обработке маркеров для файла ${file.path}:`, err);
+            }
+          });
+
+          // Обновляем информацию о проблемах
+          if (onIssuesChange) {
+            onIssuesChange(allIssues);
           }
-        });
 
-        // Обновляем информацию о проблемах
-        if (onIssuesChange) {
-          onIssuesChange(allIssues);
-        }
+          // Обновляем информацию для текущего файла в нижней панели
+          if (onEditorInfoChange && editorInstance.getModel()) {
+            try {
+              const model = editorInstance.getModel();
+              if (!model) return;
+              
+              const currentFileMarkers = monacoInstance.editor.getModelMarkers({
+                resource: model.uri
+              }) as MarkerData[];
 
-        // Обновляем информацию для текущего файла в нижней панели
-        if (onEditorInfoChange && editorInstance.getModel()) {
-          const currentFileMarkers = monacoInstance.editor.getModelMarkers({
-            resource: editorInstance.getModel().uri
-          }) as MarkerData[];
-
-          const errors = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Error).length;
-          const warnings = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Warning).length;
-          
-          updateEditorInfo({ errors, warnings });
+              if (currentFileMarkers) {
+                const errors = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Error).length;
+                const warnings = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Warning).length;
+                
+                updateEditorInfo({ errors, warnings });
+              }
+            } catch (err) {
+              console.error('Ошибка при обновлении информации о маркерах:', err);
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при обновлении маркеров:', error);
         }
       });
 
       // Подписываемся на изменения позиции курсора
       const cursorListener = editorInstance.onDidChangeCursorPosition((_e: any) => {
-        const position = editorInstance.getPosition();
-        const model = editorInstance.getModel();
-        const totalChars = model.getValueLength();
-        
-        updateEditorInfo({
-          cursorInfo: {
-            line: position.lineNumber,
-            column: position.column,
-            totalChars
-          }
-        });
+        try {
+          const position = editorInstance.getPosition();
+          if (!position) return;
+          
+          const model = editorInstance.getModel();
+          if (!model) return;
+          
+          const totalChars = model.getValueLength();
+          
+          updateEditorInfo({
+            cursorInfo: {
+              line: position.lineNumber,
+              column: position.column,
+              totalChars
+            }
+          });
+        } catch (err) {
+          console.error('Ошибка при обновлении позиции курсора:', err);
+        }
       });
 
       // Функция для обновления информации
       const updateEditorInfo = (newInfo: any) => {
-        if (onEditorInfoChange) {
-          onEditorInfoChange({
-            errors: newInfo.errors ?? 0,
-            warnings: newInfo.warnings ?? 0,
-            language: getLanguageFromExtension(selectedFile || ''),
-            encoding: 'UTF-8', // В будущем можно добавить определение кодировки
-            cursorInfo: newInfo.cursorInfo ?? {
-              line: 1,
-              column: 1,
-              totalChars: editorInstance.getModel()?.getValueLength() ?? 0
-            }
-          });
+        if (onEditorInfoChange && editorInstance) {
+          try {
+            const model = editorInstance.getModel();
+            const totalChars = model ? model.getValueLength() : 0;
+            const position = editorInstance.getPosition();
+            
+            onEditorInfoChange({
+              errors: newInfo.errors ?? 0,
+              warnings: newInfo.warnings ?? 0,
+              language: getLanguageFromExtension(selectedFile || ''),
+              encoding: 'UTF-8', // В будущем можно добавить определение кодировки
+              cursorInfo: newInfo.cursorInfo ?? {
+                line: position ? position.lineNumber : 1,
+                column: position ? position.column : 1,
+                totalChars
+              }
+            });
+          } catch (err) {
+            console.error('Ошибка при обновлении информации редактора:', err);
+          }
         }
       };
 
@@ -391,209 +463,64 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }, 100);
   }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
 
+  const handleCodeChange = (newValue: string) => {
+    setCode(newValue);
+    // Notify LSP of code changes
+    if (selectedFile && lspStatus.initialized) {
+      monacoLSPService.handleFileChange(selectedFile, newValue);
+    }
+  };
+
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    console.log("Editor mounted, configuring Monaco...");
+    setEditorInstance(editor);
+    setMonacoInstance(monaco);
+    
+    setupMonacoTheme(monaco);
+    
+    // Editor settings
+    editor.getModel()?.updateOptions({ 
+      tabSize: 2,
+      insertSpaces: true
+    });
+    
+    // Configure Monaco
+    configureMonaco(monaco);
+    
+    registerTypeScriptModels(monaco, editor, selectedFile || '');
+    
+    // Инициализация LSP
     try {
-      // Сохраняем экземпляр редактора
-      setEditorInstance(editor);
-      
-      // Сохраняем ссылку на Monaco
-      window.monaco = monaco;
-      setMonacoInstance(monaco);
-      
-      // Применяем конфигурацию Monaco
-      configureMonaco(monaco);
-      console.log("Monaco configured successfully in handleEditorDidMount");
-      
-      // Применяем размер шрифта из контекста
-      editor.updateOptions({ fontSize });
-      console.log("Applied font size from context:", fontSize);
-      
-      // Подготавливаем интерфейс для editorRef
-      if (editorRef) {
-        const editorInterface = {
-          selectAll: () => {
-            const model = editor.getModel();
-            if (model) {
-              const fullRange = model.getFullModelRange();
-              editor.setSelection(fullRange);
-              editor.focus();
-            }
-          },
-          deselect: () => {
-            editor.setSelection({
-              startLineNumber: 1,
-              startColumn: 1,
-              endLineNumber: 1,
-              endColumn: 1
-            });
-            editor.focus();
-          },
-          // Добавляем метод для инвертированного выделения
-          invertSelection: () => {
-            const model = editor.getModel();
-            if (model) {
-              const selection = editor.getSelection();
-              if (selection) {
-                const fullRange = model.getFullModelRange();
-                
-                // Если есть текущее выделение
-                if (!selection.isEmpty()) {
-                  // Создаем два новых выделения (до и после текущего)
-                  const before = {
-                    startLineNumber: 1,
-                    startColumn: 1,
-                    endLineNumber: selection.startLineNumber,
-                    endColumn: selection.startColumn
-                  };
-                  
-                  const after = {
-                    startLineNumber: selection.endLineNumber,
-                    startColumn: selection.endColumn,
-                    endLineNumber: fullRange.endLineNumber,
-                    endColumn: fullRange.endColumn
-                  };
-                  
-                  // Устанавливаем новые выделения
-                  if (before.endLineNumber > 1 || (before.endLineNumber === 1 && before.endColumn > 1)) {
-                    editor.setSelection(before);
-                  } else if (after.startLineNumber < fullRange.endLineNumber || 
-                           (after.startLineNumber === fullRange.endLineNumber && after.startColumn < fullRange.endColumn)) {
-                    editor.setSelection(after);
-                  }
-                } else {
-                  // Если нет текущего выделения, выделяем всё
-                  editor.setSelection(fullRange);
-                }
-                editor.focus();
-              }
-            }
-          },
-          // Добавляем метод для расширенного выделения
-          expandSelection: () => {
-            const model = editor.getModel();
-            if (model) {
-              const selection = editor.getSelection();
-              if (selection) {
-                // Расширяем текущее выделение до границ строки
-                const expandedSelection = {
-                  startLineNumber: selection.startLineNumber,
-                  startColumn: 1,
-                  endLineNumber: selection.endLineNumber,
-                  endColumn: model.getLineMaxColumn(selection.endLineNumber)
-                };
-                
-                editor.setSelection(expandedSelection);
-                editor.focus();
-              }
-            }
-          }
-        };
-        
-        // Устанавливаем объект в ref
-        if (typeof editorRef === 'function') {
-          editorRef(editorInterface);
-        } else if (editorRef) {
-          editorRef.current = editorInterface;
-        }
-      }
-      
-      // Добавляем обработчик изменения позиции курсора
-      editor.onDidChangeCursorPosition((e: any) => {
-        try {
-          // Обновляем информацию о позиции курсора
-          if (onEditorInfoChange && editorInstance) {
-            const model = editor.getModel();
-            const totalChars = model ? model.getValueLength() : 0;
-            
-            onEditorInfoChange({
-              errors: 0, // будет обновлено при изменении маркеров
-              warnings: 0, // будет обновлено при изменении маркеров
-              language: model ? model.getLanguageId() : 'plaintext',
-              encoding: 'UTF-8',
-              cursorInfo: {
-                line: e.position.lineNumber,
-                column: e.position.column,
-                totalChars
-              }
-            });
-          }
-        } catch (cursorError) {
-          console.error('Ошибка при обновлении курсора:', cursorError);
-        }
-      });
-      
-      // Добавляем отслеживание маркеров (ошибок, предупреждений)
-      const updateMarkers = () => {
-        try {
-          if (editor && selectedFile) {
-            const uri = monaco.Uri.parse(selectedFile);
-            const markers = monaco.editor.getModelMarkers({ resource: uri });
-            
-            let errors = 0;
-            let warnings = 0;
-            
-            markers.forEach((marker: any) => {
-              if (marker.severity === monaco.MarkerSeverity.Error) errors++;
-              if (marker.severity === monaco.MarkerSeverity.Warning) warnings++;
-            });
-            
-            if (onEditorInfoChange) {
-              const model = editor.getModel();
-              onEditorInfoChange({
-                errors,
-                warnings,
-                language: model ? model.getLanguageId() : 'plaintext',
-                encoding: 'UTF-8',
-                cursorInfo: {
-                  line: editor.getPosition().lineNumber,
-                  column: editor.getPosition().column,
-                  totalChars: model ? model.getValueLength() : 0
-                }
-              });
-            }
-            
-            if (onIssuesChange) {
-              const fileName = selectedFile.split(/[\\/]/).pop() || '';
-              const issuesData: IssueInfo = {
-                filePath: selectedFile,
-                fileName,
-                issues: markers.map((marker: any) => ({
-                  severity: marker.severity === monaco.MarkerSeverity.Error ? 'error' : 
-                            marker.severity === monaco.MarkerSeverity.Warning ? 'warning' : 'info',
-                  message: marker.message,
-                  line: marker.startLineNumber,
-                  column: marker.startColumn,
-                  endLine: marker.endLineNumber,
-                  endColumn: marker.endColumn,
-                  source: marker.source,
-                  code: marker.code
-                }))
-              };
+      // Инициализируем LSP для Monaco
+      if (!lspRef.current) {
+        const lspInstance = initializeMonacoLSP(monaco);
+        if (lspInstance) {
+          // Инициализируем LSP с редактором и корневой директорией
+          lspInstance.initialize(editor, selectedFolder || '/');
+          lspRef.current = lspInstance;
+          
+          // Устанавливаем обработчик для отображения подсказок при наведении
+          editor.onMouseMove(debounce(async (e: any) => {
+            if (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT) {
+              const hoverInfo = await lspInstance.getHoverInfo(
+                editor.getModel(),
+                e.target.position
+              );
               
-              onIssuesChange([issuesData]);
+              if (hoverInfo) {
+                // Подсказка может быть отображена автоматически через провайдер hover
+                // Здесь можно добавить дополнительную логику, если нужно
+              }
             }
-          }
-        } catch (markersError) {
-          console.error('Ошибка при обновлении маркеров:', markersError);
+          }, 300));
         }
-      };
-      
-      try {
-        // Отслеживаем изменения маркеров
-        monaco.editor.onDidChangeMarkers(updateMarkers);
-        
-        // Отслеживаем изменения моделей
-        monaco.editor.onDidCreateModel((model: any) => {
-          // Когда создается новая модель, применяем конфигурацию Monaco
-          const filePath = model.uri.path;
-          console.log(`Создана новая модель для файла: ${filePath}`);
-        });
-      } catch (hookError) {
-        console.error('Ошибка при регистрации слушателей событий:', hookError);
       }
-    } catch (mountError) {
-      console.error('Критическая ошибка при инициализации редактора:', mountError);
+    } catch (error) {
+      console.error('Ошибка при инициализации LSP:', error);
+    }
+    
+    // Pass editor reference via ref
+    if (editorRef) {
+      editorRef.current = editor;
     }
   };
 
@@ -611,77 +538,242 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   }, [openedFiles]);
 
+  // Добавляем новую функцию для регистрации TS/TSX файлов в Monaco
+  const registerTypeScriptModels = (monaco: any, editor: any, filePath: string) => {
+    if (!monaco || !editor) return;
+    
+    try {
+      const fileExt = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+      const model = editor.getModel();
+      
+      // Только для TypeScript файлов
+      if (fileExt === '.ts' || fileExt === '.tsx') {
+        // Инициализируем типы TypeScript если ещё не инициализированы
+        initializeTypeScriptTypes(monaco);
+        
+        if (model) {
+          // Устанавливаем правильный язык для модели
+          if (fileExt === '.ts') {
+            monaco.editor.setModelLanguage(model, 'typescript');
+          } else {
+            monaco.editor.setModelLanguage(model, 'typescriptreact');
+          }
+          
+          // Регистрируем файл TypeScript для правильной работы типов
+          registerTypeScriptFile(monaco, filePath, model.getValue());
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при регистрации модели TypeScript:', error);
+    }
+  };
+
+  // Обновление регистрации TypeScript моделей при смене файла
+  useEffect(() => {
+    if (selectedFile && editorInstance && monacoInstance) {
+      try {
+        // Зарегистрируем выбранный файл как TypeScript модель
+        registerTypeScriptModels(monacoInstance, editorInstance, selectedFile);
+        
+        // Если это React файл, специальная обработка
+        if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
+          console.log(`Обработка React файла: ${selectedFile}`);
+          
+          // Устанавливаем правильный язык для текущей модели
+          const model = editorInstance.getModel();
+          if (model) {
+            if (selectedFile.endsWith('.tsx')) {
+              monacoInstance.editor.setModelLanguage(model, 'typescriptreact');
+            } else if (selectedFile.endsWith('.jsx')) {
+              monacoInstance.editor.setModelLanguage(model, 'javascriptreact');
+            }
+            
+            // Инициализируем типы для React
+            initializeTypeScriptTypes(monacoInstance);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка при регистрации файла в TypeScript:', error);
+      }
+    }
+  }, [selectedFile, editorInstance, monacoInstance]);
+
+  // Добавляем эффект для инициализации LSP при монтировании компонента
+  useEffect(() => {
+    // LSP будет инициализирован после инициализации редактора
+    if (editorInstance && monacoInstance && !lspStatus.initialized) {
+      console.log("Инициализация LSP клиента...");
+      try {
+        // Инициализируем LSP с Monaco и редактором
+        monacoLSPService.initialize(monacoInstance, editorInstance);
+        
+        // Устанавливаем корневую директорию проекта
+        if (selectedFolder) {
+          monacoLSPService.setProjectRoot(selectedFolder);
+        }
+        
+        // Пытаемся подключиться к предустановленным языковым серверам
+        const connectToServers = async () => {
+          try {
+            // Подключаемся к TypeScript языковому серверу
+            const tsConnected = await monacoLSPService.connectToPredefinedServer('typescript');
+            
+            // В будущем можно добавить подключение к другим серверам
+            // await monacoLSPService.connectToPredefinedServer('python');
+            // await monacoLSPService.connectToPredefinedServer('html');
+            
+            // Обновляем статус LSP
+            setLspStatus(prev => ({
+              initialized: true,
+              connectedServers: [
+                ...(tsConnected ? ['TypeScript'] : []),
+                // Добавляйте другие серверы по мере их подключения
+              ]
+            }));
+            
+            console.log("LSP клиент успешно инициализирован и подключен к серверам");
+          } catch (error) {
+            console.error("Ошибка при подключении к языковым серверам:", error);
+            setLspStatus({
+              initialized: true,
+              connectedServers: []
+            });
+          }
+        };
+        
+        connectToServers();
+      } catch (error) {
+        console.error("Ошибка при инициализации LSP клиента:", error);
+        setLspStatus({
+          initialized: true,
+          connectedServers: []
+        });
+      }
+    }
+  }, [editorInstance, monacoInstance, selectedFolder, lspStatus.initialized]);
+
+  // Обработчик открытия файла для LSP
+  useEffect(() => {
+    try {
+      // При изменении текущего файла уведомляем LSP
+      if (selectedFile && editorRef.current && monacoInstance) {
+        const lspInstance = getMonacoLSPInstance();
+        if (lspInstance) {
+          // Определяем язык файла на основе расширения
+          const fileExtension = selectedFile.split('.').pop()?.toLowerCase();
+          let languageId = 'plaintext';
+          
+          // Определяем язык на основе расширения
+          if (fileExtension === 'ts') languageId = 'typescript';
+          else if (fileExtension === 'js') languageId = 'javascript';
+          else if (fileExtension === 'tsx') languageId = 'typescriptreact';
+          else if (fileExtension === 'jsx') languageId = 'javascriptreact';
+          else if (fileExtension === 'html') languageId = 'html';
+          else if (fileExtension === 'css') languageId = 'css';
+          else if (fileExtension === 'json') languageId = 'json';
+          
+          // Устанавливаем язык для модели редактора
+          if (editorRef.current.getModel()) {
+            monacoInstance.editor.setModelLanguage(editorRef.current.getModel(), languageId);
+          }
+          
+          // Уведомляем LSP об открытии файла
+          lspInstance.handleFileOpen(selectedFile, languageId, fileContent || code);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при обработке открытия файла для LSP:', error);
+    }
+    
+    // При размонтировании компонента уведомляем LSP о закрытии файла
+    return () => {
+      try {
+        if (selectedFile) {
+          const lspInstance = getMonacoLSPInstance();
+          if (lspInstance) {
+            lspInstance.handleFileClose(selectedFile);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка при обработке закрытия файла для LSP:', error);
+      }
+    };
+  }, [selectedFile, fileContent, code, editorRef, monacoInstance]);
+
+  // Очистка ресурсов LSP при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      try {
+        const lspInstance = getMonacoLSPInstance();
+        if (lspInstance) {
+          lspInstance.dispose();
+        }
+      } catch (error) {
+        console.error('Ошибка при освобождении ресурсов LSP:', error);
+      }
+    };
+  }, []);
+
   return (
     <div className="center-container" style={style}>
-      {isEditorOpen || selectedFile ? (
-        <>
-          {isEditableFile(selectedFile || '') ? (
-            <div className="editor-container">
-              <div className="monaco-editor-container">
-                <MonacoEditor
-                  height="100%"
-                  width="100%"
-                  language={getLanguageFromExtension(selectedFile || '')}
-                  theme="vs-dark"
-                  value={fileContent || code}
-                  onChange={(value) => setCode(value || '')}
-                  options={{
-                    fontSize: fontSize,
-                    minimap: { enabled: true },
-                    quickSuggestions: true,
-                    scrollBeyondLastLine: false,
-                    fontFamily: 'Fira Code, Menlo, Monaco, Consolas, monospace',
-                    lineNumbers: 'on',
-                    roundedSelection: false,
-                    selectOnLineNumbers: true,
-                    readOnly: false,
-                    cursorStyle: 'line',
-                    automaticLayout: true,
-                    wordWrap: 'on'
-                  }}
-                  onMount={handleEditorDidMount}
-                  key={`monaco-editor-${selectedFile || 'default'}-${fontSize}`}
-                />
-              </div>
-            </div>
-          ) : imageSrc !== null && isImageFile(selectedFile || '') ? (
-            <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
-          ) : videoSrc !== null && isVideoFile(selectedFile || '') ? (
-            <ReactPlayer
-              url={videoSrc}
-              controls={true}
-              width="50%"
-              height="50%"
-              playing={false}
-              onError={(e) => console.error('Video playback error:', e)}
-            />
-          ) : (
-            <p>
-              File {selectedFile} {fileContent === null && imageSrc === null && videoSrc === null 
-                ? 'failed to load' 
-                : 'is not supported for preview'}.
-            </p>
-          )}
-        </>
-      ) : (
-        <div className="card-container">
-          <button className="start-card" onClick={handleCreateFile}>
-            <p>Создать файл</p>
-            <span className="hotkey">CTRL + SHIFT + N</span>
-          </button>
-          <button className="start-card" onClick={handleCreateFile}>
-            <p>Новая папка</p>
-            <span className="hotkey">CTRL + SHIFT + F</span>
-          </button>
-          <button className="start-card" onClick={handleOpenFolder}>
-            <p>Открыть папку</p>
-            <span className="hotkey">CTRL + O</span>
-          </button>
-          <button className="start-card" onClick={handleOpenFolder}>
-            <p>Открыть последний проект</p>
-            <span className="hotkey">CTRL + O</span>
-          </button>
+      {!selectedFile && (
+        <div className="welcome-message">
+          <h2>X-Editor</h2>
+          <p>Выберите файл для редактирования или создайте новый.</p>
+          <div className="welcome-buttons">
+            <button onClick={handleOpenFolder}>
+              Открыть папку
+            </button>
+            <button onClick={handleCreateFile}>
+              Создать файл
+            </button>
+            <button onClick={handleSaveFile} disabled={!selectedFile || !selectedFile.startsWith('untitled-')}>
+              Сохранить как
+            </button>
+          </div>
         </div>
+      )}
+      
+      {selectedFile && supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && (
+        <MonacoEditor
+          width="100%"
+          height="100%"
+          language={getLanguageFromExtension(selectedFile)}
+          theme="vs-dark"
+          value={fileContent || code}
+          onChange={handleCodeChange}
+          onMount={handleEditorDidMount}
+          options={{
+            selectOnLineNumbers: true,
+            roundedSelection: false,
+            readOnly: false,
+            cursorStyle: 'line',
+            automaticLayout: true,
+            fontSize: fontSize
+          }}
+        />
+      )}
+      
+      {selectedFile && imageSrc !== null && isImageFile(selectedFile) ? (
+        <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+      ) : null}
+      
+      {selectedFile && videoSrc !== null && isVideoFile(selectedFile) ? (
+        <ReactPlayer
+          url={videoSrc}
+          controls={true}
+          width="50%"
+          height="50%"
+          playing={false}
+          onError={(e) => console.error('Video playback error:', e)}
+        />
+      ) : null}
+      
+      {selectedFile && !supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && 
+       !imageSrc && !videoSrc && (
+        <p className="file-error-message">
+          Файл {selectedFile.split(/[/\\]/).pop()} не поддерживается для просмотра.
+        </p>
       )}
     </div>
   );
