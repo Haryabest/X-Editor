@@ -65,6 +65,9 @@ export class MonacoLSPHoverProvider {
       const uri = model.uri.toString();
       const languageId = model.getLanguageId();
       
+      // Извлекаем текст из модели для лучшего определения контекста
+      const wordInfo = this.extractWordAtPosition(model, position);
+      
       // Получаем список серверов, которые могут обрабатывать этот язык
       const servers = this.getLanguageServersForLanguage(languageId);
       if (!servers || servers.length === 0) return null;
@@ -78,10 +81,15 @@ export class MonacoLSPHoverProvider {
         character: position.column - 1
       };
       
-      // Отправляем запрос на сервер
+      // Отправляем запрос на сервер с дополнительным контекстом
       const response = await languageServerManager.sendRequest(serverId, 'textDocument/hover', {
         textDocument: { uri },
-        position: lspPosition
+        position: lspPosition,
+        context: {
+          word: wordInfo.word,
+          range: wordInfo.range,
+          lineText: wordInfo.lineText
+        }
       });
       
       // Если нет данных или отмена запроса, возвращаем null
@@ -92,6 +100,80 @@ export class MonacoLSPHoverProvider {
     } catch (error) {
       console.error('Ошибка при получении подсказки:', error);
       return null;
+    }
+  }
+  
+  /**
+   * Извлечение слова и контекста из позиции
+   */
+  private extractWordAtPosition(model: any, position: any): { word: string, range: any, lineText: string } {
+    try {
+      // Получаем текст строки, в которой находится курсор
+      const lineText = model.getLineContent(position.lineNumber) || '';
+      
+      // Получаем информацию о слове в позиции (встроенная функция Monaco)
+      let wordInfo = null;
+      try {
+        wordInfo = model.getWordAtPosition(position);
+      } catch (e) {
+        console.warn('Ошибка при получении слова из модели:', e);
+      }
+      
+      // Если не смогли получить слово стандартным способом, извлекаем вручную
+      if (!wordInfo) {
+        // Простая эвристика для определения границ слова
+        let startColumn = position.column;
+        let endColumn = position.column;
+        
+        // Определяем начало слова
+        while (startColumn > 1) {
+          const char = lineText.charAt(startColumn - 2); // -1 для индекса, -1 для предыдущего символа
+          if (!/[a-zA-Z0-9_$]/.test(char)) break;
+          startColumn--;
+        }
+        
+        // Определяем конец слова
+        while (endColumn <= lineText.length) {
+          const char = lineText.charAt(endColumn - 1); // -1 для индекса
+          if (!/[a-zA-Z0-9_$]/.test(char)) break;
+          endColumn++;
+        }
+        
+        // Создаем информацию о слове
+        const word = lineText.substring(startColumn - 1, endColumn - 1);
+        
+        wordInfo = {
+          word,
+          startColumn,
+          endColumn
+        };
+      }
+      
+      // Подготавливаем диапазон слова
+      const range = {
+        startLineNumber: position.lineNumber,
+        startColumn: wordInfo ? wordInfo.startColumn : position.column,
+        endLineNumber: position.lineNumber,
+        endColumn: wordInfo ? wordInfo.endColumn : position.column + 1
+      };
+      
+      return {
+        word: wordInfo ? wordInfo.word : '',
+        range,
+        lineText
+      };
+    } catch (error) {
+      console.error('Ошибка при извлечении слова из позиции:', error);
+      return {
+        word: '',
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column + 1
+        },
+        lineText: ''
+      };
     }
   }
   
@@ -125,6 +207,19 @@ export class MonacoLSPHoverProvider {
         contents.push({ value: `\`\`\`${response.contents.language}\n${response.contents.value}\n\`\`\`` });
       }
       
+      // Проверяем, содержит ли ответ достаточно информации
+      const totalContent = contents.map(c => c.value || '').join('');
+      
+      // Если содержимое почти пустое или слишком короткое, добавляем дополнительную информацию
+      if (totalContent.length < 30 && response.word) {
+        const additionalInfo = this.provideFallbackHover(response.word, response.languageId);
+        if (additionalInfo && additionalInfo.contents) {
+          additionalInfo.contents.forEach((content: any) => {
+            contents.push(content);
+          });
+        }
+      }
+      
       // Создаем диапазон для подсказки
       let range = undefined;
       if (response.range) {
@@ -135,6 +230,9 @@ export class MonacoLSPHoverProvider {
           endColumn: response.range.end.character + 1
         };
       }
+      
+      // Если все еще нет содержимого, возвращаем null
+      if (contents.length === 0) return null;
       
       // Возвращаем подсказку в формате Monaco
       return {

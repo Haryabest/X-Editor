@@ -30,6 +30,20 @@ export class LSPDocumentManager {
   private disposables: any[] = [];
   
   /**
+   * Конструктор
+   */
+  constructor(monaco?: any, editor?: any) {
+    if (monaco) {
+      this.monaco = monaco;
+    }
+    
+    if (editor) {
+      this.editor = editor;
+      this.initialize(monaco, editor);
+    }
+  }
+  
+  /**
    * Инициализация менеджера документов
    */
   public initialize(
@@ -44,6 +58,14 @@ export class LSPDocumentManager {
     try {
       this.monaco = monaco;
       this.editor = editor;
+      
+      // Инициализируем менеджер языковых серверов, если он существует
+      if (languageServerManager && typeof languageServerManager.initialize === 'function') {
+        languageServerManager.initialize();
+        console.log('Менеджер языковых серверов инициализирован');
+      } else {
+        console.warn('Менеджер языковых серверов не определен или не содержит метод initialize');
+      }
       
       console.log('LSP Document Manager инициализирован');
       
@@ -95,31 +117,93 @@ export class LSPDocumentManager {
   
   /**
    * Добавление документа
+   * @param modelOrUriOrParams Может быть моделью Monaco, строкой URI или объектом с параметрами {uri, languageId, content}
+   * @param languageIdOrContent Если первый параметр - URI (строка), то это может быть ID языка или содержимое
+   * @param content Если первые два параметра заданы, то это содержимое
    */
-  public addDocument(model: any): void {
-    if (!model || !model.uri) {
-      console.warn('Не удалось добавить документ: модель или URI не определены');
+  public addDocument(modelOrUriOrParams: any, languageIdOrContent?: string, content?: string): void {
+    if (!modelOrUriOrParams) {
+      console.warn('Не удалось добавить документ: параметры не определены');
       return;
     }
     
     try {
-      const uri = model.uri.toString();
+      let uri: string = '';
+      let languageId: string = 'plaintext';
+      let documentContent: string = '';
+      
+      // Определяем тип первого параметра
+      if (typeof modelOrUriOrParams === 'string') {
+        // Первый параметр - строка URI
+        uri = this.normalizeUri(modelOrUriOrParams);
+        
+        // Проверяем второй параметр
+        if (typeof languageIdOrContent === 'string') {
+          // Если это выглядит как контент (длинная строка или содержит переносы строк)
+          if (languageIdOrContent.length > 50 || languageIdOrContent.includes('\n')) {
+            documentContent = languageIdOrContent;
+            // Определяем язык по расширению URI
+            languageId = this.detectLanguageFromUri(uri);
+          } else {
+            // Иначе считаем это ID языка
+            languageId = languageIdOrContent;
+            documentContent = content || '';
+          }
+        }
+      } else if (modelOrUriOrParams && typeof modelOrUriOrParams === 'object') {
+        if (modelOrUriOrParams.uri) {
+          // Это объект с параметрами {uri, languageId, content}
+          if (typeof modelOrUriOrParams.uri === 'string') {
+            uri = this.normalizeUri(modelOrUriOrParams.uri);
+          } else if (modelOrUriOrParams.uri.toString) {
+            uri = this.normalizeUri(modelOrUriOrParams.uri.toString());
+          }
+          
+          languageId = modelOrUriOrParams.languageId || this.detectLanguageFromUri(uri);
+          documentContent = modelOrUriOrParams.content || '';
+        } else if (modelOrUriOrParams.getValue && modelOrUriOrParams.uri) {
+          // Это модель Monaco
+          const model = modelOrUriOrParams;
+          uri = this.normalizeUri(model.uri.toString());
+          
+          try {
+            // Получаем язык модели
+            languageId = model.getLanguageId ? model.getLanguageId() : this.detectLanguageFromUri(uri);
+            // Получаем содержимое модели
+            documentContent = model.getValue ? model.getValue() : '';
+          } catch (e) {
+            console.warn('Не удалось получить данные из модели:', e);
+            languageId = this.detectLanguageFromUri(uri);
+          }
+        }
+      }
+      
+      // Проверяем, что URI определен
+      if (!uri) {
+        console.warn('Не удалось добавить документ: URI не определен');
+        return;
+      }
       
       // Если документ уже существует, не добавляем его снова
       if (this.documents.has(uri)) {
         return;
       }
       
-      // Получаем язык модели
-      let languageId = model.getLanguageId();
-      
       // Определяем правильный languageId для React файлов
-      if (uri.endsWith('.jsx') || uri.endsWith('.tsx')) {
-        if (uri.endsWith('.jsx')) {
-          languageId = 'javascriptreact';
-        } else if (uri.endsWith('.tsx')) {
-          languageId = 'typescriptreact';
-        }
+      if (uri.endsWith('.jsx')) {
+        languageId = 'javascriptreact';
+      } else if (uri.endsWith('.tsx')) {
+        languageId = 'typescriptreact';
+      } else if (uri.endsWith('.js')) {
+        languageId = 'javascript';
+      } else if (uri.endsWith('.ts')) {
+        languageId = 'typescript';
+      } else if (uri.endsWith('.html') || uri.endsWith('.htm')) {
+        languageId = 'html';
+      } else if (uri.endsWith('.css')) {
+        languageId = 'css';
+      } else if (uri.endsWith('.json')) {
+        languageId = 'json';
       }
       
       // Создаем TextDocument для LSP
@@ -127,7 +211,7 @@ export class LSPDocumentManager {
         uri,
         languageId,
         1,
-        model.getValue() || ''
+        documentContent
       );
       
       // Добавляем документ в коллекцию
@@ -141,21 +225,74 @@ export class LSPDocumentManager {
       
       console.log(`Добавлен документ: ${uri}, язык: ${languageId}`);
       
-      // Добавляем обработчики для изменений в модели
-      try {
-        const changeDisposable = model.onDidChangeContent((e) => {
-          this.updateDocument(uri, model);
-        });
-        
-        this.disposables.push(changeDisposable);
-      } catch (error) {
-        console.error(`Ошибка при добавлении слушателя изменений для ${uri}:`, error);
+      // Если это модель Monaco, добавляем слушатели изменений
+      if (modelOrUriOrParams && typeof modelOrUriOrParams === 'object' && 
+          modelOrUriOrParams.onDidChangeContent) {
+        try {
+          const changeDisposable = modelOrUriOrParams.onDidChangeContent((e: any) => {
+            this.updateDocument(uri, modelOrUriOrParams);
+          });
+          
+          this.disposables.push(changeDisposable);
+        } catch (error) {
+          console.error(`Ошибка при добавлении слушателя изменений для ${uri}:`, error);
+        }
       }
       
       // Уведомляем языковые серверы об открытии документа
       this.notifyDocumentOpen(uri);
     } catch (error) {
       console.error('Ошибка при добавлении документа:', error);
+    }
+  }
+  
+  /**
+   * Определение языка по URI
+   */
+  private detectLanguageFromUri(uri: string): string {
+    if (!uri) return 'plaintext';
+    
+    try {
+      // Получаем расширение файла
+      const ext = uri.split('.').pop()?.toLowerCase();
+      
+      if (!ext) return 'plaintext';
+      
+      switch (ext) {
+        case 'js': return 'javascript';
+        case 'jsx': return 'javascriptreact';
+        case 'ts': return 'typescript';
+        case 'tsx': return 'typescriptreact';
+        case 'html': 
+        case 'htm': return 'html';
+        case 'css': return 'css';
+        case 'scss': return 'scss';
+        case 'less': return 'less';
+        case 'json': return 'json';
+        case 'md': return 'markdown';
+        case 'py': return 'python';
+        case 'php': return 'php';
+        case 'rb': return 'ruby';
+        case 'java': return 'java';
+        case 'c': return 'c';
+        case 'cpp':
+        case 'cc':
+        case 'h':
+        case 'hpp': return 'cpp';
+        case 'go': return 'go';
+        case 'rs': return 'rust';
+        case 'swift': return 'swift';
+        case 'cs': return 'csharp';
+        case 'xml': return 'xml';
+        case 'yaml':
+        case 'yml': return 'yaml';
+        case 'sql': return 'sql';
+        case 'sh': return 'shell';
+        default: return 'plaintext';
+      }
+    } catch (error) {
+      console.error(`Ошибка при определении языка из URI ${uri}:`, error);
+      return 'plaintext';
     }
   }
   
@@ -351,6 +488,12 @@ export class LSPDocumentManager {
       // Находим соответствующие языковые серверы для этого типа документа
       const servers = this.getLanguageServersForDocument(uri);
       
+      // Проверяем, инициализирован ли languageServerManager и доступен ли метод sendNotification
+      if (!languageServerManager || typeof languageServerManager.sendNotification !== 'function') {
+        console.warn(`Невозможно отправить уведомление об открытии документа: languageServerManager не инициализирован или не содержит метод sendNotification`);
+        return;
+      }
+      
       // Уведомляем каждый сервер
       servers.forEach(serverId => {
         try {
@@ -386,6 +529,12 @@ export class LSPDocumentManager {
       // Находим соответствующие языковые серверы для этого типа документа
       const servers = this.getLanguageServersForDocument(uri);
       
+      // Проверяем, инициализирован ли languageServerManager и доступен ли метод sendNotification
+      if (!languageServerManager || typeof languageServerManager.sendNotification !== 'function') {
+        console.warn(`Невозможно отправить уведомление об изменении документа: languageServerManager не инициализирован или не содержит метод sendNotification`);
+        return;
+      }
+      
       // Уведомляем каждый сервер
       servers.forEach(serverId => {
         try {
@@ -418,6 +567,12 @@ export class LSPDocumentManager {
       
       // Находим соответствующие языковые серверы для этого типа документа
       const servers = this.getLanguageServersForDocument(uri);
+      
+      // Проверяем, инициализирован ли languageServerManager и доступен ли метод sendNotification
+      if (!languageServerManager || typeof languageServerManager.sendNotification !== 'function') {
+        console.warn(`Невозможно отправить уведомление о закрытии документа: languageServerManager не инициализирован или не содержит метод sendNotification`);
+        return;
+      }
       
       // Уведомляем каждый сервер
       servers.forEach(serverId => {

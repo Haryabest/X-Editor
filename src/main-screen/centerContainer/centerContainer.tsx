@@ -472,31 +472,77 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   };
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    setEditorInstance(editor);
-    setMonacoInstance(monaco);
-    
-    setupMonacoTheme(monaco);
-    
-    // Editor settings
-    editor.getModel()?.updateOptions({ 
-      tabSize: 2,
-      insertSpaces: true
-    });
-    
-    // Configure Monaco
-    configureMonaco(monaco);
-    
-    registerTypeScriptModels(monaco, editor, selectedFile || '');
-    
-    // Инициализация LSP
     try {
-      // Инициализируем LSP для Monaco
-      if (!lspRef.current) {
-        const lspInstance = initializeMonacoLSP(monaco);
+      console.log("Monaco editor mounted successfully!");
+      
+      // Сохраняем ссылки на редактор и Monaco
+      setEditorInstance(editor);
+      setMonacoInstance(monaco);
+      
+      // Настройка расширенной конфигурации Monaco
+      loadMonacoAdvancedConfiguration(monaco, editor);
+      
+      // Если выбран файл, обрабатываем его
+      if (selectedFile) {
+        // Определяем расширение файла
+        const fileExt = selectedFile.substring(selectedFile.lastIndexOf('.')).toLowerCase();
+        
+        // Для TSX/JSX файлов настраиваем специальную тему
+        if (fileExt === '.tsx' || fileExt === '.jsx') {
+          const themeToUse = fileExt === '.tsx' ? 'vs-dark-typescriptreact' : 'vs-dark-javascriptreact';
+          monaco.editor.setTheme(themeToUse);
+        }
+        
+        // Регистрируем модель в TypeScript сервисе
+        registerTypeScriptModels(monaco, editor, selectedFile);
+      }
+      
+      // Инициализация LSP
+      try {
+        // Создаем экземпляр LSP сервиса
+        const lspInstance = getMonacoLSPInstance();
         if (lspInstance) {
-          // Инициализируем LSP с редактором и корневой директорией
-          lspInstance.initialize(editor, selectedFolder || '/');
-          lspRef.current = lspInstance;
+          // Инициализируем экземпляр
+          lspInstance.initialize(editor, selectedFolder || "");
+          
+          // Устанавливаем корневую директорию
+          if (selectedFolder) {
+            lspInstance.setWorkspaceRoot(selectedFolder);
+            
+            // Для текущего выбранного файла
+            if (selectedFile) {
+              const fileExt = selectedFile.substring(selectedFile.lastIndexOf('.')).toLowerCase();
+              
+              // Определяем язык на основе расширения файла
+              let languageId = 'plaintext';
+              if (fileExt === '.ts') languageId = 'typescript';
+              else if (fileExt === '.tsx') languageId = 'typescriptreact';
+              else if (fileExt === '.js') languageId = 'javascript';
+              else if (fileExt === '.jsx') languageId = 'javascriptreact';
+              else if (fileExt === '.html') languageId = 'html';
+              else if (fileExt === '.css') languageId = 'css';
+              else if (fileExt === '.json') languageId = 'json';
+              
+              // Подключаемся к нужному серверу
+              try {
+                lspInstance.connectToLanguageServer(languageId);
+              } catch (err) {
+                console.error(`Ошибка при подключении к языковому серверу ${languageId}:`, err);
+              }
+              
+              // Получаем текущую модель
+              const model = editor.getModel();
+              if (model) {
+                // Уведомляем LSP о файле
+                lspInstance.handleFileOpen(model);
+                
+                // Для TypeScript/TSX используем встроенный воркер
+                if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
+                  enableTypeScriptValidation(monaco, model);
+                }
+              }
+            }
+          }
           
           // Устанавливаем обработчик для отображения подсказок при наведении
           editor.onMouseMove(debounce(async (e: any) => {
@@ -513,14 +559,59 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             }
           }, 300));
         }
+      } catch (error) {
+        console.error('Ошибка при инициализации LSP:', error);
+      }
+      
+      // Pass editor reference via ref
+      if (editorRef) {
+        editorRef.current = editor;
       }
     } catch (error) {
-      console.error('Ошибка при инициализации LSP:', error);
+      console.error("Error in handleEditorDidMount:", error);
     }
-    
-    // Pass editor reference via ref
-    if (editorRef) {
-      editorRef.current = editor;
+  };
+  
+  /**
+   * Включение валидации TypeScript через встроенный воркер Monaco
+   */
+  const enableTypeScriptValidation = (monaco: any, model: any) => {
+    try {
+      if (!monaco.languages.typescript) return;
+      
+      const uri = model.uri.toString();
+      const language = model.getLanguageId();
+      const isTypescript = ['typescript', 'typescriptreact'].includes(language);
+      
+      const compilerOptions = {
+        target: monaco.languages.typescript.ScriptTarget.Latest,
+        allowNonTsExtensions: true,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.CommonJS,
+        noEmit: true,
+        jsx: monaco.languages.typescript.JsxEmit.React,
+        reactNamespace: 'React',
+        allowJs: true,
+        skipLibCheck: true,
+        experimentalDecorators: true,
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true
+      };
+      
+      // Настраиваем соответствующий языковой сервис
+      const languageService = isTypescript
+        ? monaco.languages.typescript.typescriptDefaults
+        : monaco.languages.typescript.javascriptDefaults;
+      
+      // Устанавливаем опции компилятора
+      languageService.setCompilerOptions(compilerOptions);
+      
+      // Явно регистрируем модель в TS сервисе для обеспечения работы подсказок типов
+      languageService.addExtraLib(model.getValue(), uri);
+      
+      console.log(`TypeScript валидация включена для ${uri}`);
+    } catch (error) {
+      console.error('Ошибка при включении TypeScript валидации:', error);
     }
   };
 
@@ -547,20 +638,63 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       const model = editor.getModel();
       
       // Только для TypeScript файлов
-      if (fileExt === '.ts' || fileExt === '.tsx') {
-        // Инициализируем типы TypeScript если ещё не инициализированы
-        initializeTypeScriptTypes(monaco);
-        
+      if (fileExt === '.ts' || fileExt === '.tsx' || fileExt === '.js' || fileExt === '.jsx') {
+        // Если модель существует
         if (model) {
           // Устанавливаем правильный язык для модели
           if (fileExt === '.ts') {
             monaco.editor.setModelLanguage(model, 'typescript');
-          } else {
+          } else if (fileExt === '.tsx') {
             monaco.editor.setModelLanguage(model, 'typescriptreact');
+          } else if (fileExt === '.js') {
+            monaco.editor.setModelLanguage(model, 'javascript');
+          } else if (fileExt === '.jsx') {
+            monaco.editor.setModelLanguage(model, 'javascriptreact');
           }
           
-          // Регистрируем файл TypeScript для правильной работы типов
-          registerTypeScriptFile(monaco, filePath, model.getValue());
+          // Регистрируем модель в TypeScript сервисе
+          if (monaco.languages.typescript) {
+            try {
+              // Создаем URI для файла
+              const uri = model.uri.toString();
+              const tsLanguage = 
+                fileExt === '.ts' || fileExt === '.tsx' 
+                  ? monaco.languages.typescript.typescriptDefaults 
+                  : monaco.languages.typescript.javascriptDefaults;
+              
+              // Устанавливаем параметры компилятора для поддержки JSX и последних возможностей
+              tsLanguage.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.Latest,
+                allowNonTsExtensions: true,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                module: monaco.languages.typescript.ModuleKind.CommonJS,
+                noEmit: true,
+                jsx: monaco.languages.typescript.JsxEmit.React,
+                reactNamespace: 'React',
+                allowJs: true,
+                esModuleInterop: true,
+                allowSyntheticDefaultImports: true,
+                skipLibCheck: true
+              });
+              
+              // Явно добавляем модель к языковому сервису
+              const modelValue = model.getValue();
+              
+              // Удаляем старую модель если она существует
+              try {
+                tsLanguage.getModel(model.uri)?.dispose();
+              } catch (e) {
+                // Игнорируем ошибки при удалении несуществующей модели
+              }
+              
+              // Создаем новую модель в языковом сервисе TypeScript
+              tsLanguage.addExtraLib(modelValue, uri);
+              
+              console.log(`Файл ${filePath} успешно зарегистрирован в TypeScript сервисе`);
+            } catch (e) {
+              console.error(`Ошибка при регистрации модели TypeScript: ${e}`);
+            }
+          }
         }
       }
     } catch (error) {
@@ -575,28 +709,16 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         // Зарегистрируем выбранный файл как TypeScript модель
         registerTypeScriptModels(monacoInstance, editorInstance, selectedFile);
         
-        // Если это React файл, специальная обработка
-        if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
-          console.log(`Обработка React файла: ${selectedFile}`);
-          
-          // Устанавливаем правильный язык для текущей модели
-          const model = editorInstance.getModel();
-          if (model) {
-            if (selectedFile.endsWith('.tsx')) {
-              monacoInstance.editor.setModelLanguage(model, 'typescriptreact');
-            } else if (selectedFile.endsWith('.jsx')) {
-              monacoInstance.editor.setModelLanguage(model, 'javascriptreact');
-            }
-            
-            // Инициализируем типы для React
-            initializeTypeScriptTypes(monacoInstance);
-          }
+        // Уведомляем LSP о файле
+        if (lspStatus.initialized && monacoLSPService) {
+          const content = editorInstance.getValue();
+          monacoLSPService.handleFileOpen(selectedFile, content);
         }
       } catch (error) {
         console.error('Ошибка при регистрации файла в TypeScript:', error);
       }
     }
-  }, [selectedFile, editorInstance, monacoInstance]);
+  }, [selectedFile, editorInstance, monacoInstance, lspStatus.initialized]);
 
   // Добавляем эффект для инициализации LSP при монтировании компонента
   useEffect(() => {

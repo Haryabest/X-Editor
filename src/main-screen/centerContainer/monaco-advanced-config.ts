@@ -486,114 +486,181 @@ function registerLanguageThemes(monaco) {
  */
 function enhanceTsxSyntaxHighlighting(monaco) {
   try {
-    // Добавляем дополнительные токены для JSX синтаксиса
-    const jsxTokens = [
-      [/(<)(\w+)/, ['delimiter', { token: 'tag', next: '@tagName' }]],
-      [/(<)(\/)(\w+)/, ['delimiter', 'delimiter', { token: 'tag', next: '@tagClosing' }]],
-      [/(>)/, { token: 'delimiter', next: '@default' }],
-      [/\{/, { token: 'delimiter.bracket', next: '@jsxExpression' }]
-    ];
+    // Проверка наличия необходимых API
+    if (!monaco?.languages || !monaco.languages.setMonarchTokensProvider) {
+      console.warn('Monaco API для настройки токенизаторов недоступен');
+      return;
+    }
 
-    // Добавление правил для подсветки JSX атрибутов
-    const jsxAttributes = [
-      [/(\w+)(=)/, ['attribute.name', 'delimiter']],
-      [/"([^"]*)"/, 'attribute.value'],
-      [/'([^']*)'/, 'attribute.value'],
-      [/\{/, { token: 'delimiter.bracket', next: '@jsxAttributeExpression' }]
-    ];
-
-    // Пытаемся расширить существующие правила для TypeScript и TSX
+    // Обновляем токенизатор для typescriptreact (TSX)
     try {
-      if (monaco.languages.setMonarchTokensProvider) {
-        // Правила подсветки синтаксиса TypeScript React (TSX)
-        const tsxLanguageRules = {
-          tokenizer: {
-            root: [
-              // JSX элементы
-              [/<(\w+)/, { token: 'tag', next: '@tag.$1' }],
-              [/<\/(\w+)/, { token: ['delimiter', 'tag'], next: '@tag.$1' }],
-              // Стандартный TypeScript синтаксис
-              [/[a-z_$][\w$]*/, { cases: {
-                '@keywords': 'keyword',
-                '@default': 'identifier'
-              }}],
-              [/[A-Z][\w$]*/, 'type.identifier'],
-              // Числа
-              [/\d+/, 'number'],
-              // Строки
-              [/"([^"\\]|\\.)*$/, 'string.invalid'],
-              [/'([^'\\]|\\.)*$/, 'string.invalid'],
-              [/"/, 'string', '@string."'],
-              [/'/, 'string', '@string.\''],
-              // Комментарии
-              [/\/\/.*$/, 'comment'],
-              [/\/\*/, 'comment', '@comment'],
-              // Delimiters и операторы
-              [/[{}()\[\]]/, '@brackets'],
-              [/[<>](?!@symbols)/, '@brackets'],
-              [/[;,.]/, 'delimiter'],
-              [/@symbols/, { cases: {
-                '@operators': 'operator',
-                '@default': ''
-              }}]
-            ],
-            // JSX тэги
-            tag: [
-              [/[ \t\r\n]+/, ''],
-              [/(\w+)/, 'attribute.name'],
-              [/=/, 'delimiter'],
-              [/"([^"]*)"/, 'attribute.value'],
-              [/'([^']*)'/, 'attribute.value'],
-              [/\{/, { token: '@brackets', next: '@jsxExpression' }],
-              [/\/?>/, { token: 'delimiter', next: '@pop' }]
-            ],
-            // JSX выражения внутри фигурных скобок
-            jsxExpression: [
-              [/\}/, { token: '@brackets', next: '@pop' }],
-              { include: 'root' }
-            ],
-            // Строки
-            'string': [
-              [/[^\\"']+/, 'string'],
-              [/@escapes/, 'string.escape'],
-              [/\\./, 'string.escape.invalid'],
-              [/["']/, { cases: {
-                '$#==$S2': { token: 'string', next: '@pop' },
-                '@default': 'string'
-              }}]
-            ],
-            // Блочные комментарии
-            comment: [
-              [/[^/*]+/, 'comment'],
-              [/\*\//, 'comment', '@pop'],
-              [/[/*]/, 'comment']
-            ]
-          },
-          // Ключевые слова TypeScript
-          keywords: [
-            'abstract', 'any', 'as', 'async', 'await', 'boolean', 'break',
-            'case', 'catch', 'class', 'const', 'constructor', 'continue',
-            'debugger', 'declare', 'default', 'delete', 'do', 'else', 'enum',
-            'export', 'extends', 'false', 'finally', 'for', 'from', 'function',
-            'get', 'if', 'implements', 'import', 'in', 'instanceof', 'interface',
-            'is', 'keyof', 'let', 'module', 'namespace', 'never', 'new', 'null',
-            'number', 'object', 'package', 'private', 'protected', 'public',
-            'readonly', 'require', 'return', 'set', 'static', 'string', 'super',
-            'switch', 'symbol', 'this', 'throw', 'true', 'try', 'type', 'typeof',
-            'undefined', 'unique', 'unknown', 'var', 'void', 'while', 'with', 'yield'
+      // Правила токенизации для TSX файлов с улучшенной поддержкой JSX
+      const tsxLanguageRules = {
+        tokenizer: {
+          root: [
+            // JSX opening tags with component name
+            [/<([A-Z][\w\.$]*)(\.|\/)?>/, [
+              { token: 'delimiter.bracket.tsx' }, // for "<"
+              { token: 'tag.tsx.component' },     // for component name
+              { token: 'delimiter.bracket.tsx' }  // for ">" or "/>"
+            ]],
+            // JSX opening tags with standard HTML element
+            [/<([\w-]+)(\.|\/)?>/, [
+              { token: 'delimiter.bracket.tsx' }, // for "<"
+              { token: 'tag.tsx.html' },          // for HTML tag name
+              { token: 'delimiter.bracket.tsx' }  // for ">" or "/>"
+            ]],
+            // JSX closing tags
+            [/<\/(\w[\w\.$-]*)(\.|\/)?>/, [
+              { token: 'delimiter.bracket.tsx' }, // for "</"
+              { token: 'tag.tsx' },               // for tag name
+              { token: 'delimiter.bracket.tsx' }  // for ">"
+            ]],
+            
+            // JSX attribute handling
+            [/\s+([a-zA-Z][\w$]*)(?=\s*=)/, 'attribute.name.tsx'],
+            [/=/, 'operator.tsx'],
+            [/"([^"]*)"/, 'attribute.value.tsx'],
+            [/'([^']*)'/, 'attribute.value.tsx'],
+            
+            // JSX expression in attributes or children: {expression}
+            [/{/, {
+              token: 'delimiter.bracket.tsx',
+              next: 'jsxExpression',
+              nextEmbedded: 'typescript'
+            }],
+            
+            // Process other tokens using the typescript language definition
+            { include: '@typescript' }
           ],
-          operators: [
-            '<=', '>=', '==', '!=', '===', '!==', '=>', '+', '-', '**', '*', '/',
-            '%', '++', '--', '<<', '>>>', '>>', '&', '|', '^', '!', '~', '&&', '||',
-            '??', '?', ':', '=', '+=', '-=', '*=', '**=', '/=', '%=', '<<=', '>>=',
-            '>>>=', '&=', '|=', '^=', '@'
+          
+          jsxExpression: [
+            [/}/, {
+              token: 'delimiter.bracket.tsx',
+              next: '@pop',
+              nextEmbedded: '@pop'
+            }]
           ],
-          symbols: /[=><!~?:&|+\-*\/\^%]+/,
-          escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/
-        };
+          
+          // Include TypeScript highlighting rules
+          typescript: [
+            // Keywords
+            [/\b(await|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|new|null|of|package|private|protected|public|return|set|static|super|switch|throw|true|try|typeof|var|void|while|with|yield)\b/, 'keyword.tsx'],
+            
+            // TypeScript specific keywords
+            [/\b(abstract|as|any|async|boolean|constructor|declare|is|module|namespace|never|readonly|require|number|object|string|symbol|type|undefined|unique)\b/, 'keyword.tsx'],
+            
+            // Identifiers - variables, parameters
+            [/[a-z_$][\w$]*/, 'identifier.tsx'],
+            
+            // Classes, interfaces, types (capitalized)
+            [/[A-Z][\w\$]*/, 'type.tsx'],
+            
+            // String literals
+            [/"([^"\\]|\\.)*$/, 'string.invalid.tsx'],
+            [/'([^'\\]|\\.)*$/, 'string.invalid.tsx'],
+            [/"/, 'string.tsx', '@stringDouble'],
+            [/'/, 'string.tsx', '@stringSingle'],
+            [/`/, 'string.tsx', '@stringBacktick'],
+            
+            // Comments
+            [/\/\/.*$/, 'comment.tsx'],
+            [/\/\*/, 'comment.tsx', '@comment'],
+            
+            // Numbers
+            [/\d+\.\d+([eE][\-+]?\d+)?/, 'number.float.tsx'],
+            [/0[xX][0-9a-fA-F]+/, 'number.hex.tsx'],
+            [/\d+/, 'number.tsx'],
+            
+            // Delimiter and operators
+            [/[{}()\[\]]/, 'delimiter.bracket.tsx'],
+            [/[<>]/, 'delimiter.bracket.tsx'],
+            [/[;,.]/, 'delimiter.tsx'],
+            [/[=+\-*/%&|^~!]/, 'operator.tsx']
+          ],
+          
+          stringDouble: [
+            [/[^\\"]+/, 'string.tsx'],
+            [/\\./, 'string.escape.tsx'],
+            [/"/, 'string.tsx', '@pop']
+          ],
+          
+          stringSingle: [
+            [/[^\\']+/, 'string.tsx'],
+            [/\\./, 'string.escape.tsx'],
+            [/'/, 'string.tsx', '@pop']
+          ],
+          
+          stringBacktick: [
+            [/\$\{/, { token: 'delimiter.bracket.tsx', next: 'stringTemplateExpression', nextEmbedded: 'typescript' }],
+            [/[^`\\$]+/, 'string.tsx'],
+            [/\\./, 'string.escape.tsx'],
+            [/`/, 'string.tsx', '@pop']
+          ],
+          
+          stringTemplateExpression: [
+            [/}/, { token: 'delimiter.bracket.tsx', next: '@pop', nextEmbedded: '@pop' }]
+          ],
+          
+          comment: [
+            [/[^/*]+/, 'comment.tsx'],
+            [/\/\*/, 'comment.tsx', '@push'],
+            [/\*\//, 'comment.tsx', '@pop'],
+            [/[/*]/, 'comment.tsx']
+          ]
+        },
+        
+        // Define symbols, operators, etc.
+        brackets: [
+          { open: '{', close: '}', token: 'delimiter.bracket.tsx' },
+          { open: '[', close: ']', token: 'delimiter.bracket.tsx' },
+          { open: '(', close: ')', token: 'delimiter.bracket.tsx' },
+          { open: '<', close: '>', token: 'delimiter.bracket.tsx' }
+        ],
+        
+        keywords: [
+          'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 
+          'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 
+          'finally', 'for', 'from', 'function', 'get', 'if', 'implements', 'import', 
+          'in', 'instanceof', 'interface', 'let', 'new', 'null', 'of', 'package', 
+          'private', 'protected', 'public', 'return', 'set', 'static', 'super', 
+          'switch', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+          // TypeScript specific
+          'abstract', 'as', 'any', 'async', 'boolean', 'constructor', 'declare', 'is', 
+          'module', 'namespace', 'never', 'readonly', 'require', 'number', 'object', 
+          'string', 'symbol', 'type', 'undefined', 'unique'
+        ],
+        
+        operators: [
+          '<=', '>=', '==', '!=', '===', '!==', '=>', '+', '-', '**', '*', '/',
+          '%', '++', '--', '<<', '>>>', '>>', '&', '|', '^', '!', '~', '&&', '||',
+          '??', '?', ':', '=', '+=', '-=', '*=', '**=', '/=', '%=', '<<=', '>>=',
+          '>>>=', '&=', '|=', '^=', '@'
+        ],
+        symbols: /[=><!~?:&|+\-*\/\^%]+/,
+        escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/
+      };
 
-        monaco.languages.setMonarchTokensProvider('typescriptreact', tsxLanguageRules);
+      // Регистрируем провайдер токенов для TSX
+      monaco.languages.setMonarchTokensProvider('typescriptreact', tsxLanguageRules);
+      
+      // Устанавливаем конфигурацию компилятора для TypeScript с поддержкой JSX
+      if (monaco.languages.typescript?.typescriptDefaults) {
+        monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+          jsx: monaco.languages.typescript.JsxEmit.React,
+          jsxFactory: 'React.createElement',
+          jsxFragmentFactory: 'React.Fragment',
+          target: monaco.languages.typescript.ScriptTarget.Latest,
+          allowNonTsExtensions: true,
+          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          module: monaco.languages.typescript.ModuleKind.ESNext,
+          experimentalDecorators: true,
+          allowJs: true,
+          typeRoots: ["node_modules/@types"]
+        });
       }
+      
+      console.log('Улучшенный токенизатор для TSX успешно настроен');
     } catch (tokenError) {
       console.error('Error setting TSX language rules:', tokenError);
     }
