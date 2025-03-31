@@ -310,13 +310,11 @@ export class MonacoLSPWrapper {
       // Регистрируем провайдер автодополнений
       if (this.completionProvider) {
         this.completionProvider.registerCompletionProvider(languageId);
-        console.log(`Провайдер автодополнений зарегистрирован для языка ${languageId}`);
       }
       
       // Регистрируем провайдер подсказок при наведении
       if (this.hoverProvider) {
         this.hoverProvider.registerHoverProvider(languageId);
-        console.log(`Провайдер подсказок зарегистрирован для языка ${languageId}`);
       }
       
       // Подключаемся к языковому серверу для этого языка
@@ -656,45 +654,14 @@ export class MonacoLSPWrapper {
    * Очистка ресурсов при уничтожении
    */
   public dispose(): void {
-    try {
-      console.log('Освобождение ресурсов LSP Wrapper...');
-      
-      // Освобождаем все disposables
-      this.disposables.forEach(disposable => {
-        try {
-          disposable.dispose();
-        } catch (e) {
-          // Игнорируем ошибки при освобождении
-        }
-      });
-      this.disposables = [];
-      
-      // Освобождаем документ-менеджер
-      if (lspDocumentManager) {
-        lspDocumentManager.dispose();
-      }
-      
-      // Освобождаем менеджер диагностики
-      if (monacoLSPDiagnostics) {
-        monacoLSPDiagnostics.dispose();
-      }
-      
-      // Освобождаем менеджер серверов
-      if (languageServerManager) {
-        languageServerManager.dispose();
-      }
-      
-      this.monaco = null;
-      this.editor = null;
-      this.completionProvider = null;
-      this.hoverProvider = null;
-      this.status.initialized = false;
-      this.status.connectedServers = [];
-      
-      console.log('Ресурсы LSP Wrapper успешно освобождены');
-    } catch (error) {
-      console.error('Ошибка при освобождении ресурсов LSP Wrapper:', error);
+    if (this.completionProvider) {
+      this.completionProvider.dispose();
     }
+    if (this.hoverProvider) {
+      this.hoverProvider.dispose();
+    }
+    this.disposables.forEach(disposable => disposable.dispose());
+    this.disposables = [];
   }
 }
 

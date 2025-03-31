@@ -15,6 +15,7 @@ import { languageServerManager } from './monaco-lsp-server-manager';
 export class MonacoLSPCompletionProvider implements monaco.languages.CompletionItemProvider {
   private monacoInstance: any;
   private activeServers: string[] = [];
+  private disposables: any[] = [];
   
   // Символы, которые вызывают автодополнение
   public readonly triggerCharacters = ['.', ':', '<', '"', '=', '/', '@', '(', ','];
@@ -295,6 +296,30 @@ export class MonacoLSPCompletionProvider implements monaco.languages.CompletionI
     
     // В более сложной реализации здесь должен быть код для
     // отправки запроса 'completionItem/resolve' к серверу
+  }
+
+  /**
+   * Регистрация провайдера автодополнения для языка
+   */
+  public registerCompletionProvider(languageId: string): void {
+    if (!this.monacoInstance || !languageId) return;
+    
+    try {
+      // Регистрируем провайдер для языка
+      const disposable = this.monacoInstance.languages.registerCompletionItemProvider(languageId, this);
+      this.disposables.push(disposable);
+      console.log(`Провайдер автодополнений зарегистрирован для языка ${languageId}`);
+    } catch (error) {
+      console.error(`Ошибка при регистрации провайдера автодополнений для языка ${languageId}:`, error);
+    }
+  }
+
+  /**
+   * Отмена регистрации всех провайдеров
+   */
+  public dispose(): void {
+    this.disposables.forEach(disposable => disposable.dispose());
+    this.disposables = [];
   }
 }
 

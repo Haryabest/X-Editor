@@ -3,9 +3,9 @@ export function getLanguageFromExtension(filePath: string): string {
   
   const languageMap: Record<string, string> = {
     'js': 'javascript',
-    'jsx': 'javascript',
+    'jsx': 'javascriptreact',
     'ts': 'typescript',
-    'tsx': 'typescript',
+    'tsx': 'typescriptreact',
     'py': 'python',
     'json': 'json',
     'html': 'html',

@@ -12,10 +12,11 @@ import { supportedTextExtensions, supportedImageExtensions, supportedVideoExtens
 import { FontSizeContext } from '../../App';
 import { initializeTypeScriptTypes, registerTypeScriptFile } from './monaco-types-loader';
 import { setupMonacoTheme } from './monaco-theme-loader';
-import { correctLanguageFromExtension } from './monaco-advanced-config';
+import { initializeMonacoEditor, correctLanguageFromExtension } from './monaco-advanced-config';
 import { monacoLSPService } from './monaco-lsp-wrapper';
 import { initializeMonacoLSP, getMonacoLSPInstance } from './monaco-lsp-integration';
 import { debounce } from 'lodash';
+import path from 'path';
 
 import "./style.css";
 
@@ -110,6 +111,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     connectedServers: []
   });
   const lspRef = useRef<any>(null);
+  const internalEditorRef = useRef<any>(null);
+  const internalMonacoRef = useRef<any>(null);
   
   // Конфигурируем Monaco сразу при загрузке компонента
   useEffect(() => {
@@ -472,146 +475,129 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   };
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    try {
-      console.log("Monaco editor mounted successfully!");
-      
-      // Сохраняем ссылки на редактор и Monaco
-      setEditorInstance(editor);
-      setMonacoInstance(monaco);
-      
-      // Настройка расширенной конфигурации Monaco
-      loadMonacoAdvancedConfiguration(monaco, editor);
-      
-      // Если выбран файл, обрабатываем его
-      if (selectedFile) {
-        // Определяем расширение файла
-        const fileExt = selectedFile.substring(selectedFile.lastIndexOf('.')).toLowerCase();
-        
-        // Для TSX/JSX файлов настраиваем специальную тему
-        if (fileExt === '.tsx' || fileExt === '.jsx') {
-          const themeToUse = fileExt === '.tsx' ? 'vs-dark-typescriptreact' : 'vs-dark-javascriptreact';
-          monaco.editor.setTheme(themeToUse);
-        }
-        
-        // Регистрируем модель в TypeScript сервисе
-        registerTypeScriptModels(monaco, editor, selectedFile);
-      }
-      
-      // Инициализация LSP
-      try {
-        // Создаем экземпляр LSP сервиса
-        const lspInstance = getMonacoLSPInstance();
-        if (lspInstance) {
-          // Инициализируем экземпляр
-          lspInstance.initialize(editor, selectedFolder || "");
-          
-          // Устанавливаем корневую директорию
-          if (selectedFolder) {
-            lspInstance.setWorkspaceRoot(selectedFolder);
-            
-            // Для текущего выбранного файла
-            if (selectedFile) {
-              const fileExt = selectedFile.substring(selectedFile.lastIndexOf('.')).toLowerCase();
-              
-              // Определяем язык на основе расширения файла
-              let languageId = 'plaintext';
-              if (fileExt === '.ts') languageId = 'typescript';
-              else if (fileExt === '.tsx') languageId = 'typescriptreact';
-              else if (fileExt === '.js') languageId = 'javascript';
-              else if (fileExt === '.jsx') languageId = 'javascriptreact';
-              else if (fileExt === '.html') languageId = 'html';
-              else if (fileExt === '.css') languageId = 'css';
-              else if (fileExt === '.json') languageId = 'json';
-              
-              // Подключаемся к нужному серверу
-              try {
-                lspInstance.connectToLanguageServer(languageId);
-              } catch (err) {
-                console.error(`Ошибка при подключении к языковому серверу ${languageId}:`, err);
-              }
-              
-              // Получаем текущую модель
-              const model = editor.getModel();
-              if (model) {
-                // Уведомляем LSP о файле
-                lspInstance.handleFileOpen(model);
-                
-                // Для TypeScript/TSX используем встроенный воркер
-                if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
-                  enableTypeScriptValidation(monaco, model);
-                }
-              }
-            }
-          }
-          
-          // Устанавливаем обработчик для отображения подсказок при наведении
-          editor.onMouseMove(debounce(async (e: any) => {
-            if (e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT) {
-              const hoverInfo = await lspInstance.getHoverInfo(
-                editor.getModel(),
-                e.target.position
-              );
-              
-              if (hoverInfo) {
-                // Подсказка может быть отображена автоматически через провайдер hover
-                // Здесь можно добавить дополнительную логику, если нужно
-              }
-            }
-          }, 300));
-        }
-      } catch (error) {
-        console.error('Ошибка при инициализации LSP:', error);
-      }
-      
-      // Pass editor reference via ref
-      if (editorRef) {
-        editorRef.current = editor;
-      }
-    } catch (error) {
-      console.error("Error in handleEditorDidMount:", error);
+    console.log('Monaco editor mounted successfully');
+    
+    // Save references
+    internalEditorRef.current = editor;
+    internalMonacoRef.current = monaco;
+    setEditorInstance(editor);
+    setMonacoInstance(monaco);
+
+    // If external editorRef is provided, update it
+    if (editorRef) {
+      editorRef.current = editor;
     }
-  };
-  
-  /**
-   * Включение валидации TypeScript через встроенный воркер Monaco
-   */
-  const enableTypeScriptValidation = (monaco: any, model: any) => {
+
+    // Инициализация Monaco
+    initializeMonacoEditor(monaco);
+
+    // Регистрация TypeScript моделей
+    if (selectedFile) {
+      const model = monaco.editor.getModel(monaco.Uri.file(selectedFile));
+      if (model) {
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          model.getValue(),
+          model.uri.toString()
+        );
+      }
+    }
+
+    // Инициализация LSP
     try {
-      if (!monaco.languages.typescript) return;
-      
-      const uri = model.uri.toString();
-      const language = model.getLanguageId();
-      const isTypescript = ['typescript', 'typescriptreact'].includes(language);
-      
-      const compilerOptions = {
-        target: monaco.languages.typescript.ScriptTarget.Latest,
-        allowNonTsExtensions: true,
-        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        module: monaco.languages.typescript.ModuleKind.CommonJS,
-        noEmit: true,
-        jsx: monaco.languages.typescript.JsxEmit.React,
-        reactNamespace: 'React',
-        allowJs: true,
-        skipLibCheck: true,
-        experimentalDecorators: true,
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true
-      };
-      
-      // Настраиваем соответствующий языковой сервис
-      const languageService = isTypescript
-        ? monaco.languages.typescript.typescriptDefaults
-        : monaco.languages.typescript.javascriptDefaults;
-      
-      // Устанавливаем опции компилятора
-      languageService.setCompilerOptions(compilerOptions);
-      
-      // Явно регистрируем модель в TS сервисе для обеспечения работы подсказок типов
-      languageService.addExtraLib(model.getValue(), uri);
-      
-      console.log(`TypeScript валидация включена для ${uri}`);
+      const lspInstance = getMonacoLSPInstance();
+      if (lspInstance) {
+        lspRef.current = lspInstance;
+        lspInstance.initialize(editor, monaco);
+
+        // Подключение к языковому серверу
+        if (selectedFile) {
+          const extension = path.extname(selectedFile).toLowerCase();
+          if (extension === '.ts' || extension === '.tsx') {
+            lspInstance.connectToLanguageServer('typescript');
+          }
+        }
+      }
     } catch (error) {
-      console.error('Ошибка при включении TypeScript валидации:', error);
+      console.error('Error initializing LSP:', error);
+    }
+
+    // Обработчик наведения мыши для отображения путей
+    editor.onMouseMove((e: any) => {
+      const position = editor.getPosition();
+      const model = editor.getModel();
+      if (!model) return;
+
+      const lineContent = model.getLineContent(position.lineNumber);
+      const offset = model.getOffsetAt(position);
+
+      // Поиск импортов
+      const importRegex = /from\s+['"]([^'"]+)['"]/g;
+      let importMatch;
+      while ((importMatch = importRegex.exec(lineContent)) !== null) {
+        const startOffset = model.getOffsetAt({
+          lineNumber: position.lineNumber,
+          column: importMatch.index + 1
+        });
+        const endOffset = model.getOffsetAt({
+          lineNumber: position.lineNumber,
+          column: importMatch.index + importMatch[0].length - 1
+        });
+
+        if (offset >= startOffset && offset <= endOffset) {
+          const importPath = importMatch[1];
+          const resolvedPath = resolvePath(selectedFile, importPath);
+          editor.getContribution('suggestController').triggerSuggest();
+          return;
+        }
+      }
+
+      // Поиск путей в строках
+      const pathRegex = /['"]([^'"]+)['"]/g;
+      let pathMatch;
+      while ((pathMatch = pathRegex.exec(lineContent)) !== null) {
+        const startOffset = model.getOffsetAt({
+          lineNumber: position.lineNumber,
+          column: pathMatch.index + 1
+        });
+        const endOffset = model.getOffsetAt({
+          lineNumber: position.lineNumber,
+          column: pathMatch.index + pathMatch[0].length - 1
+        });
+
+        if (offset >= startOffset && offset <= endOffset) {
+          const path = pathMatch[1];
+          const resolvedPath = resolvePath(selectedFile, path);
+          editor.getContribution('suggestController').triggerSuggest();
+          return;
+        }
+      }
+    });
+  };
+
+  // Функция для разрешения путей
+  const resolvePath = (currentFile: string, importPath: string): string => {
+    try {
+      const workspaceRoot = path.dirname(currentFile);
+      let resolvedPath = importPath;
+
+      // Абсолютный путь
+      if (path.isAbsolute(importPath)) {
+        resolvedPath = importPath;
+      }
+      // Относительный путь
+      else if (importPath.startsWith('./') || importPath.startsWith('../')) {
+        resolvedPath = path.resolve(workspaceRoot, importPath);
+      }
+      // Путь с алиасом @
+      else if (importPath.startsWith('@/')) {
+        const srcPath = path.join(workspaceRoot, 'src');
+        resolvedPath = path.resolve(srcPath, importPath.slice(2));
+      }
+
+      return resolvedPath;
+    } catch (error) {
+      console.error('Error resolving path:', error);
+      return importPath;
     }
   };
 

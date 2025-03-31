@@ -189,9 +189,13 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
     
     // Определяем язык на основе расширения
     let language = 'plaintext';
-    if (['ts', 'tsx'].includes(fileExtension || '')) {
+    if (fileExtension === 'tsx') {
+      language = 'typescriptreact';
+    } else if (fileExtension === 'ts') {
       language = 'typescript';
-    } else if (['js', 'jsx'].includes(fileExtension || '')) {
+    } else if (fileExtension === 'jsx') {
+      language = 'javascriptreact';
+    } else if (fileExtension === 'js') {
       language = 'javascript';
     } else if (fileExtension === 'json') {
       language = 'json';

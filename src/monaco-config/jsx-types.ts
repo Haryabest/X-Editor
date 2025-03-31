@@ -15,7 +15,8 @@ export function configureJSXTypes(monaco: any) {
       allowJs: true,
       target: monaco.languages.typescript.ScriptTarget.ESNext,
       moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      esModuleInterop: true
+      esModuleInterop: true,
+      module: monaco.languages.typescript.ModuleKind.ESNext
     });
     
     // Настраиваем JavaScript для поддержки JSX
@@ -25,7 +26,11 @@ export function configureJSXTypes(monaco: any) {
       jsxFactory: 'React.createElement',
       jsxFragmentFactory: 'React.Fragment',
       allowNonTsExtensions: true,
-      allowJs: true
+      allowJs: true,
+      target: monaco.languages.typescript.ScriptTarget.ESNext,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      esModuleInterop: true,
+      module: monaco.languages.typescript.ModuleKind.ESNext
     });
     
     // Отключаем проверки для ускорения работы и избежания ложных ошибок
@@ -90,8 +95,8 @@ export function configureJSXTypes(monaco: any) {
 
     // Логируем успешную настройку
     console.log('JSX types configured successfully');
-  } catch (e) {
-    console.error('Error configuring JSX types', e);
+  } catch (error) {
+    console.error('Error configuring JSX types:', error);
   }
 }
 

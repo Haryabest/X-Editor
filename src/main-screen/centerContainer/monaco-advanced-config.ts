@@ -37,96 +37,253 @@ const configureGlobalEditorOptions = (monaco: any) => {
     }
   });
 
+  // Специальная тема для TSX файлов
+  monaco.editor.defineTheme('x-editor-dark-tsx', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '#6A9955' },
+      { token: 'string', foreground: '#CE9178' },
+      { token: 'number', foreground: '#B5CEA8' },
+      { token: 'keyword', foreground: '#569CD6' },
+      { token: 'type', foreground: '#4EC9B0' },
+      { token: 'function', foreground: '#DCDCAA' },
+      { token: 'identifier', foreground: '#9CDCFE' },
+      { token: 'variable', foreground: '#9CDCFE' },
+      { token: 'parameter', foreground: '#9CDCFE' },
+      { token: 'property', foreground: '#9CDCFE' },
+      { token: 'operator', foreground: '#D4D4D4' },
+      { token: 'tag', foreground: '#569CD6' },
+      { token: 'regexp', foreground: '#D16969' },
+      // Специальные правила для TSX
+      { token: 'tag.tsx', foreground: '#569CD6' },
+      { token: 'tag.tsx.component', foreground: '#4EC9B0' },
+      { token: 'tag.tsx.html', foreground: '#569CD6' },
+      { token: 'attribute.name.tsx', foreground: '#9CDCFE' },
+      { token: 'attribute.value.tsx', foreground: '#CE9178' },
+      { token: 'delimiter.bracket.tsx', foreground: '#D4D4D4' },
+      { token: 'keyword.tsx', foreground: '#569CD6' },
+      { token: 'identifier.tsx', foreground: '#9CDCFE' },
+      { token: 'string.tsx', foreground: '#CE9178' },
+      { token: 'number.tsx', foreground: '#B5CEA8' },
+      { token: 'comment.tsx', foreground: '#6A9955' },
+      { token: 'operator.tsx', foreground: '#D4D4D4' },
+      { token: 'delimiter.tsx', foreground: '#D4D4D4' }
+    ],
+    colors: {
+      'editor.background': '#1E1E1E',
+      'editor.foreground': '#D4D4D4',
+      'editorCursor.foreground': '#AEAFAD',
+      'editor.lineHighlightBackground': '#2A2D2E',
+      'editorLineNumber.foreground': '#858585',
+      'editor.selectionBackground': '#264F78',
+      'editor.inactiveSelectionBackground': '#3A3D41'
+    }
+  });
+
   // Устанавливаем глобальные настройки для всех языков
   monaco.editor.setTheme('x-editor-dark');
 };
 
 // Конфигурация TypeScript/JavaScript
 const configureTypeScript = (monaco: any) => {
-  if (!monaco?.languages?.typescript) return;
+  if (!monaco.languages.typescript) {
+    console.warn('TypeScript support not available in Monaco');
+    return;
+  }
 
-  // Настройки компилятора для TypeScript
+  // Регистрируем язык typescriptreact если он еще не зарегистрирован
+  if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'typescriptreact')) {
+    monaco.languages.register({ id: 'typescriptreact' });
+  }
+
+  // Настройка компилятора TypeScript
   monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-    target: monaco.languages.typescript.ScriptTarget.ESNext,
-    module: monaco.languages.typescript.ModuleKind.ESNext,
-    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-    jsx: monaco.languages.typescript.JsxEmit.React,
+    target: monaco.languages.typescript.ScriptTarget.Latest,
     allowNonTsExtensions: true,
-    esModuleInterop: true,
-    allowSyntheticDefaultImports: true,
-    jsxFactory: 'React.createElement',
-    jsxFragmentFactory: 'React.Fragment',
-    strict: true,
-    alwaysStrict: true,
-    skipLibCheck: true,
-    isolatedModules: true,
-    lib: ['DOM', 'DOM.Iterable', 'ESNext']
-  });
-
-  // Настройки компилятора для JavaScript
-  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-    target: monaco.languages.typescript.ScriptTarget.ESNext,
-    module: monaco.languages.typescript.ModuleKind.ESNext,
     moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-    jsx: monaco.languages.typescript.JsxEmit.React,
-    allowNonTsExtensions: true,
+    module: monaco.languages.typescript.ModuleKind.CommonJS,
+    noEmit: true,
     esModuleInterop: true,
-    allowSyntheticDefaultImports: true,
-    jsxFactory: 'React.createElement',
-    jsxFragmentFactory: 'React.Fragment',
+    jsx: monaco.languages.typescript.JsxEmit.React,
+    reactNamespace: "React",
     allowJs: true,
-    checkJs: false
+    typeRoots: ["node_modules/@types"]
   });
 
-  // Настройки диагностики для TypeScript
-  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-    noSemanticValidation: false,
-    noSyntaxValidation: false,
-    noSuggestionDiagnostics: false
-  });
-
-  // Настройки диагностики для JavaScript
-  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-    noSemanticValidation: false,
-    noSyntaxValidation: false,
-    noSuggestionDiagnostics: false
-  });
-
-  // Добавляем базовые типы для React
-  monaco.languages.typescript.typescriptDefaults.addExtraLib(`
+  // Добавляем определения типов React
+  const reactTypes = `
     declare namespace React {
-      function createElement(type: any, props?: any, ...children: any[]): any;
-      function useState<T>(initialState: T | (() => T)): [T, (newState: T) => void];
-      function useEffect(effect: () => void | (() => void), deps?: any[]): void;
-      function useRef<T>(initialValue: T): { current: T };
-      function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
-      function useMemo<T>(factory: () => T, deps: any[]): T;
+      type ReactNode = React.ReactChild | React.ReactFragment | React.ReactPortal | boolean | null | undefined;
+      type ReactChild = React.ReactElement | string | number;
+      type ReactFragment = {} | React.ReactNodeArray;
+      type ReactPortal = { children: React.ReactNode; container: Element; key?: string | null };
       
-      class Component<P = {}, S = {}> {
-        constructor(props: P);
+      interface Component<P = {}, S = {}> {
         props: P;
         state: S;
-        setState(state: S | ((prevState: S, props: P) => S), callback?: () => void): void;
+        setState<K extends keyof S>(state: ((prevState: Readonly<S>) => Pick<S, K> | S | null) | Pick<S, K> | S | null, callback?: () => void): void;
         forceUpdate(callback?: () => void): void;
-        render(): any;
+        render(): React.ReactNode;
+        componentDidMount?(): void;
+        componentWillUnmount?(): void;
+        componentDidUpdate?(prevProps: Readonly<P>, prevState: Readonly<S>, snapshot?: any): void;
+        shouldComponentUpdate?(nextProps: Readonly<P>, nextState: Readonly<S>, nextContext: any): boolean;
+        componentWillMount?(): void;
+        componentWillReceiveProps?(nextProps: Readonly<P>, nextContext: any): void;
+        componentWillUpdate?(nextProps: Readonly<P>, nextState: Readonly<S>, nextContext: any): void;
+        getSnapshotBeforeUpdate?(prevProps: Readonly<P>, prevState: Readonly<S>): any;
       }
+
+      function useState<T>(initialState: T | (() => T)): [T, Dispatch<SetStateAction<T>>];
+      function useEffect(effect: EffectCallback, deps?: DependencyList): void;
+      function useContext<T>(context: Context<T>): T;
+      function useRef<T>(initialValue: T): MutableRefObject<T>;
+      function useCallback<T extends (...args: any[]) => any>(callback: T, deps: DependencyList): T;
+      function useMemo<T>(factory: () => T, deps: DependencyList | undefined): T;
+      function useReducer<R extends Reducer<any, any>, I>(reducer: R, initializerArg: I | (() => I)): [any, Dispatch<ReducerAction<R>>];
+      function useLayoutEffect(effect: EffectCallback, deps?: DependencyList): void;
+      function useImperativeHandle<T, R extends T>(ref: Ref<T> | null, init: () => R, deps?: DependencyList): void;
+      function useDebugValue<T>(value: T, format?: (value: T) => any): void;
+      function useId(): string;
+      function useSyncExternalStore<T>(subscribe: (onStoreChange: () => void) => () => void, getSnapshot: () => T, getServerSnapshot?: () => T): T;
+      function useInsertionEffect(effect: EffectCallback, deps?: DependencyList): void;
+      function useDeferredValue<T>(value: T): T;
+      function useTransition(): [boolean, (callback: () => void) => void];
     }
-    
+  `;
+
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(reactTypes, 'file:///node_modules/@types/react/index.d.ts');
+
+  // Добавляем определения для JSX
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(`
     declare namespace JSX {
-      interface Element {}
       interface IntrinsicElements {
         [elemName: string]: any;
       }
     }
+  `, 'file:///node_modules/@types/react/jsx.d.ts');
 
-    declare module "react" {
-      export = React;
+  // Добавляем определения для модулей
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(`
+    declare module "*.tsx" {
+      const content: any;
+      export default content;
     }
-  `, 'react.d.ts');
+    declare module "*.ts" {
+      const content: any;
+      export default content;
+    }
+    declare module "*.jsx" {
+      const content: any;
+      export default content;
+    }
+    declare module "*.js" {
+      const content: any;
+      export default content;
+    }
+  `, 'file:///node_modules/@types/module.d.ts');
 
-  // Включаем автоматическую синхронизацию моделей
-  monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
-  monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
+  // Настраиваем токенизатор для TSX
+  monaco.languages.setMonarchTokensProvider('typescriptreact', {
+    tokenizer: {
+      root: [
+        // JSX opening tags with component name
+        [/<([A-Z][\w\.$]*)(\.|\/)?>/, [
+          { token: 'delimiter.bracket.tsx' },
+          { token: 'tag.tsx.component' },
+          { token: 'delimiter.bracket.tsx' }
+        ]],
+        // JSX opening tags with standard HTML element
+        [/<([\w-]+)(\.|\/)?>/, [
+          { token: 'delimiter.bracket.tsx' },
+          { token: 'tag.tsx.html' },
+          { token: 'delimiter.bracket.tsx' }
+        ]],
+        // JSX closing tags
+        [/<\/(\w[\w\.$-]*)(\.|\/)?>/, [
+          { token: 'delimiter.bracket.tsx' },
+          { token: 'tag.tsx' },
+          { token: 'delimiter.bracket.tsx' }
+        ]],
+        // JSX attribute handling
+        [/\s+([a-zA-Z][\w$]*)(?=\s*=)/, 'attribute.name.tsx'],
+        [/=/, 'operator.tsx'],
+        [/"([^"]*)"/, 'attribute.value.tsx'],
+        [/'([^']*)'/, 'attribute.value.tsx'],
+        // JSX expression in attributes or children: {expression}
+        [/{/, {
+          token: 'delimiter.bracket.tsx',
+          next: 'jsxExpression',
+          nextEmbedded: 'typescript'
+        }],
+        // Process other tokens using the typescript language definition
+        { include: '@typescript' }
+      ],
+      jsxExpression: [
+        [/}/, {
+          token: 'delimiter.bracket.tsx',
+          next: '@pop',
+          nextEmbedded: '@pop'
+        }]
+      ],
+      typescript: [
+        // Keywords
+        [/\b(await|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|new|null|of|package|private|protected|public|return|set|static|super|switch|throw|true|try|typeof|var|void|while|with|yield)\b/, 'keyword.tsx'],
+        // TypeScript specific keywords
+        [/\b(abstract|as|any|async|boolean|constructor|declare|is|module|namespace|never|readonly|require|number|object|string|symbol|type|undefined|unique)\b/, 'keyword.tsx'],
+        // Identifiers
+        [/[a-z_$][\w$]*/, 'identifier.tsx'],
+        // Classes, interfaces, types (capitalized)
+        [/[A-Z][\w\$]*/, 'type.tsx'],
+        // String literals
+        [/"([^"\\]|\\.)*$/, 'string.invalid.tsx'],
+        [/'([^'\\]|\\.)*$/, 'string.invalid.tsx'],
+        [/"/, 'string.tsx', '@stringDouble'],
+        [/'/, 'string.tsx', '@stringSingle'],
+        [/`/, 'string.tsx', '@stringBacktick'],
+        // Comments
+        [/\/\/.*$/, 'comment.tsx'],
+        [/\/\*/, 'comment.tsx', '@comment'],
+        // Numbers
+        [/\d+\.\d+([eE][\-+]?\d+)?/, 'number.float.tsx'],
+        [/0[xX][0-9a-fA-F]+/, 'number.hex.tsx'],
+        [/\d+/, 'number.tsx'],
+        // Delimiter and operators
+        [/[{}()\[\]]/, 'delimiter.bracket.tsx'],
+        [/[<>]/, 'delimiter.bracket.tsx'],
+        [/[;,.]/, 'delimiter.tsx'],
+        [/[=+\-*/%&|^~!]/, 'operator.tsx']
+      ],
+      stringDouble: [
+        [/[^\\"]+/, 'string.tsx'],
+        [/\\./, 'string.escape.tsx'],
+        [/"/, 'string.tsx', '@pop']
+      ],
+      stringSingle: [
+        [/[^\\']+/, 'string.tsx'],
+        [/\\./, 'string.escape.tsx'],
+        [/'/, 'string.tsx', '@pop']
+      ],
+      stringBacktick: [
+        [/\$\{/, { token: 'delimiter.bracket.tsx', next: 'stringTemplateExpression', nextEmbedded: 'typescript' }],
+        [/[^`\\$]+/, 'string.tsx'],
+        [/\\./, 'string.escape.tsx'],
+        [/`/, 'string.tsx', '@pop']
+      ],
+      stringTemplateExpression: [
+        [/}/, { token: 'delimiter.bracket.tsx', next: '@pop', nextEmbedded: '@pop' }]
+      ],
+      comment: [
+        [/[^/*]+/, 'comment.tsx'],
+        [/\/\*/, 'comment.tsx', '@push'],
+        [/\*\//, 'comment.tsx', '@pop'],
+        [/[/*]/, 'comment.tsx']
+      ]
+    }
+  });
+
+  console.log('TypeScript configuration completed successfully');
 };
 
 // Настройка языковых токенизаторов
@@ -192,218 +349,84 @@ const configureLanguageTokenizers = (monaco: any) => {
  * @param model Текущая модель редактора
  * @param filePath Путь к файлу
  */
-export function correctLanguageFromExtension(monaco, model, filePath) {
-  // Проверка на null/undefined параметры
-  if (!monaco || !model || !filePath) {
-    console.warn('Недостаточно данных для определения языка', { 
-      monaco: !!monaco, 
-      model: !!model, 
-      filePath 
-    });
-    return;
+export function correctLanguageFromExtension(monaco: any, model: any, filePath: string) {
+  const extension = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath);
+  console.log(`Correcting language for file: ${fileName} (${extension})`);
+
+  let languageId = model.getLanguageId();
+  let newLanguageId = languageId;
+
+  switch (extension) {
+    case '.tsx':
+      newLanguageId = 'typescriptreact';
+      break;
+    case '.ts':
+      newLanguageId = 'typescript';
+      break;
+    case '.jsx':
+      newLanguageId = 'javascriptreact';
+      break;
+    case '.js':
+      newLanguageId = 'javascript';
+      break;
+    case '.html':
+      newLanguageId = 'html';
+      break;
+    case '.css':
+      newLanguageId = 'css';
+      break;
+    case '.json':
+      newLanguageId = 'json';
+      break;
+    default:
+      newLanguageId = 'plaintext';
   }
 
-  try {
-    // Получение расширения файла
-    const fileName = filePath.split(/[\/\\]/).pop() || '';
-    const extension = fileName.includes('.') 
-      ? fileName.substring(fileName.lastIndexOf('.')) 
-      : '';
-    
-    console.log(`Определение языка для файла: ${fileName} (расширение: ${extension})`);
-    
-    // Если модель уже имеет правильный язык, не меняем его
-    const currentLanguage = model.getLanguageId();
-    console.log(`Текущий язык: ${currentLanguage}`);
-    
-    if (!extension) {
-      // Для файлов без расширения, проверяем специальные имена
-      if (fileName === 'Dockerfile') {
-        monaco.editor.setModelLanguage(model, 'dockerfile');
-        console.log('Изменяем язык на dockerfile');
-      } else if (fileName.toLowerCase() === 'makefile') {
-        monaco.editor.setModelLanguage(model, 'makefile');
-        console.log('Изменяем язык на makefile');
-      } else if (fileName.match(/^(readme|contributing|license)$/i)) {
-        monaco.editor.setModelLanguage(model, 'markdown');
-        console.log('Изменяем язык на markdown');
-      }
-      return;
-    }
-    
-    // Определение языка на основе расширения
-    let newLanguage = '';
-    switch (extension.toLowerCase()) {
-      // TypeScript
-      case '.ts':
-        newLanguage = 'typescript';
-        break;
-      case '.tsx':
-        newLanguage = 'typescriptreact';
-        break;
-        
-      // JavaScript
-      case '.js':
-        newLanguage = 'javascript';
-        break;
-      case '.jsx':
-        newLanguage = 'javascriptreact';
-        break;
-      case '.mjs':
-      case '.cjs':
-        newLanguage = 'javascript';
-        break;
-        
-      // Web технологии
-      case '.html':
-      case '.htm':
-        newLanguage = 'html';
-        break;
-      case '.css':
-        newLanguage = 'css';
-        break;
-      case '.scss':
-        newLanguage = 'scss';
-        break;
-      case '.less':
-        newLanguage = 'less';
-        break;
-      case '.json':
-        newLanguage = 'json';
-        break;
-      case '.jsonc':
-      case '.json5':
-        newLanguage = 'jsonc';
-        break;
-      case '.xml':
-        newLanguage = 'xml';
-        break;
-      case '.svg':
-        newLanguage = 'xml';
-        break;
-        
-      // Back-end языки
-      case '.py':
-        newLanguage = 'python';
-        break;
-      case '.rb':
-        newLanguage = 'ruby';
-        break;
-      case '.php':
-        newLanguage = 'php';
-        break;
-      case '.java':
-        newLanguage = 'java';
-        break;
-      case '.cs':
-        newLanguage = 'csharp';
-        break;
-      case '.go':
-        newLanguage = 'go';
-        break;
-      case '.rs':
-        newLanguage = 'rust';
-        break;
-      case '.swift':
-        newLanguage = 'swift';
-        break;
-      case '.kt':
-      case '.kts':
-        newLanguage = 'kotlin';
-        break;
-        
-      // Скриптовые языки
-      case '.sh':
-      case '.bash':
-        newLanguage = 'shell';
-        break;
-      case '.ps1':
-        newLanguage = 'powershell';
-        break;
-      case '.bat':
-      case '.cmd':
-        newLanguage = 'bat';
-        break;
-      
-      // Конфигурационные форматы
-      case '.yaml':
-      case '.yml':
-        newLanguage = 'yaml';
-        break;
-      case '.toml':
-        newLanguage = 'toml';
-        break;
-      case '.ini':
-        newLanguage = 'ini';
-        break;
-      case '.properties':
-        newLanguage = 'properties';
-        break;
-      case '.env':
-        newLanguage = 'dotenv';
-        break;
-      
-      // Документация
-      case '.md':
-      case '.markdown':
-        newLanguage = 'markdown';
-        break;
-      case '.rst':
-        newLanguage = 'restructuredtext';
-        break;
-      case '.tex':
-        newLanguage = 'latex';
-        break;
-        
-      // Другие языки программирования
-      case '.c':
-        newLanguage = 'c';
-        break;
-      case '.cpp':
-      case '.cc':
-      case '.cxx':
-      case '.h':
-      case '.hpp':
-      case '.hxx':
-        newLanguage = 'cpp';
-        break;
-      case '.sql':
-        newLanguage = 'sql';
-        break;
-      case '.pl':
-        newLanguage = 'perl';
-        break;
-      case '.lua':
-        newLanguage = 'lua';
-        break;
-      case '.r':
-        newLanguage = 'r';
-        break;
-      case '.dart':
-        newLanguage = 'dart';
-        break;
-      case '.clj':
-        newLanguage = 'clojure';
-        break;
-      case '.scala':
-        newLanguage = 'scala';
-        break;
-        
-      // По умолчанию - plaintext
-      default:
-        newLanguage = 'plaintext';
-    }
-    
-    // Изменяем язык модели, если он отличается от текущего
-    if (newLanguage && newLanguage !== currentLanguage) {
-      monaco.editor.setModelLanguage(model, newLanguage);
-      console.log(`Изменяем язык модели с ${currentLanguage} на ${newLanguage}`);
-    } else {
-      console.log(`Оставляем текущий язык: ${currentLanguage}`);
-    }
-  } catch (error) {
-    console.error('Ошибка при определении языка файла:', error);
+  if (languageId !== newLanguageId) {
+    console.log(`Changing language from ${languageId} to ${newLanguageId}`);
+    monaco.editor.setModelLanguage(model, newLanguageId);
   }
+
+  // Дополнительная конфигурация для TypeScript/TSX файлов
+  if (extension === '.ts' || extension === '.tsx') {
+    const tsService = monaco.languages.typescript.getTypeScriptWorker();
+    if (tsService) {
+      tsService().then((worker: any) => {
+        worker(model.uri).then((client: any) => {
+          // Настройка путей для импортов
+          client.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.Latest,
+            allowNonTsExtensions: true,
+            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+            module: monaco.languages.typescript.ModuleKind.CommonJS,
+            noEmit: true,
+            esModuleInterop: true,
+            jsx: monaco.languages.typescript.JsxEmit.React,
+            reactNamespace: "React",
+            allowJs: true,
+            typeRoots: ["node_modules/@types"],
+            baseUrl: ".",
+            paths: {
+              "@/*": ["src/*"],
+              "@components/*": ["src/components/*"],
+              "@pages/*": ["src/pages/*"],
+              "@utils/*": ["src/utils/*"],
+              "@hooks/*": ["src/hooks/*"],
+              "@styles/*": ["src/styles/*"],
+              "@assets/*": ["src/assets/*"],
+              "@types/*": ["src/types/*"]
+            }
+          });
+
+          // Добавляем модель как дополнительную библиотеку для лучших подсказок
+          client.addExtraLib(model.getValue(), model.uri.toString());
+        });
+      });
+    }
+  }
+
+  return newLanguageId;
 }
 
 // Регистрирует файл в Monaco для использования в подсказках и навигации
