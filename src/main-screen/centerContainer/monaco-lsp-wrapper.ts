@@ -87,155 +87,168 @@ export class MonacoLSPWrapper {
   private hoverProvider: MonacoLSPHoverProvider | null = null;
   private languageClientMap: Map<string, any> = new Map();
   private currentLanguageId: string | null = null;
+  private initialized: boolean = false;
 
   /**
    * Инициализация LSP интеграции
    */
-  public initialize(monaco: any, editor: any): void {
-    if (!monaco || !editor) {
-      console.warn('Не удалось инициализировать LSP Wrapper: не указаны необходимые параметры');
+  public async initialize(): Promise<void> {
+    if (this.initialized) {
+      console.log('MonacoLSPWrapper уже инициализирован');
       return;
     }
 
     try {
-      console.log('Инициализация LSP Wrapper...');
-      this.monaco = monaco;
-      this.editor = editor;
-      
-      // Инициализируем менеджер документов
-      lspDocumentManager.initialize(monaco, editor);
-      
-      // Инициализируем менеджер диагностики
-      monacoLSPDiagnostics.initialize(monaco);
-      
-      // Инициализация TypeScript компилятора для корректной работы с TSX/JSX
-      this.configureTypeScriptCompiler();
-      
-      // Инициализируем компонент автодополнения
-      this.completionProvider = new MonacoLSPCompletionProvider(monaco);
-      
-      // Инициализируем компонент подсказок при наведении
-      this.hoverProvider = new MonacoLSPHoverProvider(monaco);
-      
-      // Регистрируем провайдеры для TypeScript/JavaScript/React
-      this.registerProvidersForLanguage('typescript');
-      this.registerProvidersForLanguage('javascript');
-      this.registerProvidersForLanguage('typescriptreact');
-      this.registerProvidersForLanguage('javascriptreact');
-      this.registerProvidersForLanguage('html');
-      this.registerProvidersForLanguage('css');
-      this.registerProvidersForLanguage('json');
-      
-      // Подписываемся на события редактора, чтобы отслеживать изменения модели
-      this.registerEditorListeners();
-      
-      // Инициализируем менеджер языковых серверов
-      if (languageServerManager && typeof languageServerManager.initialize === 'function') {
-        languageServerManager.initialize();
+      // Проверяем наличие необходимых компонентов
+      if (!this.monaco || !this.editor) {
+        console.error('Monaco или editor не определены');
+        return;
       }
-      
-      this.status.initialized = true;
-      console.log('LSP Wrapper успешно инициализирован');
+
+      // Инициализируем менеджер языковых серверов
+      if (languageServerManager) {
+        await languageServerManager.initialize();
+      }
+
+      // Настраиваем TypeScript и TSX
+      this.configureTypeScript();
+
+      // Регистрируем слушатели редактора
+      this.registerEditorListeners();
+
+      this.initialized = true;
+      console.log('MonacoLSPWrapper успешно инициализирован');
     } catch (error) {
-      console.error('Ошибка при инициализации LSP Wrapper:', error);
+      console.error('Ошибка при инициализации MonacoLSPWrapper:', error);
+      throw error;
     }
   }
 
-  /**
-   * Настройка компилятора TypeScript для лучшей поддержки JSX/TSX
-   */
-  private configureTypeScriptCompiler(): void {
-    if (!this.monaco?.languages?.typescript) {
-      console.warn('Не удалось настроить TypeScript компилятор: monaco.languages.typescript не доступен');
-      return;
-    }
-    
+  private configureTypeScript(): void {
     try {
-      // Настройка для TypeScript
-      const tsDefaults = this.monaco.languages.typescript.typescriptDefaults;
-      tsDefaults.setCompilerOptions({
+      // Настраиваем компилятор TypeScript
+      this.monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
         target: this.monaco.languages.typescript.ScriptTarget.Latest,
         allowNonTsExtensions: true,
         moduleResolution: this.monaco.languages.typescript.ModuleResolutionKind.NodeJs,
         module: this.monaco.languages.typescript.ModuleKind.CommonJS,
         noEmit: true,
-        jsx: this.monaco.languages.typescript.JsxEmit.React,
-        reactNamespace: 'React',
-        allowJs: true,
-        typeRoots: ["node_modules/@types"],
-        allowSyntheticDefaultImports: true,
         esModuleInterop: true,
-        skipLibCheck: true
-      });
-      
-      // Настройка для JavaScript
-      const jsDefaults = this.monaco.languages.typescript.javascriptDefaults;
-      jsDefaults.setCompilerOptions({
-        target: this.monaco.languages.typescript.ScriptTarget.Latest,
-        allowNonTsExtensions: true,
-        moduleResolution: this.monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-        module: this.monaco.languages.typescript.ModuleKind.CommonJS,
-        noEmit: true,
         jsx: this.monaco.languages.typescript.JsxEmit.React,
-        reactNamespace: 'React',
+        reactNamespace: "React",
         allowJs: true,
-        typeRoots: ["node_modules/@types"],
-        allowSyntheticDefaultImports: true,
-        esModuleInterop: true,
-        skipLibCheck: true
+        typeRoots: ["node_modules/@types"]
       });
-      
-      // Добавляем базовые определения React
-      tsDefaults.addExtraLib(
+
+      // Настраиваем диагностику
+      this.monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        noSuggestionDiagnostics: false
+      });
+
+      // Добавляем определения для React
+      this.monaco.languages.typescript.typescriptDefaults.addExtraLib(
         `
-        declare namespace React {
-          interface Component<P = {}, S = {}> { }
-          class Component<P, S> {
-            constructor(props: P);
-            props: P;
-            state: S;
-            setState(state: S): void;
-            render(): JSX.Element | null;
-          }
-          function createElement<P>(type: any, props?: P, ...children: any[]): JSX.Element;
-          function createContext<T>(defaultValue: T): any;
-          function useState<T>(initialState: T): [T, (newState: T) => void];
-          function useEffect(effect: () => void | (() => void), deps?: any[]): void;
-          function useRef<T>(initialValue: T): { current: T };
-          function useContext<T>(context: any): T;
-        }
-        
         declare namespace JSX {
-          interface Element { }
+          interface Element {}
           interface IntrinsicElements {
-            div: any;
-            span: any;
-            button: any;
-            input: any;
-            a: any;
-            p: any;
-            h1: any;
-            h2: any;
-            h3: any;
-            ul: any;
-            li: any;
-            form: any;
-            label: any;
-            select: any;
-            option: any;
-            table: any;
-            tr: any;
-            td: any;
-            th: any;
+            [elemName: string]: any;
           }
         }
         `,
-        'react.d.ts'
+        'file:///node_modules/@types/react/index.d.ts'
       );
-      
-      console.log('TypeScript компилятор успешно настроен для поддержки JSX/TSX');
+
+      // Настраиваем правила токенизации для TSX
+      this.monaco.languages.setMonarchTokensProvider('typescriptreact', {
+        defaultToken: '',
+        tokenPostfix: '.tsx',
+        ignoreCase: true,
+        brackets: [
+          { open: '{', close: '}', token: 'delimiter.curly' },
+          { open: '[', close: ']', token: 'delimiter.square' },
+          { open: '(', close: ')', token: 'delimiter.parenthesis' },
+          { open: '<', close: '>', token: 'delimiter.angle' }
+        ],
+        keywords: [
+          'abstract', 'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'constructor',
+          'continue', 'debugger', 'declare', 'default', 'delete', 'do', 'else', 'enum', 'export',
+          'extends', 'false', 'finally', 'for', 'from', 'function', 'get', 'if', 'implements',
+          'import', 'in', 'instanceof', 'interface', 'let', 'module', 'new', 'null', 'of',
+          'package', 'private', 'protected', 'public', 'return', 'set', 'static', 'super',
+          'switch', 'this', 'throw', 'true', 'try', 'type', 'typeof', 'var', 'void', 'while',
+          'with', 'yield'
+        ],
+        operators: [
+          '=', '>', '<', '!', '~', '?', ':',
+          '==', '<=', '>=', '!=', '&&', '||', '++', '--',
+          '+', '-', '*', '/', '&', '|', '^', '%', '<<',
+          '>>', '>>>', '+=', '-=', '*=', '/=', '&=', '|=',
+          '^=', '%=', '<<=', '>>=', '>>>='
+        ],
+        symbols: /[=><!~?:&|+\-*\/\^%]+/,
+        escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+        tokenizer: {
+          root: [
+            // Идентификаторы и ключевые слова
+            [/[a-zA-Z_$][\w$]*/, {
+              cases: {
+                '@keywords': 'keyword',
+                '@default': 'identifier'
+              }
+            }],
+            // Пробелы
+            { include: '@whitespace' },
+            // JSX
+            [/<[^>]*>/, { cases: { '@eos': { token: 'delimiter.angle' }, '@default': 'delimiter.angle' } }],
+            // Числа
+            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+            [/\d+/, 'number'],
+            // Разделители и операторы
+            [/[{}()\[\]]/, '@brackets'],
+            [/[<>](?!@symbols)/, '@brackets'],
+            [/@symbols/, {
+              cases: {
+                '@operators': 'operator',
+                '@default': ''
+              }
+            }],
+            // Строки
+            [/"([^"\\]|\\.)*$/, 'string.invalid'],
+            [/'([^'\\]|\\.)*$/, 'string.invalid'],
+            [/"/, 'string', '@string_double'],
+            [/'/, 'string', '@string_single'],
+            // Комментарии
+            [/\/\*/, 'comment', '@comment'],
+            [/\/\/.*$/, 'comment']
+          ],
+          whitespace: [
+            [/\s+/, 'white']
+          ],
+          comment: [
+            [/[^\/*]+/, 'comment'],
+            [/\*\//, 'comment', '@pop'],
+            [/[\/*]/, 'comment']
+          ],
+          string_double: [
+            [/[^\\"]+/, 'string'],
+            [/"/, 'string', '@pop'],
+            [/\\$/, 'string'],
+            [/\\/, 'string.escape']
+          ],
+          string_single: [
+            [/[^\\']+/, 'string'],
+            [/'/, 'string', '@pop'],
+            [/\\$/, 'string'],
+            [/\\/, 'string.escape']
+          ]
+        }
+      });
+
+      console.log('TypeScript и TSX настроены успешно');
     } catch (error) {
-      console.error('Ошибка при настройке TypeScript компилятора:', error);
+      console.error('Ошибка при настройке TypeScript:', error);
     }
   }
 

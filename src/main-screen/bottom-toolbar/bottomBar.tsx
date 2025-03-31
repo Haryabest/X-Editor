@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest } from "lucide-react";
+import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User } from "lucide-react";
 
 import EncodingDropdown from "./modals/Encoding/ModalEncoding";
 import LanguageDropdown from "./modals/Language/ModalsLanguage";
@@ -17,9 +17,10 @@ const tooltips = {
   notifications: "Уведомления",
   gitPush: "Git Push",
   gitPull: "Git Pull",
+  user: "Пользователь", // Добавляем тултип для логина
 };
 
-type VisibleElementKeys = "encoding" | "position" | "language" | "notifications";
+type VisibleElementKeys = "encoding" | "position" | "language" | "notifications" | "user";
 
 interface BottomToolbarProps {
   editorInfo?: {
@@ -32,11 +33,12 @@ interface BottomToolbarProps {
       column: number;
       totalChars: number;
     };
-    gitBranch?: string; // Добавляем информацию о ветке
+    gitBranch?: string;
   };
+  userLogin?: string | null; // Добавляем пропс для логина
 }
 
-const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
+const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) => {
   const [visibleTooltip, setVisibleTooltip] = useState<string | null>(null);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -47,11 +49,13 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
     position: boolean;
     language: boolean;
     notifications: boolean;
+    user: boolean; // Добавляем для логина
   }>({
     encoding: true,
     position: true,
     language: true,
     notifications: true,
+    user: true, // По умолчанию показываем логин
   });
 
   useEffect(() => {
@@ -175,6 +179,15 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
             className={`check ${visibleElements.notifications ? "active" : ""}`}
           />
         </div>
+        <div onClick={(e) => handleToggleVisibility("user", e)}>
+          <span>Пользователь</span>
+          <Check
+            color="#fff"
+            width={14}
+            height={14}
+            className={`check ${visibleElements.user ? "active" : ""}`}
+          />
+        </div>
       </div>
 
       {activeDropdown && (
@@ -204,6 +217,19 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo }) => {
         </div>
 
         <div className="right-info">
+          {userLogin && visibleElements.user && (
+            <div
+              className="right-item user-info"
+              onMouseEnter={() => handleMouseEnter("user")}
+              onMouseLeave={handleMouseLeave}
+            >
+              <User width={14} height={14} />
+              <span>{userLogin}</span>
+              {visibleTooltip === "user" && (
+                <span className="tooltip">{tooltips.user}</span>
+              )}
+            </div>
+          )}
           <button
             className="right-item git-button"
             onMouseEnter={() => handleMouseEnter("gitPush")}

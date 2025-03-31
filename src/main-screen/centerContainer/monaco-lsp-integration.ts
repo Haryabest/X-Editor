@@ -74,47 +74,29 @@ export class MonacoLSPIntegration {
   /**
    * Инициализация интеграции LSP
    */
-  public initialize(editor: any, workspaceRoot: string): void {
-    if (!editor || !this.monaco) {
-      console.warn('Редактор или Monaco не определены при инициализации LSP');
+  public async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      console.log('MonacoLSPIntegration уже инициализирован');
       return;
     }
-    
+
     try {
-      this.editor = editor;
-      this.workspaceRoot = workspaceRoot;
-      
-      // Инициализируем менеджер документов
-      this.documentManager = new LSPDocumentManager(this.monaco, editor);
-      
-      // Инициализируем менеджер диагностик
-      this.diagnosticsManager = new MonacoLSPDiagnostics(this.monaco);
-      
-      // Инициализируем провайдер автодополнений
-      this.completionProvider = new MonacoLSPCompletionProvider(this.monaco);
-      
-      // Инициализируем провайдер подсказок путей
-      this.pathIntellisense = createPathIntellisense(this.monaco);
-      
-      // Инициализируем провайдер подсказок при наведении
-      this.hoverProvider = createHoverProvider(this.monaco);
-      
-      // Инициализируем провайдер перехода к определению
-      this.definitionProvider = createDefinitionProvider(this.monaco);
-      this.definitionProvider.setupLinkOpener(editor);
-      
-      // Регистрируем провайдеры для всех поддерживаемых языков
-      this.registerProvidersForLanguages();
-      
-      // Передаем корневую директорию в менеджер серверов
-      if (workspaceRoot && languageServerManager) {
-        languageServerManager.setWorkspaceRoot(workspaceRoot);
+      // Инициализируем менеджер языковых серверов
+      if (languageServerManager) {
+        languageServerManager.initialize();
       }
-      
+
+      // Инициализируем TypeScript сервер
+      await this.initializeTypeScriptServer();
+
+      // Настраиваем Monaco для работы с LSP
+      this.setupMonacoLSP();
+
       this.isInitialized = true;
-      console.log('MonacoLSPIntegration инициализирован');
+      console.log('MonacoLSPIntegration успешно инициализирован');
     } catch (error) {
-      console.error('Ошибка при инициализации LSP:', error);
+      console.error('Ошибка при инициализации MonacoLSPIntegration:', error);
+      throw error;
     }
   }
   
@@ -604,6 +586,155 @@ export class MonacoLSPIntegration {
       console.log('MonacoLSPIntegration освобождён');
     } catch (error) {
       console.error('Ошибка при освобождении LSP:', error);
+    }
+  }
+
+  private async initializeTypeScriptServer() {
+    try {
+      // Инициализируем TypeScript Language Server
+      const server = await this.languageServerManager.getServer('typescript');
+      if (server) {
+        // Настраиваем сервер для работы с TSX
+        await this.languageServerManager.sendRequest('typescript', 'initialize', {
+          processId: null,
+          rootUri: this.workspaceRoot,
+          capabilities: {
+            textDocument: {
+              completion: {
+                completionItem: {
+                  snippetSupport: true,
+                  commitCharactersSupport: true,
+                  deprecatedSupport: true,
+                  preselectSupport: true,
+                  tagSupport: {
+                    valueSet: [1]
+                  },
+                  insertReplaceSupport: true,
+                  resolveSupport: {
+                    properties: ['documentation', 'detail', 'additionalTextEdits']
+                  },
+                  insertTextModeSupport: {
+                    valueSet: [1, 2]
+                  }
+                }
+              },
+              hover: {
+                dynamicRegistration: true,
+                contentFormat: ['markdown', 'plaintext'],
+                hoverCapabilities: {
+                  dynamicRegistration: true,
+                  contentFormat: ['markdown', 'plaintext']
+                }
+              },
+              signatureHelp: {
+                signatureInformation: {
+                  documentationFormat: ['markdown', 'plaintext'],
+                  parameterInformation: {
+                    labelOffsetSupport: true
+                  }
+                }
+              },
+              definition: {
+                linkSupport: true
+              },
+              references: {
+                dynamicRegistration: true
+              },
+              documentHighlight: {
+                dynamicRegistration: true
+              },
+              documentSymbol: {
+                symbolKind: {
+                  valueSet: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+                },
+                hierarchicalDocumentSymbolSupport: true
+              },
+              formatting: {
+                dynamicRegistration: true
+              },
+              rangeFormatting: {
+                dynamicRegistration: true
+              },
+              onTypeFormatting: {
+                dynamicRegistration: true
+              },
+              declaration: {
+                linkSupport: true
+              },
+              implementation: {
+                linkSupport: true
+              },
+              typeDefinition: {
+                linkSupport: true
+              },
+              codeAction: {
+                dynamicRegistration: true,
+                codeActionLiteralSupport: {
+                  codeActionKind: {
+                    valueSet: ['quickfix', 'refactor', 'refactor.extract', 'refactor.inline', 'refactor.rewrite', 'source', 'source.organizeImports']
+                  }
+                },
+                resolveSupport: {
+                  properties: ['edit', 'command']
+                }
+              },
+              codeLens: {
+                dynamicRegistration: true
+              },
+              documentLink: {
+                dynamicRegistration: true,
+                tooltipSupport: true
+              },
+              colorProvider: {
+                dynamicRegistration: true
+              },
+              rename: {
+                dynamicRegistration: true,
+                prepareSupport: true
+              },
+              publishDiagnostics: {
+                relatedInformation: true,
+                tagSupport: {
+                  valueSet: [1, 2]
+                },
+                versionSupport: true,
+                codeDescriptionSupport: true,
+                dataSupport: true
+              }
+            }
+          },
+          initializationOptions: {
+            hostInfo: 'monaco-editor',
+            preferences: {
+              includeInlayParameterNameHints: 'all',
+              includeInlayParameterNameHintsWhenArgumentMatchesName: true,
+              includeInlayFunctionParameterTypeHints: true,
+              includeInlayVariableTypeHints: true,
+              includeInlayPropertyDeclarationTypeHints: true,
+              includeInlayFunctionLikeReturnTypeHints: true,
+              importModuleSpecifierPreference: 'shortest',
+              quotePreference: 'single',
+              jsxEmit: 'react',
+              jsxFactory: 'React.createElement',
+              jsxFragmentFactory: 'React.Fragment'
+            },
+            tsserver: {
+              useSyntaxServer: 'auto',
+              maxTsServerMemory: 8192,
+              watchOptions: {
+                watchFile: 'useFsEvents',
+                watchDirectory: 'useFsEvents',
+                fallbackPolling: 'dynamicPriority'
+              }
+            }
+          }
+        });
+
+        // Отправляем уведомление о готовности
+        await this.languageServerManager.sendNotification('typescript', 'initialized', {});
+      }
+    } catch (error) {
+      console.error('Ошибка при инициализации TypeScript сервера:', error);
     }
   }
 }
