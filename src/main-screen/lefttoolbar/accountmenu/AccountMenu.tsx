@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { LogOut, Github } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog'; // Импортируем API для открытия браузера
 import './AccountMenu.css';
 
 const GITHUB_CLIENT_ID = 'Ov23liWNwWqM9SO0J9nF'; // Ваш Client ID
@@ -7,7 +8,7 @@ const GITHUB_CLIENT_ID = 'Ov23liWNwWqM9SO0J9nF'; // Ваш Client ID
 interface AccountMenuProps {
   isVisible: boolean;
   onClose: () => void;
-  onLoginChange?: (login: string | null) => void; // Добавляем пропс для передачи логина
+  onLoginChange?: (login: string | null) => void;
 }
 
 const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginChange }) => {
@@ -15,18 +16,26 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [userLogin, setUserLogin] = useState<string | null>(null);
 
-  // Проверка сохраненного токена и получение данных пользователя при загрузке
   useEffect(() => {
     const savedToken = localStorage.getItem('github_token');
     const savedLogin = localStorage.getItem('github_user_login');
 
+    console.log('Checking saved token and login...');
+    console.log('Saved token:', savedToken);
+    console.log('Saved login:', savedLogin);
+
     if (savedToken) {
       setAccessToken(savedToken);
+      console.log('Access token set from saved:', savedToken);
       if (savedLogin) {
         setUserLogin(savedLogin);
-        if (onLoginChange) onLoginChange(savedLogin); // Передаем логин в родительский компонент
+        console.log('User login set from saved:', savedLogin);
+        if (onLoginChange) {
+          onLoginChange(savedLogin);
+          console.log('onLoginChange called with saved login:', savedLogin);
+        }
       } else {
-        // Если логина нет, делаем запрос к GitHub API
+        console.log('No saved login, fetching user data from GitHub API...');
         fetch('https://api.github.com/user', {
           headers: {
             Authorization: `Bearer ${savedToken}`,
@@ -34,10 +43,15 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
         })
           .then(res => res.json())
           .then(data => {
+            console.log('GitHub API response:', data);
             if (data.login) {
               setUserLogin(data.login);
               localStorage.setItem('github_user_login', data.login);
-              if (onLoginChange) onLoginChange(data.login); // Передаем логин
+              console.log('User login set from API:', data.login);
+              if (onLoginChange) {
+                onLoginChange(data.login);
+                console.log('onLoginChange called with API login:', data.login);
+              }
             } else {
               console.error('No login found in GitHub user data:', data);
               handleLogout();
@@ -48,20 +62,23 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
             handleLogout();
           });
       }
+    } else {
+      console.log('No saved token found.');
     }
 
     // Проверка URL на наличие токена после редиректа
     const hash = window.location.hash;
+    console.log('Checking URL hash for token:', hash);
     if (hash) {
       const tokenMatch = hash.match(/access_token=([^&]+)/);
       if (tokenMatch) {
         const token = tokenMatch[1];
         setAccessToken(token);
         localStorage.setItem('github_token', token);
-        // Очищаем hash из URL
+        console.log('Access token set from URL:', token);
         window.history.pushState("", document.title, window.location.pathname + window.location.search);
 
-        // Получаем данные пользователя
+        console.log('Fetching user data with new token...');
         fetch('https://api.github.com/user', {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -69,37 +86,55 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
         })
           .then(res => res.json())
           .then(data => {
+            console.log('GitHub API response after redirect:', data);
             if (data.login) {
               setUserLogin(data.login);
               localStorage.setItem('github_user_login', data.login);
-              if (onLoginChange) onLoginChange(data.login); // Передаем логин
+              console.log('User login set from API after redirect:', data.login);
+              if (onLoginChange) {
+                onLoginChange(data.login);
+                console.log('onLoginChange called with API login after redirect:', data.login);
+              }
             } else {
-              console.error('No login found in GitHub user data:', data);
+              console.error('No login found in GitHub user data after redirect:', data);
               handleLogout();
             }
           })
           .catch(err => {
-            console.error('Error fetching user data:', err);
+            console.error('Error fetching user data after redirect:', err);
             handleLogout();
           });
+      } else {
+        console.log('No access token found in URL hash.');
       }
+    } else {
+      console.log('No hash in URL.');
     }
   }, [onLoginChange]);
 
-  // Обработка GitHub авторизации с Implicit Flow
-  const handleGitHubLogin = () => {
+  const handleGitHubLogin = async () => {
     const params = new URLSearchParams({
       client_id: GITHUB_CLIENT_ID,
-      redirect_uri: `${window.location.origin}`,
+      redirect_uri: 'http://localhost:3000', // Убедитесь, что это совпадает с настройками GitHub
       response_type: 'token',
       scope: 'user:email',
       state: Math.random().toString(36).substring(7),
     });
 
-    window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`;
+    const authUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
+    console.log('Initiating GitHub login, opening browser:', authUrl);
+
+    try {
+      // Открываем URL в системном браузере
+      await open(authUrl);
+      console.log('Browser opened for GitHub login.');
+    } catch (error) {
+      console.error('Failed to open browser for GitHub login:', error);
+    }
+
+    onClose();
   };
 
-  // Обработка клика вне меню
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -129,15 +164,22 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
     };
   }, [isVisible, onClose]);
 
-  // Обработка выхода
   const handleLogout = () => {
+    console.log('Logging out...');
     setAccessToken(null);
     setUserLogin(null);
     localStorage.removeItem('github_token');
     localStorage.removeItem('github_user_login');
-    if (onLoginChange) onLoginChange(null); // Передаем null при выходе
+    if (onLoginChange) {
+      onLoginChange(null);
+      console.log('onLoginChange called with null (logout)');
+    }
     onClose();
   };
+
+  console.log('Rendering AccountMenu...');
+  console.log('Current accessToken:', accessToken);
+  console.log('Current userLogin:', userLogin);
 
   if (!isVisible) return null;
 
@@ -148,18 +190,21 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
           <h3>Аккаунт</h3>
         </div>
         <div className="leftbar-account-content">
-          {!accessToken ? (
-            <div
-              className="leftbar-account-item"
-              onClick={() => {
-                handleGitHubLogin();
-                onClose();
-              }}
-            >
-              <Github size={16} />
-              <span>Войти через GitHub</span>
+          {accessToken && userLogin ? (
+            <div className="leftbar-account-item user-login">
+              <span>Логин: {userLogin}</span>
             </div>
           ) : null}
+          <div
+            className="leftbar-account-item"
+            onClick={() => {
+              console.log('GitHub login button clicked!');
+              handleGitHubLogin();
+            }}
+          >
+            <Github size={16} />
+            <span>Войти через GitHub</span>
+          </div>
           <div className="leftbar-account-divider"></div>
           <div
             className="leftbar-account-item logout"

@@ -4,6 +4,7 @@ import { configureJSXTypes, jsxIntrinsicElementsDefinitions } from './jsx-types'
 import { FileItem } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { applyLanguageConfiguration, getFileExtension, isJavaScriptFile, isJSXFile, isScriptFile, isTypeScriptFile } from '../utils/fileExtensions';
+import { configureTypeScript } from './typescript-config'; // Импортируем нашу функцию конфигурации TypeScript
 
 // Игнорирование ошибок импорта для интеграционного модуля
 // @ts-ignore
@@ -268,6 +269,20 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
  */
 export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
   try {
+    // Предотвращаем повторную инициализацию
+    if (window.monaco) {
+      console.log('Monaco уже инициализирован, пропускаем инициализацию');
+      return;
+    }
+
+    console.log('Configuring Monaco with opened files:', openedFiles);
+
+    // Устанавливаем параметры Monaco Editor
+    window.monaco = monaco;
+
+    // Сначала настраиваем TypeScript для корректной работы с React и TSX
+    configureTypeScript(monaco);
+
     // Используем явное приведение типа для monaco
     const monacoInstance: any = monaco;
     

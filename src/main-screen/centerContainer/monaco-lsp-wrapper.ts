@@ -126,6 +126,14 @@ export class MonacoLSPWrapper {
 
   private configureTypeScript(): void {
     try {
+      // Импортируем и вызываем нашу конфигурацию TypeScript
+      import('../../monaco-config/typescript-config').then(({ configureTypeScript }) => {
+        console.log('Импортирован модуль typescript-config');
+        configureTypeScript(this.monaco);
+      }).catch(error => {
+        console.error('Ошибка при импорте typescript-config:', error);
+      });
+      
       // Настраиваем компилятор TypeScript
       this.monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
         target: this.monaco.languages.typescript.ScriptTarget.Latest,
@@ -159,6 +167,70 @@ export class MonacoLSPWrapper {
         `,
         'file:///node_modules/@types/react/index.d.ts'
       );
+      
+      // Настраиваем автодополнение для TSX
+      this.monaco.languages.registerCompletionItemProvider('typescriptreact', {
+        provideCompletionItems: (model: any, position: any) => {
+          console.log('TSX completion provider called в monaco-lsp-wrapper', { position });
+          
+          const suggestions: any[] = [];
+          
+          // Создаем диапазон для автодополнения
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endColumn: position.column
+          };
+          
+          // Добавляем базовые JSX элементы
+          const jsxElements = [
+            'div', 'span', 'p', 'h1', 'h2', 'h3', 'button', 'input', 'form'
+          ];
+
+          jsxElements.forEach(element => {
+            suggestions.push({
+              label: element,
+              kind: this.monaco.languages.CompletionItemKind.Snippet,
+              insertText: `<${element}$0></${element}>`,
+              insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: {
+                value: `**${element}**\n\nHTML элемент ${element}`
+              },
+              range
+            });
+          });
+          
+          // Добавляем React хуки
+          const hooks = [
+            {
+              label: 'useState',
+              insertText: 'const [${1:state}, set${1:State}] = useState(${2:initialValue});',
+              documentation: 'Хук для управления состоянием компонента'
+            },
+            {
+              label: 'useEffect',
+              insertText: 'useEffect(() => {\n\t${1:effect}\n}, [${2:dependencies}]);',
+              documentation: 'Хук для выполнения побочных эффектов'
+            }
+          ];
+
+          hooks.forEach(hook => {
+            suggestions.push({
+              label: hook.label,
+              kind: this.monaco.languages.CompletionItemKind.Snippet,
+              insertText: hook.insertText,
+              insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: {
+                value: `**${hook.label}**\n\n${hook.documentation}`
+              },
+              range
+            });
+          });
+          
+          return { suggestions };
+        }
+      });
 
       // Настраиваем правила токенизации для TSX
       this.monaco.languages.setMonarchTokensProvider('typescriptreact', {

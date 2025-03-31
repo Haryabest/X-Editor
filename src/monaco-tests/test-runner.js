@@ -11,6 +11,15 @@ import { configureMonaco } from '../monaco-config';
 import { setupSmartCodeAnalyzer } from '../monaco-config/index';
 import { loadTestFile, analyzeEditorErrors, displayErrors } from './test-utils';
 
+// Добавляем отладочное логирование
+console.log('Monaco languages in test-runner:', monaco.languages.getLanguages().map(lang => lang.id));
+
+// Регистрируем язык typescriptreact если он еще не зарегистрирован
+if (!monaco.languages.getLanguages().some(lang => lang.id === 'typescriptreact')) {
+  console.log('Registering typescriptreact language in test-runner');
+  monaco.languages.register({ id: 'typescriptreact' });
+}
+
 // Список тестовых файлов
 const TEST_FILES = [
   'src/monaco-tests/TypeScriptTest.ts',

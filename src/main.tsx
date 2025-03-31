@@ -25,6 +25,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Запускаем интеграцию с Tauri для путей модулей
     const result = await setupModulePaths();
     console.log('Интеграция модульных путей с Tauri:', result ? 'успешно' : 'не удалось');
+    
+    // Когда Monaco становится доступным, регистрируем поддержку TSX
+    const checkMonaco = () => {
+      if (window.monaco) {
+        console.log('Monaco доступен в DOMContentLoaded, регистрируем TSX');
+        import('./monaco-config/register-tsx').then(({ registerTSX }) => {
+          registerTSX();
+        }).catch(error => {
+          console.error('Ошибка при импорте register-tsx:', error);
+        });
+      } else {
+        console.log('Monaco еще не доступен, повторная проверка через 1 секунду');
+        setTimeout(checkMonaco, 1000);
+      }
+    };
+    
+    checkMonaco();
   } catch (error) {
     console.error('Ошибка при инициализации интеграции с Tauri:', error);
   }
