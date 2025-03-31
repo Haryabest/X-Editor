@@ -126,13 +126,19 @@ export class MonacoLSPWrapper {
 
   private configureTypeScript(): void {
     try {
-      // Импортируем и вызываем нашу конфигурацию TypeScript
-      import('../../monaco-config/typescript-config').then(({ configureTypeScript }) => {
-        console.log('Импортирован модуль typescript-config');
-        configureTypeScript(this.monaco);
-      }).catch(error => {
-        console.error('Ошибка при импорте typescript-config:', error);
-      });
+      // Проверяем наличие Monaco
+      if (!this.monaco || !this.monaco.languages || !this.monaco.languages.typescript) {
+        console.error('Monaco или TypeScript не инициализированы');
+        return;
+      }
+      
+      console.log('Настраиваем типы для TypeScript/React');
+      
+      // Регистрируем languageId для typescriptreact, если его нет
+      if (!this.monaco.languages.getLanguages().some((lang: any) => lang.id === 'typescriptreact')) {
+        this.monaco.languages.register({ id: 'typescriptreact' });
+        console.log('Зарегистрирован язык typescriptreact');
+      }
       
       // Настраиваем компилятор TypeScript
       this.monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -158,10 +164,226 @@ export class MonacoLSPWrapper {
       // Добавляем определения для React
       this.monaco.languages.typescript.typescriptDefaults.addExtraLib(
         `
+        declare namespace React {
+          type Key = string | number;
+          
+          interface ReactElement<P = any, T extends string | JSXElementConstructor<any> = string | JSXElementConstructor<any>> {
+            type: T;
+            props: P;
+            key: Key | null;
+          }
+          
+          type ComponentType<P = {}> = ComponentClass<P> | FunctionComponent<P>;
+          
+          interface FunctionComponent<P = {}> {
+            (props: P, context?: any): ReactElement<any, any> | null;
+            displayName?: string;
+          }
+          
+          interface ComponentClass<P = {}, S = {}> {
+            new(props: P, context?: any): Component<P, S>;
+            displayName?: string;
+          }
+          
+          type JSXElementConstructor<P> = ((props: P) => ReactElement | null) | (new (props: P) => Component<P, any>);
+          
+          interface Component<P = {}, S = {}> {
+            props: P;
+            state: S;
+            setState<K extends keyof S>(state: ((prevState: Readonly<S>) => Pick<S, K> | S | null) | Pick<S, K> | S | null, callback?: () => void): void;
+            forceUpdate(callback?: () => void): void;
+            render(): ReactElement<any, any> | null;
+          }
+          
+          function useState<T>(initialState: T | (() => T)): [T, (newState: T) => void];
+          function useEffect(effect: () => void | (() => void), deps?: any[]): void;
+          function useContext<T>(context: Context<T>): T;
+          function useReducer<R extends Reducer<any, any>, I>(reducer: R, initializerArg: I, initializer?: (arg: I) => ReducerState<R>): [ReducerState<R>, Dispatch<ReducerAction<R>>];
+          function useCallback<T extends (...args: any[]) => any>(callback: T, deps: any[]): T;
+          function useMemo<T>(factory: () => T, deps: any[]): T;
+          function useRef<T>(initialValue: T): MutableRefObject<T>;
+          function useRef<T>(initialValue: T | null): RefObject<T>;
+          
+          type Reducer<S, A> = (prevState: S, action: A) => S;
+          type ReducerState<R extends Reducer<any, any>> = R extends Reducer<infer S, any> ? S : never;
+          type ReducerAction<R extends Reducer<any, any>> = R extends Reducer<any, infer A> ? A : never;
+          
+          interface MutableRefObject<T> {
+            current: T;
+          }
+          
+          interface RefObject<T> {
+            readonly current: T | null;
+          }
+          
+          interface Context<T> {
+            Provider: Provider<T>;
+            Consumer: Consumer<T>;
+            displayName?: string;
+          }
+          
+          interface Provider<T> {
+            (props: ProviderProps<T>): ReactElement | null;
+          }
+          
+          interface Consumer<T> {
+            (props: ConsumerProps<T>): ReactElement | null;
+          }
+          
+          interface ProviderProps<T> {
+            value: T;
+            children?: ReactNode;
+          }
+          
+          interface ConsumerProps<T> {
+            children: (value: T) => ReactNode;
+          }
+          
+          type ReactNode = string | number | boolean | null | undefined | ReactElement | Array<ReactNode>;
+        }
+        
         declare namespace JSX {
-          interface Element {}
+          interface Element extends React.ReactElement<any, any> { }
+          interface ElementClass extends React.Component<any> { }
+          interface ElementAttributesProperty { props: {}; }
+          interface ElementChildrenAttribute { children: {}; }
+          
           interface IntrinsicElements {
-            [elemName: string]: any;
+            // HTML
+            a: any;
+            abbr: any;
+            address: any;
+            area: any;
+            article: any;
+            aside: any;
+            audio: any;
+            b: any;
+            base: any;
+            bdi: any;
+            bdo: any;
+            big: any;
+            blockquote: any;
+            body: any;
+            br: any;
+            button: any;
+            canvas: any;
+            caption: any;
+            cite: any;
+            code: any;
+            col: any;
+            colgroup: any;
+            data: any;
+            datalist: any;
+            dd: any;
+            del: any;
+            details: any;
+            dfn: any;
+            dialog: any;
+            div: any;
+            dl: any;
+            dt: any;
+            em: any;
+            embed: any;
+            fieldset: any;
+            figcaption: any;
+            figure: any;
+            footer: any;
+            form: any;
+            h1: any;
+            h2: any;
+            h3: any;
+            h4: any;
+            h5: any;
+            h6: any;
+            head: any;
+            header: any;
+            hgroup: any;
+            hr: any;
+            html: any;
+            i: any;
+            iframe: any;
+            img: any;
+            input: any;
+            ins: any;
+            kbd: any;
+            keygen: any;
+            label: any;
+            legend: any;
+            li: any;
+            link: any;
+            main: any;
+            map: any;
+            mark: any;
+            menu: any;
+            menuitem: any;
+            meta: any;
+            meter: any;
+            nav: any;
+            noscript: any;
+            object: any;
+            ol: any;
+            optgroup: any;
+            option: any;
+            output: any;
+            p: any;
+            param: any;
+            picture: any;
+            pre: any;
+            progress: any;
+            q: any;
+            rp: any;
+            rt: any;
+            ruby: any;
+            s: any;
+            samp: any;
+            script: any;
+            section: any;
+            select: any;
+            small: any;
+            source: any;
+            span: any;
+            strong: any;
+            style: any;
+            sub: any;
+            summary: any;
+            sup: any;
+            table: any;
+            tbody: any;
+            td: any;
+            textarea: any;
+            tfoot: any;
+            th: any;
+            thead: any;
+            time: any;
+            title: any;
+            tr: any;
+            track: any;
+            u: any;
+            ul: any;
+            var: any;
+            video: any;
+            wbr: any;
+            
+            // SVG
+            svg: any;
+            circle: any;
+            clipPath: any;
+            defs: any;
+            ellipse: any;
+            g: any;
+            image: any;
+            line: any;
+            linearGradient: any;
+            mask: any;
+            path: any;
+            pattern: any;
+            polygon: any;
+            polyline: any;
+            radialGradient: any;
+            rect: any;
+            stop: any;
+            text: any;
+            tspan: any;
           }
         }
         `,
@@ -170,8 +392,9 @@ export class MonacoLSPWrapper {
       
       // Настраиваем автодополнение для TSX
       this.monaco.languages.registerCompletionItemProvider('typescriptreact', {
+        triggerCharacters: ['<', '.', ':', '"', "'", '/', '@', '{'],
         provideCompletionItems: (model: any, position: any) => {
-          console.log('TSX completion provider called в monaco-lsp-wrapper', { position });
+          console.log('TSX completion provider called', { position });
           
           const suggestions: any[] = [];
           
@@ -183,138 +406,106 @@ export class MonacoLSPWrapper {
             endColumn: position.column
           };
           
-          // Добавляем базовые JSX элементы
-          const jsxElements = [
-            'div', 'span', 'p', 'h1', 'h2', 'h3', 'button', 'input', 'form'
-          ];
-
-          jsxElements.forEach(element => {
-            suggestions.push({
-              label: element,
-              kind: this.monaco.languages.CompletionItemKind.Snippet,
-              insertText: `<${element}$0></${element}>`,
-              insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              documentation: {
-                value: `**${element}**\n\nHTML элемент ${element}`
-              },
-              range
-            });
+          // Получаем текст перед курсором для определения контекста
+          const textUntilPosition = model.getValueInRange({
+            startLineNumber: position.lineNumber,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column
           });
           
-          // Добавляем React хуки
-          const hooks = [
-            {
-              label: 'useState',
-              insertText: 'const [${1:state}, set${1:State}] = useState(${2:initialValue});',
-              documentation: 'Хук для управления состоянием компонента'
-            },
-            {
-              label: 'useEffect',
-              insertText: 'useEffect(() => {\n\t${1:effect}\n}, [${2:dependencies}]);',
-              documentation: 'Хук для выполнения побочных эффектов'
-            }
-          ];
+          // JSX элементы
+          const isInJSXContext = /<[a-zA-Z]*$/.test(textUntilPosition) || 
+                                /<[a-zA-Z]+\s+[^>]*$/.test(textUntilPosition);
+          
+          if (isInJSXContext) {
+            const jsxElements = [
+              'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              'button', 'input', 'form', 'label', 'select', 'option',
+              'ul', 'ol', 'li', 'table', 'tr', 'td', 'th', 'thead', 'tbody',
+              'img', 'a', 'nav', 'header', 'footer', 'main', 'section', 'article'
+            ];
 
-          hooks.forEach(hook => {
-            suggestions.push({
-              label: hook.label,
-              kind: this.monaco.languages.CompletionItemKind.Snippet,
-              insertText: hook.insertText,
-              insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              documentation: {
-                value: `**${hook.label}**\n\n${hook.documentation}`
-              },
-              range
+            jsxElements.forEach(element => {
+              suggestions.push({
+                label: element,
+                kind: this.monaco.languages.CompletionItemKind.Snippet,
+                insertText: element,
+                detail: `<${element}></${element}>`,
+                documentation: {
+                  value: `**${element}**\n\nHTML элемент ${element}`
+                },
+                range
+              });
             });
-          });
+          }
+          
+          // React хуки - предлагаем, если текст начинается с 'use'
+          const isHookContext = textUntilPosition.endsWith('use');
+          
+          if (isHookContext) {
+            const hooks = [
+              {
+                label: 'useState',
+                insertText: 'useState($0)',
+                documentation: 'Хук для управления состоянием компонента'
+              },
+              {
+                label: 'useEffect',
+                insertText: 'useEffect(() => {\n\t$0\n}, [])',
+                documentation: 'Хук для выполнения побочных эффектов'
+              },
+              {
+                label: 'useContext',
+                insertText: 'useContext($0)',
+                documentation: 'Хук для доступа к контексту React'
+              },
+              {
+                label: 'useRef',
+                insertText: 'useRef($0)',
+                documentation: 'Хук для создания мутабельной ссылки'
+              }
+            ];
+
+            hooks.forEach(hook => {
+              suggestions.push({
+                label: hook.label,
+                kind: this.monaco.languages.CompletionItemKind.Function,
+                insertText: hook.insertText,
+                insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: {
+                  value: `**${hook.label}**\n\n${hook.documentation}`
+                },
+                range
+              });
+            });
+          }
+          
+          // React атрибуты - предлагаем, если текст содержит тег и пробел
+          const isAttributeContext = /<[a-zA-Z]+\s+[^>]*$/.test(textUntilPosition);
+          
+          if (isAttributeContext) {
+            const attributes = [
+              'className', 'style', 'onClick', 'onChange', 'onSubmit', 'onBlur', 'onFocus',
+              'id', 'type', 'value', 'placeholder', 'href', 'src', 'alt', 'title',
+              'disabled', 'required', 'readOnly', 'autoFocus', 'checked'
+            ];
+            
+            attributes.forEach(attr => {
+              suggestions.push({
+                label: attr,
+                kind: this.monaco.languages.CompletionItemKind.Property,
+                insertText: attr === 'style' ? 'style={{$0}}' : `${attr}="$0"`,
+                insertTextRules: this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                documentation: {
+                  value: `**${attr}**\n\nJSX атрибут ${attr}`
+                },
+                range
+              });
+            });
+          }
           
           return { suggestions };
-        }
-      });
-
-      // Настраиваем правила токенизации для TSX
-      this.monaco.languages.setMonarchTokensProvider('typescriptreact', {
-        defaultToken: '',
-        tokenPostfix: '.tsx',
-        ignoreCase: true,
-        brackets: [
-          { open: '{', close: '}', token: 'delimiter.curly' },
-          { open: '[', close: ']', token: 'delimiter.square' },
-          { open: '(', close: ')', token: 'delimiter.parenthesis' },
-          { open: '<', close: '>', token: 'delimiter.angle' }
-        ],
-        keywords: [
-          'abstract', 'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'constructor',
-          'continue', 'debugger', 'declare', 'default', 'delete', 'do', 'else', 'enum', 'export',
-          'extends', 'false', 'finally', 'for', 'from', 'function', 'get', 'if', 'implements',
-          'import', 'in', 'instanceof', 'interface', 'let', 'module', 'new', 'null', 'of',
-          'package', 'private', 'protected', 'public', 'return', 'set', 'static', 'super',
-          'switch', 'this', 'throw', 'true', 'try', 'type', 'typeof', 'var', 'void', 'while',
-          'with', 'yield'
-        ],
-        operators: [
-          '=', '>', '<', '!', '~', '?', ':',
-          '==', '<=', '>=', '!=', '&&', '||', '++', '--',
-          '+', '-', '*', '/', '&', '|', '^', '%', '<<',
-          '>>', '>>>', '+=', '-=', '*=', '/=', '&=', '|=',
-          '^=', '%=', '<<=', '>>=', '>>>='
-        ],
-        symbols: /[=><!~?:&|+\-*\/\^%]+/,
-        escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
-        tokenizer: {
-          root: [
-            // Идентификаторы и ключевые слова
-            [/[a-zA-Z_$][\w$]*/, {
-              cases: {
-                '@keywords': 'keyword',
-                '@default': 'identifier'
-              }
-            }],
-            // Пробелы
-            { include: '@whitespace' },
-            // JSX
-            [/<[^>]*>/, { cases: { '@eos': { token: 'delimiter.angle' }, '@default': 'delimiter.angle' } }],
-            // Числа
-            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
-            [/\d+/, 'number'],
-            // Разделители и операторы
-            [/[{}()\[\]]/, '@brackets'],
-            [/[<>](?!@symbols)/, '@brackets'],
-            [/@symbols/, {
-              cases: {
-                '@operators': 'operator',
-                '@default': ''
-              }
-            }],
-            // Строки
-            [/"([^"\\]|\\.)*$/, 'string.invalid'],
-            [/'([^'\\]|\\.)*$/, 'string.invalid'],
-            [/"/, 'string', '@string_double'],
-            [/'/, 'string', '@string_single'],
-            // Комментарии
-            [/\/\*/, 'comment', '@comment'],
-            [/\/\/.*$/, 'comment']
-          ],
-          whitespace: [
-            [/\s+/, 'white']
-          ],
-          comment: [
-            [/[^\/*]+/, 'comment'],
-            [/\*\//, 'comment', '@pop'],
-            [/[\/*]/, 'comment']
-          ],
-          string_double: [
-            [/[^\\"]+/, 'string'],
-            [/"/, 'string', '@pop'],
-            [/\\$/, 'string'],
-            [/\\/, 'string.escape']
-          ],
-          string_single: [
-            [/[^\\']+/, 'string'],
-            [/'/, 'string', '@pop'],
-            [/\\$/, 'string'],
-            [/\\/, 'string.escape']
-          ]
         }
       });
 

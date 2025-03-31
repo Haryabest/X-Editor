@@ -1,0 +1,78 @@
+.titlebar {
+  display: flex;
+  height: 32px;
+  background-color: #2d2d2d;
+  color: white;
+  align-items: center;
+  padding: 0 8px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.window-controls {
+  display: flex;
+  margin-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #adadad;
+  font-size: 14px;
+  cursor: pointer;
+  margin-right: 2px;
+}
+
+.window-control:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.window-control.minimize:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.window-control.maximize:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.window-control.close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
+.titlebar-title {
+  flex: 1;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.titlebar-actions {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-action-button {
+  padding: 4px 8px;
+  background-color: transparent;
+  border: none;
+  color: #cccccc;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.titlebar-action-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+} 

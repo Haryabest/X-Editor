@@ -30,11 +30,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const checkMonaco = () => {
       if (window.monaco) {
         console.log('Monaco доступен в DOMContentLoaded, регистрируем TSX');
-        import('./monaco-config/register-tsx').then(({ registerTSX }) => {
-          registerTSX();
-        }).catch(error => {
-          console.error('Ошибка при импорте register-tsx:', error);
-        });
+        try {
+          import('./monaco-config/register-tsx').then(module => {
+            console.log('Модуль register-tsx успешно импортирован');
+            if (typeof module.registerTSX === 'function') {
+              const result = module.registerTSX();
+              console.log('Регистрация TSX завершена с результатом:', result);
+              
+              // Проверка успешности регистрации
+              if (result) {
+                console.log('Поддержка TSX успешно активирована. Теперь доступны автодополнения для React компонентов и информация при наведении на пути импорта.');
+              } else {
+                console.warn('Регистрация TSX не удалась. Автодополнения и подсказки для React могут работать некорректно.');
+              }
+            } else {
+              console.error('Функция registerTSX не найдена в импортированном модуле');
+            }
+          }).catch(error => {
+            console.error('Ошибка при импорте register-tsx:', error);
+          });
+        } catch (error) {
+          console.error('Ошибка при импорте и выполнении register-tsx:', error);
+        }
       } else {
         console.log('Monaco еще не доступен, повторная проверка через 1 секунду');
         setTimeout(checkMonaco, 1000);

@@ -16,7 +16,6 @@ import { initializeMonacoEditor, correctLanguageFromExtension } from './monaco-a
 import { monacoLSPService } from './monaco-lsp-wrapper';
 import { initializeMonacoLSP, getMonacoLSPInstance } from './monaco-lsp-integration';
 import { debounce } from 'lodash';
-import path from 'path';
 
 import "./style.css";
 
@@ -82,6 +81,25 @@ interface CenterContainerProps {
   onDeselect?: () => void;
   editorRef?: React.RefObject<any>;
 }
+
+// Вспомогательные функции для обработки путей
+const pathUtils = {
+  extname: (filePath) => {
+    const lastDotIndex = filePath.lastIndexOf('.');
+    return lastDotIndex !== -1 ? filePath.slice(lastDotIndex) : '';
+  },
+  basename: (filePath) => {
+    const lastSlashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    return lastSlashIndex !== -1 ? filePath.slice(lastSlashIndex + 1) : filePath;
+  },
+  dirname: (filePath) => {
+    const lastSlashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    return lastSlashIndex !== -1 ? filePath.slice(0, lastSlashIndex) : '';
+  },
+  join: (...parts) => {
+    return parts.filter(Boolean).join('/').replace(/\/+/g, '/');
+  }
+};
 
 const CenterContainer: React.FC<CenterContainerProps> = ({
   style,
@@ -334,51 +352,51 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       // Подписываемся на изменения маркеров (ошибки/предупреждения)
       const markersListener = monacoInstance.editor.onDidChangeMarkers((_uris: any[]) => {
         try {
-          const allIssues: IssueInfo[] = [];
+        const allIssues: IssueInfo[] = [];
 
-          // Собираем маркеры для всех открытых файлов
-          openedFiles.forEach(file => {
+        // Собираем маркеры для всех открытых файлов
+        openedFiles.forEach(file => {
             if (!file || !file.path) return;
             
             try {
-              const uri = monacoInstance.Uri.parse(`file:///${file.path.replace(/\\/g, '/')}`);
-              const markers = monacoInstance.editor.getModelMarkers({ resource: uri }) as MarkerData[];
-              
+          const uri = monacoInstance.Uri.parse(`file:///${file.path.replace(/\\/g, '/')}`);
+          const markers = monacoInstance.editor.getModelMarkers({ resource: uri }) as MarkerData[];
+          
               if (markers && markers.length > 0) {
-                const issues = convertMarkersToIssues(markers, file.path);
-                allIssues.push({
-                  ...issues,
-                  issues: issues.issues.map(issue => ({
-                    ...issue,
-                    severity: issue.severity as "error" | "warning" | "info"
-                  }))
-                });
+            const issues = convertMarkersToIssues(markers, file.path);
+            allIssues.push({
+              ...issues,
+              issues: issues.issues.map(issue => ({
+                ...issue,
+                severity: issue.severity as "error" | "warning" | "info"
+              }))
+            });
               }
             } catch (err) {
               console.error(`Ошибка при обработке маркеров для файла ${file.path}:`, err);
-            }
-          });
-
-          // Обновляем информацию о проблемах
-          if (onIssuesChange) {
-            onIssuesChange(allIssues);
           }
+        });
 
-          // Обновляем информацию для текущего файла в нижней панели
-          if (onEditorInfoChange && editorInstance.getModel()) {
+        // Обновляем информацию о проблемах
+        if (onIssuesChange) {
+          onIssuesChange(allIssues);
+        }
+
+        // Обновляем информацию для текущего файла в нижней панели
+        if (onEditorInfoChange && editorInstance.getModel()) {
             try {
               const model = editorInstance.getModel();
               if (!model) return;
               
-              const currentFileMarkers = monacoInstance.editor.getModelMarkers({
+          const currentFileMarkers = monacoInstance.editor.getModelMarkers({
                 resource: model.uri
-              }) as MarkerData[];
+          }) as MarkerData[];
 
               if (currentFileMarkers) {
-                const errors = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Error).length;
-                const warnings = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Warning).length;
-                
-                updateEditorInfo({ errors, warnings });
+          const errors = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Error).length;
+          const warnings = currentFileMarkers.filter(m => m.severity === monacoInstance.MarkerSeverity.Warning).length;
+          
+          updateEditorInfo({ errors, warnings });
               }
             } catch (err) {
               console.error('Ошибка при обновлении информации о маркерах:', err);
@@ -392,21 +410,21 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       // Подписываемся на изменения позиции курсора
       const cursorListener = editorInstance.onDidChangeCursorPosition((_e: any) => {
         try {
-          const position = editorInstance.getPosition();
+        const position = editorInstance.getPosition();
           if (!position) return;
           
-          const model = editorInstance.getModel();
+        const model = editorInstance.getModel();
           if (!model) return;
           
-          const totalChars = model.getValueLength();
-          
-          updateEditorInfo({
-            cursorInfo: {
-              line: position.lineNumber,
-              column: position.column,
-              totalChars
-            }
-          });
+        const totalChars = model.getValueLength();
+        
+        updateEditorInfo({
+          cursorInfo: {
+            line: position.lineNumber,
+            column: position.column,
+            totalChars
+          }
+        });
         } catch (err) {
           console.error('Ошибка при обновлении позиции курсора:', err);
         }
@@ -420,12 +438,12 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             const totalChars = model ? model.getValueLength() : 0;
             const position = editorInstance.getPosition();
             
-            onEditorInfoChange({
-              errors: newInfo.errors ?? 0,
-              warnings: newInfo.warnings ?? 0,
-              language: getLanguageFromExtension(selectedFile || ''),
-              encoding: 'UTF-8', // В будущем можно добавить определение кодировки
-              cursorInfo: newInfo.cursorInfo ?? {
+          onEditorInfoChange({
+            errors: newInfo.errors ?? 0,
+            warnings: newInfo.warnings ?? 0,
+            language: getLanguageFromExtension(selectedFile || ''),
+            encoding: 'UTF-8', // В будущем можно добавить определение кодировки
+            cursorInfo: newInfo.cursorInfo ?? {
                 line: position ? position.lineNumber : 1,
                 column: position ? position.column : 1,
                 totalChars
@@ -511,7 +529,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
         // Подключение к языковому серверу
         if (selectedFile) {
-          const extension = path.extname(selectedFile).toLowerCase();
+          const extension = pathUtils.extname(selectedFile).toLowerCase();
           if (extension === '.ts' || extension === '.tsx') {
             lspInstance.connectToLanguageServer('typescript');
           }
@@ -546,7 +564,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         if (offset >= startOffset && offset <= endOffset) {
           const importPath = importMatch[1];
           const resolvedPath = resolvePath(selectedFile, importPath);
-          editor.getContribution('suggestController').triggerSuggest();
+          triggerAutoCompletion(editor);
           return;
         }
       }
@@ -567,7 +585,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         if (offset >= startOffset && offset <= endOffset) {
           const path = pathMatch[1];
           const resolvedPath = resolvePath(selectedFile, path);
-          editor.getContribution('suggestController').triggerSuggest();
+          triggerAutoCompletion(editor);
           return;
         }
       }
@@ -577,21 +595,43 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   // Функция для разрешения путей
   const resolvePath = (currentFile: string, importPath: string): string => {
     try {
-      const workspaceRoot = path.dirname(currentFile);
+      if (!currentFile) return importPath;
+      
+      // Используем простую обработку путей без использования модуля path
+      const getDirectory = (path: string): string => {
+        const lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex === -1) {
+          const lastBackslashIndex = path.lastIndexOf('\\');
+          return lastBackslashIndex === -1 ? '' : path.substring(0, lastBackslashIndex);
+        }
+        return path.substring(0, lastSlashIndex);
+      };
+      
+      const joinPaths = (base: string, relative: string): string => {
+        if (!base) return relative;
+        return base.endsWith('/') || base.endsWith('\\') ? `${base}${relative}` : `${base}/${relative}`;
+      };
+      
+      const workspaceRoot = getDirectory(currentFile);
       let resolvedPath = importPath;
 
       // Абсолютный путь
-      if (path.isAbsolute(importPath)) {
+      if (importPath.startsWith('/') || /^[A-Z]:/.test(importPath)) {
         resolvedPath = importPath;
       }
       // Относительный путь
       else if (importPath.startsWith('./') || importPath.startsWith('../')) {
-        resolvedPath = path.resolve(workspaceRoot, importPath);
+        resolvedPath = joinPaths(workspaceRoot, importPath);
       }
       // Путь с алиасом @
       else if (importPath.startsWith('@/')) {
-        const srcPath = path.join(workspaceRoot, 'src');
-        resolvedPath = path.resolve(srcPath, importPath.slice(2));
+        // Находим src директорию
+        let srcPath = workspaceRoot;
+        while (srcPath && !srcPath.endsWith('/src') && !srcPath.endsWith('\\src')) {
+          srcPath = getDirectory(srcPath);
+        }
+        if (!srcPath) srcPath = workspaceRoot;
+        resolvedPath = joinPaths(srcPath, importPath.slice(2));
       }
 
       return resolvedPath;
@@ -600,6 +640,39 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       return importPath;
     }
   };
+
+  /**
+   * Вызывает автодополнение в редакторе
+   * @param editor Экземпляр редактора
+   */
+  function triggerAutoCompletion(editor: any) {
+    if (!editor) {
+      console.warn('Редактор не определен для вызова автодополнения');
+      return;
+    }
+    
+    try {
+      // Проверяем наличие suggestController
+      const suggestController = editor.getContribution('editor.contrib.suggestController');
+      
+      if (suggestController && typeof suggestController.triggerSuggest === 'function') {
+        console.log('Вызов автодополнения через suggestController');
+        suggestController.triggerSuggest();
+      } else {
+        console.warn('suggestController недоступен или метод triggerSuggest не является функцией');
+        // Альтернативный способ вызова автодополнения
+        editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+      }
+    } catch (error) {
+      console.error('Ошибка при вызове автодополнения:', error);
+      // Резервный способ
+      try {
+        editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+      } catch (fallbackError) {
+        console.error('Резервный способ автодополнения также не сработал:', fallbackError);
+      }
+    }
+  }
 
   useEffect(() => {
     // Передаем текущую директорию в monacoConfig
@@ -768,17 +841,17 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         const lspInstance = getMonacoLSPInstance();
         if (lspInstance) {
           // Определяем язык файла на основе расширения
-          const fileExtension = selectedFile.split('.').pop()?.toLowerCase();
+          const fileExtension = pathUtils.extname(selectedFile).toLowerCase();
           let languageId = 'plaintext';
           
           // Определяем язык на основе расширения
-          if (fileExtension === 'ts') languageId = 'typescript';
-          else if (fileExtension === 'js') languageId = 'javascript';
-          else if (fileExtension === 'tsx') languageId = 'typescriptreact';
-          else if (fileExtension === 'jsx') languageId = 'javascriptreact';
-          else if (fileExtension === 'html') languageId = 'html';
-          else if (fileExtension === 'css') languageId = 'css';
-          else if (fileExtension === 'json') languageId = 'json';
+          if (fileExtension === '.ts') languageId = 'typescript';
+          else if (fileExtension === '.js') languageId = 'javascript';
+          else if (fileExtension === '.tsx') languageId = 'typescriptreact';
+          else if (fileExtension === '.jsx') languageId = 'javascriptreact';
+          else if (fileExtension === '.html') languageId = 'html';
+          else if (fileExtension === '.css') languageId = 'css';
+          else if (fileExtension === '.json') languageId = 'json';
           
           // Устанавливаем язык для модели редактора
           if (editorRef.current.getModel()) {
@@ -843,38 +916,38 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       )}
       
       {selectedFile && supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && (
-        <MonacoEditor
+                <MonacoEditor
           width="100%"
-          height="100%"
+                  height="100%"
           language={getLanguageFromExtension(selectedFile)}
-          theme="vs-dark"
-          value={fileContent || code}
+                  theme="vs-dark"
+                  value={fileContent || code}
           onChange={handleCodeChange}
           onMount={handleEditorDidMount}
-          options={{
+                  options={{
             selectOnLineNumbers: true,
-            roundedSelection: false,
-            readOnly: false,
-            cursorStyle: 'line',
-            automaticLayout: true,
+                    roundedSelection: false,
+                    readOnly: false,
+                    cursorStyle: 'line',
+                    automaticLayout: true,
             fontSize: fontSize
           }}
         />
       )}
       
       {selectedFile && imageSrc !== null && isImageFile(selectedFile) ? (
-        <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+            <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
       ) : null}
       
       {selectedFile && videoSrc !== null && isVideoFile(selectedFile) ? (
-        <ReactPlayer
-          url={videoSrc}
-          controls={true}
-          width="50%"
-          height="50%"
-          playing={false}
-          onError={(e) => console.error('Video playback error:', e)}
-        />
+            <ReactPlayer
+              url={videoSrc}
+              controls={true}
+              width="50%"
+              height="50%"
+              playing={false}
+              onError={(e) => console.error('Video playback error:', e)}
+            />
       ) : null}
       
       {selectedFile && !supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && 

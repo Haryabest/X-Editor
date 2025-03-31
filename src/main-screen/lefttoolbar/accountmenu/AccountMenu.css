@@ -1,66 +1,118 @@
-/* AccountMenu.css */
-
 .leftbar-account-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: 10000001;
+  pointer-events: none;
 }
 
 .leftbar-account-menu {
-  position: absolute;
-  top: 50px;
-  left: 10px;
-  background: #2a2a2a;
-  border-radius: 4px;
-  width: 200px;
-  color: #ffffff;
-  font-size: 14px;
+  position: fixed;
+  left: 55px;
+  bottom: 70px;
+  width: 180px;
+  max-height: 120px;
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: accountMenuAppear 0.2s ease-out;
+}
+
+@keyframes accountMenuAppear {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .leftbar-account-header {
-  padding: 10px;
+  padding: 5px 10px;
   border-bottom: 1px solid #444;
 }
 
 .leftbar-account-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
 }
 
 .leftbar-account-content {
-  padding: 5px 0;
+  padding: 4px 6px;
 }
 
 .leftbar-account-item {
-  padding: 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  padding: 6px 8px;
+  color: #e0e0e0;
   cursor: pointer;
+  transition: background-color 0.3s;
+  font-size: 12px;
+  border-radius: 5px;
+  font-family: 'Inter', sans-serif;
+  gap: 6px;
+  margin: 2px 0;
 }
 
 .leftbar-account-item:hover {
   background-color: #3a3a3a;
 }
 
-.leftbar-account-item.user-login {
-  cursor: default; /* Логин не кликабельный */
-}
-
-.leftbar-account-item.user-login:hover {
-  background-color: transparent; /* Убираем эффект наведения для логина */
-}
-
 .leftbar-account-item.logout {
-  color: #ff5555;
+  color: #ff6b6b;
 }
 
 .leftbar-account-divider {
   height: 1px;
-  background: #444;
-  margin: 5px 0;
+  background-color: #444;
+  margin: 4px 0;
+} 
+
+.leftbar-account-user span {
+  font-size: 12px;
+  color: #fff;
+}
+
+
+
+
+
+.leftbar-account-user {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  color: #fff;
+  justify-content: flex-start; /* Основное изменение здесь */
+  width: 100%;
+  box-sizing: border-box;
+  gap: 4px; /* Добавляем промежуток между элементами */
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #444;
+  /* order: -1; Убираем это свойство */
+}
+
+.leftbar-account-user span {
+  font-size: 12px;
+  color: #fff;
+  /* margin-left: 4px; Заменяем margin на gap в контейнере */
+  flex-grow: 1; /* Растягиваем текст на всю доступную ширину */
+}
+.logout {
+  color: #cb2431;
 }
