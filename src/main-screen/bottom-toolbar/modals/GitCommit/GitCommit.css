@@ -1,0 +1,99 @@
+.git-commit-modal {
+  background-color: #1e1e1e;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  width: 500px;
+  max-width: 90vw;
+  font-family: 'Inter', sans-serif;
+}
+
+.git-commit-modal .header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.git-commit-modal .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 14px;
+}
+
+.git-commit-modal .header .icon {
+  width: 16px;
+  height: 16px;
+  color: #89d185;
+}
+
+.git-commit-modal .commit-form {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.git-commit-modal .commit-message {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #2d2d2d;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.git-commit-modal .commit-message:focus {
+  outline: none;
+  border-color: #0078d4;
+}
+
+.git-commit-modal .error-message {
+  color: #f14c4c;
+  font-size: 12px;
+}
+
+.git-commit-modal .buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.git-commit-modal button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.git-commit-modal .commit-button {
+  background-color: #2ea043;
+  color: #fff;
+  border: none;
+}
+
+.git-commit-modal .commit-button:hover {
+  background-color: #3fb950;
+}
+
+.git-commit-modal .commit-button:disabled {
+  background-color: #1f6d2e;
+  cursor: not-allowed;
+}
+
+.git-commit-modal .cancel-button {
+  background-color: transparent;
+  color: #fff;
+  border: 1px solid #404040;
+}
+
+.git-commit-modal .cancel-button:hover {
+  background-color: #404040;
+} 

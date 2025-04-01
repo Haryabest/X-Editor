@@ -6,6 +6,7 @@ import LanguageDropdown from "./modals/Language/ModalsLanguage";
 import PositionDropdown from "./modals/Position/ModalsPosition";
 import NotificationsDropdown from "./modals/Notification/ModalsNotification";
 import GitBranches from "./modals/GitBranches/GitBranches";
+import GitCommitModal from "./modals/GitCommit/GitCommit";
 
 // Для лучшей типизации
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -23,6 +24,7 @@ const tooltips = {
   gitPull: "Git Pull",
   gitBranch: "Ветки Git",
   user: "Пользователь", // Добавляем тултип для логина
+  gitCommit: "Создать коммит",
 };
 
 type VisibleElementKeys = keyof typeof visibleElementsInitialState;
@@ -42,7 +44,7 @@ interface BottomToolbarProps {
   };
   userLogin?: string | null; // Добавляем пропс для логина
   gitInfo: GitInfo;
-  selectedFolder?: string | null;
+  selectedFolder: string | null;
   onGitInfoChange?: (gitInfo: GitInfo) => void; // Добавляем колбэк для обновления gitInfo
 }
 
@@ -74,6 +76,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [localGitInfo, setLocalGitInfo] = useState<GitInfo>(gitInfo);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [visibleElements, setVisibleElements] = useState(visibleElementsInitialState);
 
@@ -152,14 +155,88 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
     }));
   };
 
-  const handleGitPush = () => {
-    console.log("Git Push clicked");
-    // Здесь можно добавить логику для git push
+  const handleGitPush = async () => {
+    if (!selectedFolder) {
+      setNotification({
+        message: 'Не выбрана папка проекта',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      await invoke('git_command', {
+        projectRoot: selectedFolder,
+        command: 'push',
+        args: []
+      });
+
+      setNotification({
+        message: 'Изменения успешно отправлены',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error pushing changes:', error);
+      setNotification({
+        message: 'Ошибка при отправке изменений',
+        type: 'error'
+      });
+    }
+
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000);
   };
 
-  const handleGitPull = () => {
-    console.log("Git Pull clicked");
-    // Здесь можно добавить логику для git pull
+  const handleGitPull = async () => {
+    if (!selectedFolder) {
+      setNotification({
+        message: 'Не выбрана папка проекта',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      await invoke('git_command', {
+        projectRoot: selectedFolder,
+        command: 'pull',
+        args: []
+      });
+
+      // Обновляем информацию о Git после pull
+      const updatedInfo = await invoke('get_git_info', { projectRoot: selectedFolder }) as GitInfo;
+      setLocalGitInfo(updatedInfo);
+      if (onGitInfoChange) {
+        onGitInfoChange(updatedInfo);
+      }
+
+      setNotification({
+        message: 'Изменения успешно получены',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error pulling changes:', error);
+      setNotification({
+        message: 'Ошибка при получении изменений',
+        type: 'error'
+      });
+    }
+
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000);
+  };
+
+  const handleCommitSuccess = async () => {
+    // Обновляем информацию о Git после успешного коммита
+    if (selectedFolder) {
+      const updatedInfo = await invoke('get_git_info', { projectRoot: selectedFolder }) as GitInfo;
+      setLocalGitInfo(updatedInfo);
+      if (onGitInfoChange) {
+        onGitInfoChange(updatedInfo);
+      }
+    }
   };
 
   const handleGitBranchClick = () => {
@@ -324,6 +401,18 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
         </div>
       )}
 
+      {isCommitModalOpen && (
+        <div className="dropdown-overlay" onClick={() => setIsCommitModalOpen(false)}>
+          <div className="dropdown-wrapper" onClick={(e) => e.stopPropagation()}>
+            <GitCommitModal
+              onClose={() => setIsCommitModalOpen(false)}
+              selectedFolder={selectedFolder}
+              onSuccess={handleCommitSuccess}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="bottom-toolbar" onContextMenu={handleRightClick}>
         <div className="left-info">
           <div className={`status-item ${!visibleElements.encoding ? "hidden" : ""}`}>
@@ -365,6 +454,17 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
               )}
             </div>
           )}
+          <button
+            className="right-item git-button"
+            onMouseEnter={() => handleMouseEnter("gitCommit")}
+            onMouseLeave={handleMouseLeave}
+            onClick={() => setIsCommitModalOpen(true)}
+          >
+            <GitCommit width={14} height={14} />
+            {visibleTooltip === "gitCommit" && (
+              <span className="tooltip">{tooltips.gitCommit}</span>
+            )}
+          </button>
           <button
             className="right-item git-button"
             onMouseEnter={() => handleMouseEnter("gitPush")}

@@ -1,10 +1,11 @@
 .git-changes {
   background-color: #1e1e1e;
   color: #d4d4d4;
-  padding: 8px;
-  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell;
+  font-size: 12px;
   display: flex;
   flex-direction: column;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -12,18 +13,17 @@
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  background-color: #1e1e1e;
   border-bottom: 1px solid #333;
+  background-color: #252526;
 }
 
 .git-header .icon {
-  color: #f0ad4e;
   margin-right: 8px;
+  color: #75beff;
 }
 
 .branch-name {
-  color: #d4d4d4;
-  font-size: 14px;
+  font-weight: 500;
   flex-grow: 1;
 }
 
@@ -33,135 +33,331 @@
   color: #cccccc;
   cursor: pointer;
   padding: 4px;
-  margin-right: 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: all 0.3s;
+  font-family: 'Inter';
 }
 
 .refresh-button:hover {
-  background-color: #383838;
-  color: #ffffff;
-}
-
-.refresh-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error-message {
-  background-color: rgba(255, 0, 0, 0.2);
-  border-left: 3px solid #e74c3c;
-  color: #e74c3c;
-  padding: 8px 12px;
-  margin: 8px;
-  font-size: 13px;
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
-.loading {
-  color: #cccccc;
-  text-align: center;
-  padding: 16px;
-  font-style: italic;
+.refresh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .selected-folder {
   display: flex;
   align-items: center;
-  font-size: 12px;
-  color: #a0a0a0;
+  font-size: 11px;
   margin-left: 8px;
-  max-width: 180px;
-  overflow: hidden;
+  color: #999;
+  max-width: 150px;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+  font-family: 'Inter';
 }
 
 .selected-folder svg {
   margin-right: 4px;
-  color: #888;
 }
 
-.changes-list {
-  padding: 8px;
+.error-message {
+  padding: 8px 12px;
+  background-color: rgba(255, 0, 0, 0.1);
+  color: #f48771;
+  border-left: 3px solid #f48771;
+  margin: 8px;
+  font-family: 'Inter';
+}
+
+.changes-list, .commits-list {
   overflow-y: auto;
-  height: calc(100% - 40px);
+  flex-grow: 1;
+  padding: 8px 0;
+  font-family: 'Inter';
 }
 
 .change-item {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
-  margin-bottom: 4px;
-  border-radius: 3px;
-  background-color: #2a2a2a;
+  padding: 5px 12px;
+  transition: background-color 0.2s ease;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-family: 'Inter';
 }
 
 .change-item:hover {
-  background-color: #333333;
+  background-color: #2a2d2e;
 }
 
 .change-item .icon {
   margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.icon.modified {
+  color: #4d9de0;
+}
+
+.icon.added {
+  color: #49b556;
+}
+
+.icon.deleted {
+  color: #e05c4d;
+}
+
+.icon.untracked {
+  color: #d7a245;
+}
+
+.icon.renamed {
+  color: #bb68cd;
 }
 
 .change-path {
   flex-grow: 1;
-  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #d4d4d4;
+  font-family: 'Inter';
 }
 
 .change-status {
-  font-size: 11px;
-  padding: 2px 5px;
-  border-radius: 3px;
-  margin-left: 8px;
-  color: #cccccc;
+  margin-left: 6px;
+  font-size: 10px;
+  color: #999;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  font-family: 'Inter';
 }
 
-/* Status colors */
-.modified .icon, .modified .change-status {
-  color: #3498db;
-}
-
-.added .icon, .added .change-status {
-  color: #2ecc71;
-}
-
-.deleted .icon, .deleted .change-status {
-  color: #e74c3c;
-}
-
-.untracked .icon, .untracked .change-status {
-  color: #f39c12;
-}
-
-.renamed .icon, .renamed .change-status {
-  color: #9b59b6;
-}
-
-.no-changes {
-  padding: 16px;
+.no-changes, .no-commits {
+  padding: 20px;
   text-align: center;
-  color: #888;
+  color: #999;
   font-style: italic;
+  font-family: 'Inter';
 }
 
 .folder-path {
-  color: #aaa;
-  font-weight: bold;
+  font-weight: 500;
+  color: #75beff;
+  font-family: 'Inter';
+}
+
+.loading {
+  padding: 20px;
+  text-align: center;
+  color: #d4d4d4;
+  font-family: 'Inter';
+}
+
+/* Вкладки */
+.tab-container {
+  display: flex;
+  border-bottom: 1px solid #333;
+  background-color: #252526;
+}
+
+.tab-button {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  color: #d4d4d4;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  font-family: 'Inter';
+}
+
+.tab-button:hover {
+  background-color: #2d2d2d;
+}
+
+.tab-button.active {
+  border-bottom: 2px solid #75beff;
+  background-color: #2d2d2d;
+  font-weight: 500;
+}
+
+/* Стили коммитов в новом формате */
+.commit-container {
+  border-bottom: 1px solid #333;
+  background-color: #1e1e1e;
+  font-family: 'Inter';
+}
+
+.commit-header {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.commit-header:hover {
+  background-color: #2a2d2e;
+}
+
+.commit-header.expanded {
+  background-color: #252526;
+}
+
+.commit-left {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.commit-chevron {
+  margin-right: 8px;
+  flex-shrink: 0;
+  color: #cccccc;
+}
+
+.commit-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #044289;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  text-transform: lowercase;
+  font-family: 'Inter';
+}
+
+.commit-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.commit-collapsed-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.commit-date-line {
+  font-size: 11px;
+  color: #999;
+  font-family: 'Inter';
+}
+
+.commit-brief-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #999;
+  font-family: 'Inter';
+}
+
+.commit-info-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 11px;
+  font-family: 'Inter';
+}
+
+.commit-author-name {
+  font-weight: 500;
+  color: #d4d4d4;
+  font-family: 'Inter';
+}
+
+.commit-time {
+  color: #999;
+  font-family: 'Inter';
+}
+
+.commit-message-line {
+  font-size: 13px;
+  color: #e8e8e8;
+  font-weight: 500;
+  font-family: 'Inter';
+}
+
+.commit-summary-line {
+  display: flex;
+  font-size: 11px;
+  color: #999;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-family: 'Inter';
+}
+
+.stats-additions-text {
+  color: #2ecc71;
+}
+
+.stats-deletions-text {
+  color: #e74c3c;
+}
+
+.commit-details {
+  background-color: #252526;
+  padding: 8px 12px 8px 42px;
+  border-top: 1px solid #333;
+}
+
+.commit-detail-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.commit-detail-button {
+  padding: 4px 8px;
+  background-color: #333;
+  border: none;
+  border-radius: 3px;
+  color: #d4d4d4;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Inter';
+}
+
+.commit-detail-button:hover {
+  background-color: #444;
+}
+
+.commit-id {
+  background-color: #044289;
+}
+
+.button-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 } 
