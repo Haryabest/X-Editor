@@ -13,6 +13,7 @@ import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
 import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
 import { GitChanges } from './main-screen/lefttoolbar/GitChanges';
+import Repositories from './main-screen/lefttoolbar/repositories/Repositories';
 import AboutModal from './components/about/AboutModal';
 import DocumentationModal from './components/documentation/DocumentationModal';
 
@@ -358,6 +359,36 @@ function App() {
     };
   }, []);
 
+  // Listen for open-folder events
+  useEffect(() => {
+    const handleOpenFolder = (event: CustomEvent) => {
+      console.log("Open folder event received", event.detail);
+      const { path } = event.detail;
+      
+      if (path) {
+        // Set the selected folder to the path provided
+        setSelectedFolder(path);
+        setActiveLeftPanel('explorer');
+        
+        // Ensure the left panel is visible
+        if (!isLeftPanelVisible) {
+          setIsLeftPanelVisible(true);
+        }
+        
+        // Save as last opened folder
+        if (setLastOpenedFolder) {
+          setLastOpenedFolder(path);
+        }
+      }
+    };
+    
+    document.addEventListener('open-folder', handleOpenFolder as EventListener);
+    
+    return () => {
+      document.removeEventListener('open-folder', handleOpenFolder as EventListener);
+    };
+  }, [isLeftPanelVisible]);
+
   // Functions to open/close modals
   const openAboutModal = () => setIsAboutModalOpen(true);
   const closeAboutModal = () => setIsAboutModalOpen(false);
@@ -499,6 +530,9 @@ function App() {
                 )}
                 {activeLeftPanel === 'git' && (
                   <GitChanges selectedFolder={selectedFolder} />
+                )}
+                {activeLeftPanel === 'repositories' && (
+                  <Repositories isVisible={true} />
                 )}
               </div>
             ) : (

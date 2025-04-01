@@ -3,6 +3,7 @@
 
 use tauri::{Window};
 use std::process::Command;
+use std::process::{Stdio};
 
 mod commands;
 mod types;
@@ -87,6 +88,39 @@ fn toggle_fullscreen(window: tauri::Window) {
     }
 }
 
+#[tauri::command]
+fn git_clone_repository(url: String, target_path: String) -> Result<String, String> {
+    // Проверяем, существует ли директория
+    let target_dir = std::path::Path::new(&target_path);
+    if target_dir.exists() {
+        return Err(format!("Директория '{}' уже существует", target_path));
+    }
+
+    // Создаем родительскую директорию, если она не существует
+    if let Some(parent) = target_dir.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Не удалось создать директорию: {}", e))?;
+        }
+    }
+
+    // Запускаем git clone
+    let output = Command::new("git")
+        .args(&["clone", &url, &target_path])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Ошибка при запуске git clone: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format!("Ошибка при клонировании: {}", stderr));
+    }
+
+    // Возвращаем успешный результат
+    Ok(format!("Репозиторий успешно клонирован в {}", target_path))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -125,7 +159,8 @@ fn main() {
             get_git_branches,
             switch_git_branch,
             git_command,
-            toggle_fullscreen
+            toggle_fullscreen,
+            git_clone_repository,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

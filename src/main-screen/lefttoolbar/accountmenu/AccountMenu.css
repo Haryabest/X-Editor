@@ -12,15 +12,19 @@
   position: fixed;
   left: 55px;
   bottom: 70px;
-  width: 180px;
-  max-height: 120px;
-  background: #2d2d2d;
-  border: 1px solid #444;
+  width: 220px;
+  background: #1e1e1e;
+  border: 1px solid #333;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   pointer-events: auto;
   animation: accountMenuAppear 0.2s ease-out;
+  font-family: 'Inter', sans-serif;
+}
+
+.leftbar-account-menu * {
+  font-family: 'Inter', sans-serif;
 }
 
 @keyframes accountMenuAppear {
@@ -35,68 +39,67 @@
 }
 
 .leftbar-account-header {
-  padding: 5px 10px;
-  border-bottom: 1px solid #444;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  background-color: #252526;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .leftbar-account-header h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: #fff;
-  font-family: 'Inter', sans-serif;
 }
 
 .leftbar-account-content {
-  padding: 4px 6px;
+  padding: 8px;
 }
 
 .leftbar-account-item {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
   color: #e0e0e0;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s;
   font-size: 12px;
-  border-radius: 5px;
-  font-family: 'Inter', sans-serif;
+  border-radius: 4px;
   gap: 6px;
   margin: 2px 0;
 }
 
 .leftbar-account-item:hover {
-  background-color: #3a3a3a;
+  background-color: #2a2d2e;
 }
 
 .leftbar-account-item.logout {
-  color: #ff6b6b;
+  color: #f14c4c;
+}
+
+.leftbar-account-item.logout:hover {
+  background-color: rgba(241, 76, 76, 0.1);
 }
 
 .leftbar-account-divider {
   height: 1px;
-  background-color: #444;
-  margin: 4px 0;
+  background-color: #333;
+  margin: 8px 0;
 } 
-
-.leftbar-account-user span {
-  font-size: 12px;
-  color: #fff;
-}
-
-
-
-
 
 .leftbar-account-user {
   display: flex;
   align-items: center;
-  padding: 4px;
+  padding: 8px 10px;
   color: #fff;
-  justify-content: flex-start; /* Основное изменение здесь */
+  justify-content: flex-start;
   width: 100%;
   box-sizing: border-box;
-  gap: 4px; /* Добавляем промежуток между элементами */
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .user-avatar {
@@ -104,15 +107,41 @@
   height: 24px;
   border-radius: 50%;
   border: 1px solid #444;
-  /* order: -1; Убираем это свойство */
+  flex-shrink: 0;
 }
 
 .leftbar-account-user span {
-  font-size: 12px;
+  font-size: 13px;
   color: #fff;
-  /* margin-left: 4px; Заменяем margin на gap в контейнере */
-  flex-grow: 1; /* Растягиваем текст на всю доступную ширину */
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.logout {
-  color: #cb2431;
+
+.leftbar-account-item span {
+  flex-grow: 1;
+  font-size: 13px;
+}
+
+.leftbar-account-item svg {
+  color: #999;
+}
+
+.leftbar-account-item:hover svg {
+  color: #fff;
+}
+
+.leftbar-account-item.github-login {
+  background-color: #2b3137;
+  border: 1px solid #444;
+  margin-top: 4px;
+}
+
+.leftbar-account-item.github-login:hover {
+  background-color: #3a3f42;
+}
+
+.leftbar-account-item.github-login svg {
+  color: #fff;
 }

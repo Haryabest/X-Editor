@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { LogOut, Github } from 'lucide-react';
+import { LogOut, Github, User, RefreshCcw } from 'lucide-react';
 import './AccountMenu.css';
 
 const GITHUB_CLIENT_ID = 'Ov23liWNwWqM9SO0J9nF';
@@ -18,6 +18,7 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
   const [userLogin, setUserLogin] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [authState] = useState(() => Math.random().toString(36).substring(7));
+  const [loading, setLoading] = useState(false);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('github_token');
@@ -29,10 +30,14 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
     setUserAvatar(null);
     onLoginChange?.(null);
     onClose();
+    
+    // Отправляем событие для обновления состояния репозиториев
+    document.dispatchEvent(new CustomEvent('auth-changed'));
   }, [onClose, onLoginChange]);
 
   const exchangeCodeForToken = useCallback(async (code: string) => {
     try {
+      setLoading(true);
       const response = await fetch(PROXY_SERVER, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -47,6 +52,8 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
       console.error('Token exchange error:', error);
       handleLogout();
       return null;
+    } finally {
+      setLoading(false);
     }
   }, [handleLogout]);
 
@@ -67,6 +74,7 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
       if (!token) return;
 
       try {
+        setLoading(true);
         const userResponse = await fetch('https://api.github.com/user', {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -80,10 +88,15 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
         setUserAvatar(userData.avatar_url);
         onLoginChange?.(userData.login);
         
+        // Отправляем событие для обновления состояния репозиториев
+        document.dispatchEvent(new CustomEvent('auth-changed'));
+        
         window.history.replaceState({}, '', window.location.pathname);
       } catch (error) {
         console.error('User fetch error:', error);
         handleLogout();
+      } finally {
+        setLoading(false);
       }
     }
   }, [exchangeCodeForToken, handleLogout, onLoginChange]);
@@ -103,18 +116,23 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
       setAccessToken(token);
       setUserLogin(login);
       setUserAvatar(avatar);
+      onLoginChange?.(login);
     }
-  }, []);
+  }, [onLoginChange]);
 
   const handleGitHubLogin = () => {
     localStorage.setItem('github_auth_state', authState);
     const params = new URLSearchParams({
       client_id: GITHUB_CLIENT_ID,
       redirect_uri: REDIRECT_URI,
-      scope: 'user:email',
+      scope: 'user:email,repo',
       state: authState,
     });
     window.location.href = `https://github.com/login/oauth/authorize?${params}`;
+  };
+
+  const handleRefresh = () => {
+    checkAuth();
   };
 
   useEffect(() => {
@@ -135,25 +153,35 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
       <div className="leftbar-account-menu" ref={menuRef}>
         <div className="leftbar-account-header">
           <h3>Аккаунт</h3>
+          <button 
+            className="refresh-button" 
+            onClick={handleRefresh}
+            title="Обновить информацию"
+            disabled={loading}
+          >
+            <RefreshCcw size={14} className={loading ? 'spinning' : ''} />
+          </button>
         </div>
         <div className="leftbar-account-content">
           {!accessToken ? (
             <div 
-              className="leftbar-account-item" 
+              className="leftbar-account-item github-login" 
               onClick={() => { handleGitHubLogin(); onClose(); }}
             >
               <span>Войти через GitHub</span>
-              <Github size={14} />
+              <Github size={16} />
             </div>
           ) : (
             <>
               <div className="leftbar-account-user">
-              {userAvatar && (
+                {userAvatar ? (
                   <img
                     src={userAvatar}
                     alt="User avatar"
                     className="user-avatar"
                   />
+                ) : (
+                  <User size={16} className="user-avatar" />
                 )}
                 <span>{userLogin}</span>
               </div>
@@ -163,7 +191,7 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ isVisible, onClose, onLoginCh
                 onClick={handleLogout}
               >
                 <span>Выйти</span>
-                <LogOut size={14} />
+                <LogOut size={16} />
               </div>
             </>
           )}

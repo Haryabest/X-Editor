@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getFileIcon } from '../leftBar/fileIcons';
 import FileTabContextMenu from './FileTabContextMenu';
 import { invoke } from '@tauri-apps/api/core';
 
 import './TopbarEditor.css';
 
+// Extend the base interface with properties required by SortableJS
 interface FileItem {
   name: string;
   path: string;
@@ -31,7 +32,30 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
     y: number;
     filePath: string;
   } | null>(null);
+  
+  const [orderedFiles, setOrderedFiles] = useState<FileItem[]>([]);
+  
+  // Обновляем orderedFiles когда меняется openedFiles
+  useEffect(() => {
+    if (orderedFiles.length === 0) {
+      // Initial load
+      setOrderedFiles([...openedFiles]);
+    } else {
+      // Update while preserving order
+      const existingPaths = new Set(orderedFiles.map(file => file.path));
+      const newFiles = openedFiles.filter(file => !existingPaths.has(file.path));
+      
+      // Remove files that no longer exist in openedFiles
+      const currentPaths = new Set(openedFiles.map(file => file.path));
+      const updatedOrderedFiles = orderedFiles.filter(file => currentPaths.has(file.path));
+      
+      setOrderedFiles([...updatedOrderedFiles, ...newFiles]);
+    }
+  }, [openedFiles]);
+
   const activeFilePath = openedFiles.find(file => file.path === activeFile)?.path || '';
+  
+  // Функции для контекстного меню
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>, filePath: string) => {
     e.preventDefault();
     setContextMenu({
@@ -66,8 +90,8 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
 
   const handleCloseRight = () => {
     if (contextMenu) {
-      const currentIndex = openedFiles.findIndex(file => file.path === contextMenu.filePath);
-      openedFiles.slice(currentIndex + 1).forEach(file => {
+      const currentIndex = orderedFiles.findIndex(file => file.path === contextMenu.filePath);
+      orderedFiles.slice(currentIndex + 1).forEach(file => {
         closeFile(file.path);
       });
       handleCloseContextMenu();
@@ -76,8 +100,8 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
 
   const handleCloseLeft = () => {
     if (contextMenu) {
-      const currentIndex = openedFiles.findIndex(file => file.path === contextMenu.filePath);
-      openedFiles.slice(0, currentIndex).forEach(file => {
+      const currentIndex = orderedFiles.findIndex(file => file.path === contextMenu.filePath);
+      orderedFiles.slice(0, currentIndex).forEach(file => {
         closeFile(file.path);
       });
       handleCloseContextMenu();
@@ -125,19 +149,21 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
   };
 
   return (
-    <div className="topbar-editor">
+    <div className="topbar-editor">      
       <div className="tabs-container">
-        {openedFiles.map((file) => (
+        {orderedFiles.map((file) => (
           <div
             key={file.path}
             className={`tab ${activeFile === file.path ? 'active' : ''}`}
             onClick={() => setSelectedFile(file.path)}
             onContextMenu={(e) => handleContextMenu(e, file.path)}
+            data-path={file.path}
           >
             <span className="tab-icon">
               {file.isFolder ? '📁' : getFileIcon(file.path)}
             </span>
             <span className="tab-name">{file.name}</span>
+            
             <button
               className="close-tab"
               onClick={(e) => {
@@ -150,11 +176,14 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
           </div>
         ))}
       </div>
-      {activeFile && (
+      
+      {/* Строка статуса */}
+      <div className="status-bar">
         <div className="file-path">
           {activeFilePath}
         </div>
-      )}
+      </div>
+      
       {contextMenu && (
         <FileTabContextMenu
           x={contextMenu.x}
