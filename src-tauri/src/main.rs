@@ -1,7 +1,7 @@
 // main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{command, Window};
+use tauri::{Window};
 use std::process::Command;
 
 mod commands;
@@ -12,6 +12,13 @@ mod modules;
 use tauri::Manager;
 use std::sync::Arc;
 use commands::terminal::PtyState;
+
+// Используем функции из модуля modules.rs
+use crate::modules::{
+  resolve_module_path, get_project_root, file_exists, 
+  get_import_suggestions, get_git_info, tauri_current_dir,
+  get_git_branches, switch_git_branch, git_command
+};
 
 #[tauri::command]
 fn get_args() -> Vec<String> {
@@ -108,9 +115,16 @@ fn main() {
             commands::terminal::start_process,
             commands::terminal::send_input,
             commands::terminal::resize_pty,
-            modules::resolve_module_path,
-            modules::get_project_root,
-            modules::file_exists,
+            commands::terminal::change_directory,
+            resolve_module_path,
+            get_project_root,
+            file_exists,
+            get_import_suggestions,
+            get_git_info,
+            tauri_current_dir,
+            get_git_branches,
+            switch_git_branch,
+            git_command,
             toggle_fullscreen
         ])
         .setup(|app| {

@@ -35,10 +35,11 @@ interface XTermTerminalProps {
   issues?: IssueInfo[];
   onIssueClick?: (filePath: string, line: number, column: number) => void;
   terminalCommand?: string | null;
+  selectedFolder?: string | null;
 }
 
 const Terminal: React.FC<XTermTerminalProps> = (props) => {
-  const { terminalHeight, issues, onIssueClick, terminalCommand } = props;
+  const { terminalHeight, issues, onIssueClick, terminalCommand, selectedFolder } = props;
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<XTerm | null>(null);
@@ -436,6 +437,33 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     console.log("Closing terminal panel");
     document.dispatchEvent(new Event('terminal-close'));
   };
+
+  // Следим за изменением выбранной директории и меняем текущую директорию терминала
+  useEffect(() => {
+    if (selectedFolder && isProcessRunning) {
+      (async () => {
+        try {
+          console.log(`Changing terminal directory to: ${selectedFolder}`);
+          
+          // Вызываем функцию change_directory из Rust
+          await invoke('change_directory', { path: selectedFolder });
+          
+          // Отображаем сообщение в терминале
+          if (terminal.current) {
+            terminal.current.write(`\r\n\x1b[32mDirectory changed to: \x1b[33m${selectedFolder}\x1b[0m\r\n`);
+            
+            // Обновляем приглашение командной строки
+            await invoke('send_input', { input: '\r' });
+          }
+        } catch (error) {
+          console.error('Error changing directory:', error);
+          if (terminal.current) {
+            terminal.current.write(`\r\n\x1b[31mFailed to change directory: ${error}\x1b[0m\r\n`);
+          }
+        }
+      })();
+    }
+  }, [selectedFolder, isProcessRunning]);
 
   return (
     <div className="terminal-container" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>

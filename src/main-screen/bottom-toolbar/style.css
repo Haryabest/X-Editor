@@ -29,6 +29,33 @@
 
 .git-branch {
   color: #8f8d8d;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.git-branch:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.git-branch .branch-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+
+.branch-name.dirty {
+  color: #e05d44;
+}
+
+.branch-name.clean {
+  color: #4caf50;
+}
+
+.branch-name.none {
+  color: #7d7d7d;
 }
 
 /* Правая часть */
@@ -202,4 +229,77 @@
 
 .context-menu .check.active {
   opacity: 1;
+}
+
+.git-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.git-info .icon {
+  width: 14px;
+  height: 14px;
+  color: #8b949e;
+}
+
+.git-info .branch-name {
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.git-info .branch-name.dirty {
+  color: #ff7b72;
+}
+
+.git-info .branch-name.clean {
+  color: #238636;
+}
+
+/* Стили для подсказки о кликабельности */
+.git-branch[title]::after {
+  content: "↓";
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.git-branch:hover[title]::after {
+  opacity: 0.7;
+}
+
+/* Добавляем стили для уведомления о смене ветки */
+.branch-notification {
+  position: fixed;
+  bottom: 50px;
+  right: 20px;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 1000;
+  animation: fadeInOut 3s ease-in-out;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.branch-notification.success {
+  background-color: #2d8738;
+  color: white;
+  border-left: 4px solid #1f5c27;
+}
+
+.branch-notification.error {
+  background-color: #b71c1c;
+  color: white;
+  border-left: 4px solid #7f0000;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(20px); }
+  10% { opacity: 1; transform: translateY(0); }
+  90% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-20px); }
 }

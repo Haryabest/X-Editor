@@ -17,18 +17,45 @@ interface FileItem {
   expanded?: boolean;
   loaded?: boolean;
   icon?: React.ReactNode;
+  gitStatus?: string;
+  hasChanges?: boolean;
+  changesCount?: number;
+  fileIssue?: {
+    errors: number;
+    warnings: number;
+  };
+}
+
+interface GitChange {
+  status: string;
+  path: string;
 }
 
 interface FileManagerProps {
   selectedFolder: string | null;
-  setSelectedFolder: (path: string | null) => void; // Добавляем проп
-
+  setSelectedFolder: (path: string | null) => void;
   setSelectedFile: (filePath: string | null) => void;
   setCurrentFiles: (files: FileItem[]) => void;
-  setLastOpenedFolder?: (path: string) => void; // Добавляем для отслеживания последней папки
+  setLastOpenedFolder?: (path: string) => void;
+  selectedFile?: string | null;
+  gitChanges?: GitChange[];
+  fileIssues?: { 
+    [filePath: string]: { 
+      errors: number;
+      warnings: number;
+    }
+  };
 }
 
-const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFile, setCurrentFiles, setLastOpenedFolder,   setSelectedFolder, // Добавляем в деструктуризацию
+const FileManager: React.FC<FileManagerProps> = ({ 
+  selectedFolder, 
+  setSelectedFile, 
+  setCurrentFiles, 
+  setLastOpenedFolder,
+  setSelectedFolder,
+  selectedFile,
+  gitChanges = [],
+  fileIssues = {}
 }) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
@@ -37,38 +64,123 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     path: string;
     isDirectory: boolean;
   } | null>(null);
+  const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
+  const [directoryChangesMap, setDirectoryChangesMap] = useState<Map<string, number>>(new Map());
 
-  // Recursive function to collect all files
-  const collectAllFiles = (items: FileItem[]): FileItem[] => {
-    let allFiles: FileItem[] = [];
-    items.forEach(item => {
-      if (!item.is_directory) {
-        allFiles.push({ ...item, icon: getFileIcon(item.name), expanded: false, loaded: true });
-      }
-      if (item.children) {
-        allFiles = allFiles.concat(collectAllFiles(item.children));
+  const prepareGitStatusMap = (changes: GitChange[]) => {
+    const newStatusMap = new Map<string, string>();
+    const dirChangesMap = new Map<string, number>();
+    
+    changes.forEach(change => {
+      newStatusMap.set(change.path, change.status);
+      
+      let pathParts = change.path.split('/');
+      let dirPath = '';
+      
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        dirPath = dirPath ? `${dirPath}/${pathParts[i]}` : pathParts[i];
+        
+        const currentCount = dirChangesMap.get(dirPath) || 0;
+        dirChangesMap.set(dirPath, currentCount + 1);
       }
     });
+    
+    setGitStatusMap(newStatusMap);
+    setDirectoryChangesMap(dirChangesMap);
+  };
+
+  const processTree = (tree: FileItem): FileItem => {
+    const gitStatus = gitStatusMap.get(tree.path);
+    const changesCount = directoryChangesMap.get(tree.path) || 0;
+    
+    return {
+      ...tree,
+      expanded: false,
+      loaded: !!tree.children,
+      gitStatus,
+      hasChanges: !!gitStatus || changesCount > 0,
+      changesCount,
+      children: tree.children?.map(child => processTree(child))
+    };
+  };
+
+  useEffect(() => {
+    if (gitChanges && gitChanges.length > 0) {
+      prepareGitStatusMap(gitChanges);
+    } else {
+      setGitStatusMap(new Map());
+      setDirectoryChangesMap(new Map());
+    }
+  }, [gitChanges]);
+
+  useEffect(() => {
+    if (fileTree.length > 0 && (gitStatusMap.size > 0 || directoryChangesMap.size > 0)) {
+      setFileTree(prevTree => {
+        const updatedTree = prevTree.map(item => ({
+          ...item,
+          gitStatus: gitStatusMap.get(item.path),
+          hasChanges: !!gitStatusMap.get(item.path) || (directoryChangesMap.get(item.path) || 0) > 0,
+          changesCount: directoryChangesMap.get(item.path) || 0,
+          children: item.children?.map(child => processTree(child))
+        }));
+        
+        const allFiles = collectAllFiles(updatedTree);
+        setCurrentFiles(allFiles);
+        
+        return updatedTree;
+      });
+    }
+  }, [gitStatusMap, directoryChangesMap]);
+
+  const collectAllFiles = (items: FileItem[]): FileItem[] => {
+    let allFiles: FileItem[] = [];
+    
+    items.forEach(item => {
+      // Получаем Git статус и проблемы для файла
+      const gitStatus = gitStatusMap.get(item.path);
+      const fileIssue = fileIssues[item.path];
+      
+      // Создаем копию элемента с необходимыми свойствами
+      const processedItem = {
+        ...item,
+        icon: !item.is_directory ? getFileIcon(item.name) : undefined,
+        gitStatus,
+        hasChanges: !!gitStatus,
+        fileIssue
+      };
+      
+      allFiles.push(processedItem);
+      
+      // Обрабатываем дочерние элементы, если они есть и папка раскрыта
+      if (item.children && item.expanded) {
+        const childrenFiles = collectAllFiles(item.children);
+        allFiles = [...allFiles, ...childrenFiles];
+      }
+    });
+    
     return allFiles;
   };
 
-  // Process tree for rendering
-  const processTree = (item: FileItem): FileItem => ({
-    ...item,
-    expanded: false,
-    loaded: item.children !== undefined, // loaded = true, если дети уже загружены
-    children: item.children?.map(processTree),
-  });
-
-  // Load initial tree
   useEffect(() => {
     const loadTree = async () => {
       if (selectedFolder) {
         try {
           const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
-          const processed = processTree(tree);
-          setFileTree([{ ...processed, expanded: true, loaded: true }]);
-          const allFiles = collectAllFiles([processed]);
+          
+          // Базовая обработка дерева без вычисления статусов Git
+          const processedTree = {
+            ...tree,
+            expanded: true,
+            loaded: true,
+            children: tree.children?.map(child => ({
+              ...child,
+              expanded: false,
+              loaded: child.children !== undefined
+            }))
+          };
+          
+          setFileTree([processedTree]);
+          const allFiles = collectAllFiles([processedTree]);
           setCurrentFiles(allFiles);
         } catch (error) {
           console.error('Error loading directory:', error);
@@ -82,7 +194,6 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     loadTree();
   }, [selectedFolder]);
 
-  // В компоненте FileManager
   useEffect(() => {
     const loadInitialFolder = async () => {
       try {
@@ -100,35 +211,45 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
       }
     };
     loadInitialFolder();
-  }, [setSelectedFolder, setLastOpenedFolder]); // Добавлены зависимости
+  }, [setSelectedFolder, setLastOpenedFolder]);
 
-  // Toggle directory expansion and load children if needed
   const toggleDirectory = async (item: FileItem) => {
     if (item.is_directory && !item.loaded) {
       try {
-        console.log(`Fetching subdirectory for: ${item.path}`);
         const result = await invoke<FileItem>("get_subdirectory", { path: item.path });
-        setFileTree((prev) => {
-          const updated = prev.map((root) => updateTree([root], item.path, result)[0]);
-          const allFiles = collectAllFiles(updated);
+        
+        const baseResult = {
+          ...result,
+          children: result.children?.map(child => ({
+            ...child,
+            expanded: false,
+            loaded: child.children !== undefined
+          }))
+        };
+        
+        setFileTree(prev => {
+          const updatedTree = prev.map(root => updateTree([root], item.path, baseResult)[0]);
+          const allFiles = collectAllFiles(updatedTree);
           setCurrentFiles(allFiles);
-          return updated;
+          return updatedTree;
         });
       } catch (error) {
         console.error('Error loading subdirectory:', error);
       }
     } else {
-      setFileTree((prev) =>
-        prev.map((root) => ({
+      setFileTree(prev => {
+        const updatedTree = prev.map(root => ({
           ...root,
           expanded: root.path === item.path ? !root.expanded : root.expanded,
           children: root.children ? toggleExpanded(root.children, item.path) : undefined,
-        }))
-      );
+        }));
+        const allFiles = collectAllFiles(updatedTree);
+        setCurrentFiles(allFiles);
+        return updatedTree;
+      });
     }
   };
 
-  // Toggle expansion of subdirectories
   const toggleExpanded = (items: FileItem[], path: string): FileItem[] => {
     return items.map((item) => {
       if (item.path === path) {
@@ -141,22 +262,18 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     });
   };
 
-  // Update tree with new data
-  const updateTree = (items: FileItem[], path: string, newData: FileItem): FileItem[] => {
+  const updateTree = (items: FileItem[], path: string, newItem: FileItem): FileItem[] => {
     return items.map((item) => {
-      const normalizedPath = item.path.replace(/\\/g, '/');
-      const targetPath = path.replace(/\\/g, '/');
-      if (normalizedPath === targetPath) {
-        return { ...newData, expanded: true, loaded: true, path: item.path };
+      if (item.path === path) {
+        return { ...newItem, expanded: true, loaded: true };
       }
       if (item.children) {
-        return { ...item, children: updateTree(item.children, path, newData) };
+        return { ...item, children: updateTree(item.children, path, newItem) };
       }
       return item;
     });
   };
 
-  // Create new directory
   const createNewDirectory = async (path: string) => {
     const newFolderName = prompt('Enter the new folder name:');
     if (newFolderName) {
@@ -176,7 +293,6 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     }
   };
 
-  // Create new file
   const createNewFile = async (path: string) => {
     const newFileName = prompt('Enter the new file name:');
     if (newFileName) {
@@ -197,7 +313,6 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     }
   };
 
-  // Handle file click
   const handleFileClick = (path: string, isDirectory: boolean) => {
     if (!isDirectory) {
       console.log('Selected file:', path);
@@ -205,62 +320,107 @@ const FileManager: React.FC<FileManagerProps> = ({ selectedFolder, setSelectedFi
     }
   };
 
-  // Recursive rendering function
+  const getGitStatusClass = (item: FileItem): string => {
+    if (item.gitStatus) {
+      const status = item.gitStatus.charAt(0);
+      
+      switch (status) {
+        case 'M': return 'modified';
+        case 'A': return 'added';
+        case 'D': return 'deleted';
+        case '?': return 'untracked';
+        case 'R': return 'renamed';
+        default: return '';
+      }
+    }
+    
+    if (item.is_directory && item.changesCount && item.changesCount > 0) {
+      return 'modified';
+    }
+    
+    return '';
+  };
+
+  const getIssueClass = (path: string): string => {
+    const issue = fileIssues[path];
+    if (issue) {
+      if (issue.errors > 0) return 'error';
+      if (issue.warnings > 0) return 'warning';
+    }
+    return '';
+  };
+
   const renderTree = (items: FileItem[]) => (
     <ul className="file-tree">
-      {items.map((item) => (
-        <li
-          key={item.path}
-          className="tree-item"
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              path: item.path,
-              isDirectory: item.is_directory,
-            });
-          }}
-        >
-          {item.is_directory ? (
-            <div className="directory">
+      {items.map((item) => {
+        const gitStatusClass = getGitStatusClass(item);
+        const issueClass = getIssueClass(item.path);
+        const isActive = selectedFile === item.path;
+        
+        return (
+          <li
+            key={item.path}
+            className="tree-item"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                path: item.path,
+                isDirectory: item.is_directory,
+              });
+            }}
+          >
+            {item.is_directory ? (
+              <div className="directory">
+                <div
+                  onClick={() => toggleDirectory(item)}
+                  className={`directory-item ${gitStatusClass}`}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <span className="chevron">
+                    {item.expanded ? (
+                      <ChevronDown width={14} height={14} />
+                    ) : (
+                      <ChevronRight width={14} height={14} />
+                    )}
+                  </span>
+                  <span className={`icon ${gitStatusClass}`}>
+                    {item.expanded ? (
+                      <FolderOpen width={14} height={14} />
+                    ) : (
+                      <FolderIcon width={14} height={14} />
+                    )}
+                  </span>
+                  <span className="name">{item.name}</span>
+                  
+                  {item.changesCount && item.changesCount > 0 && (
+                    <span className="changes-indicator">{item.changesCount}</span>
+                  )}
+                  
+                  {gitStatusClass && <div className="git-status" />}
+                </div>
+                {item.expanded && item.loaded && item.children && (
+                  <div className="children-container">{renderTree(item.children)}</div>
+                )}
+              </div>
+            ) : (
               <div
-                onClick={() => toggleDirectory(item)}
-                className="directory-item"
-                style={{ cursor: 'pointer' }}
+                className={`file-item ${gitStatusClass} ${issueClass} ${isActive ? 'active' : ''}`}
+                onClick={() => handleFileClick(item.path, item.is_directory)}
               >
-                <span className="chevron">
-                  {item.expanded ? (
-                    <ChevronDown width={14} height={14} />
-                  ) : (
-                    <ChevronRight width={14} height={14} />
-                  )}
-                </span>
-                <span className="icon">
-                  {item.expanded ? (
-                    <FolderOpen width={14} height={14} />
-                  ) : (
-                    <FolderIcon width={14} height={14} />
-                  )}
+                <span className={`icon ${gitStatusClass}`}>
+                  {getFileIcon(item.name)}
                 </span>
                 <span className="name">{item.name}</span>
+                
+                {(gitStatusClass || issueClass) && <div className="git-status" />}
               </div>
-              {item.expanded && item.loaded && item.children && (
-                <div className="children-container">{renderTree(item.children)}</div>
-              )}
-            </div>
-          ) : (
-            <div
-              className="file-item"
-              onClick={() => handleFileClick(item.path, item.is_directory)}
-            >
-              <span className="icon">{getFileIcon(item.name)}</span>
-              <span className="name">{item.name}</span>
-            </div>
-          )}
-        </li>
-      ))}
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 

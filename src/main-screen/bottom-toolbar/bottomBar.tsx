@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User } from "lucide-react";
+import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User, GitBranch } from "lucide-react";
+import { invoke } from '@tauri-apps/api/core';
 
-import EncodingDropdown from "./modals/Encoding/ModalEncoding";
 import LanguageDropdown from "./modals/Language/ModalsLanguage";
 import PositionDropdown from "./modals/Position/ModalsPosition";
 import NotificationsDropdown from "./modals/Notification/ModalsNotification";
+import GitBranches from "./modals/GitBranches/GitBranches";
+
+// Для лучшей типизации
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import "devicon/devicon.min.css";
 import "./style.css";
 
-const tooltips = {
+const tooltips = {  
   encoding: "Кодировка",
   indent: "Настройки отступа",
   position: "Позиция курсора",
@@ -17,10 +21,11 @@ const tooltips = {
   notifications: "Уведомления",
   gitPush: "Git Push",
   gitPull: "Git Pull",
+  gitBranch: "Ветки Git",
   user: "Пользователь", // Добавляем тултип для логина
 };
 
-type VisibleElementKeys = "encoding" | "position" | "language" | "notifications" | "user";
+type VisibleElementKeys = keyof typeof visibleElementsInitialState;
 
 interface BottomToolbarProps {
   editorInfo?: {
@@ -36,27 +41,46 @@ interface BottomToolbarProps {
     gitBranch?: string;
   };
   userLogin?: string | null; // Добавляем пропс для логина
+  gitInfo: GitInfo;
+  selectedFolder?: string | null;
+  onGitInfoChange?: (gitInfo: GitInfo) => void; // Добавляем колбэк для обновления gitInfo
 }
 
-const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) => {
+interface GitInfo {
+  current_branch: string;
+  status: string;
+}
+
+// Создадим компонент заглушку для EncodingDropdown
+const EncodingDropdown: React.FC = () => {
+  return <div className="encoding-dropdown">Кодировка</div>;
+};
+
+const visibleElementsInitialState = {
+  encoding: true,
+  lineEnding: true,
+  indentation: true,
+  language: true,
+  notifications: true,
+  gitBranch: true,
+  position: true,
+  user: true,
+};
+
+const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gitInfo, selectedFolder, onGitInfoChange }) => {
   const [visibleTooltip, setVisibleTooltip] = useState<string | null>(null);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [localGitInfo, setLocalGitInfo] = useState<GitInfo>(gitInfo);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
-  const [visibleElements, setVisibleElements] = useState<{
-    encoding: boolean;
-    position: boolean;
-    language: boolean;
-    notifications: boolean;
-    user: boolean; // Добавляем для логина
-  }>({
-    encoding: true,
-    position: true,
-    language: true,
-    notifications: true,
-    user: true, // По умолчанию показываем логин
-  });
+  const [visibleElements, setVisibleElements] = useState(visibleElementsInitialState);
+
+  // Синхронизируем localGitInfo с gitInfo из пропсов
+  useEffect(() => {
+    setLocalGitInfo(gitInfo);
+  }, [gitInfo]);
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -71,14 +95,15 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
 
   const closeContextMenu = () => {
     const menu = document.getElementById("context-menu");
-    if (menu) {
+    if (menu?.style) {
       menu.style.display = "none";
       setContextMenuVisible(false);
     }
   };
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
+    // Исправляем тип события для DOM MouseEvent, а не React MouseEvent
+    const handleClick = (e: globalThis.MouseEvent) => {
       const menu = document.getElementById("context-menu");
       if (menu && !menu.contains(e.target as Node)) {
         closeContextMenu();
@@ -107,10 +132,10 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
     setActiveDropdown(activeDropdown === dropdownKey ? null : dropdownKey);
   };
 
-  const handleRightClick = (event: React.MouseEvent) => {
+  const handleRightClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menu = document.getElementById("context-menu");
-    if (menu) {
+    if (menu?.style) {
       menu.style.display = "block";
       menu.style.left = `${event.clientX}px`;
       menu.style.top = `${event.clientY - 150}px`;
@@ -118,7 +143,8 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
     }
   };
 
-  const handleToggleVisibility = (key: VisibleElementKeys, e: React.MouseEvent) => {
+  // Исправляем тип события для корректной работы
+  const handleToggleVisibility = (key: VisibleElementKeys, e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     setVisibleElements(prev => ({
       ...prev,
@@ -136,14 +162,103 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
     // Здесь можно добавить логику для git pull
   };
 
+  const handleGitBranchClick = () => {
+    setActiveDropdown(activeDropdown === "gitBranch" ? null : "gitBranch");
+  };
+
+  const closeDropdown = () => {
+    setActiveDropdown(null);
+  };
+
+  useEffect(() => {
+    const updateGitInfo = async () => {
+      try {
+        // Используем текущую директорию для определения корня проекта
+        const currentDir = await invoke('tauri_current_dir');
+        const projectRoot = await invoke('get_project_root', { currentFilePath: currentDir });
+        
+        // Сначала проверяем, является ли каталог Git репозиторием
+        try {
+          await invoke('git_command', { 
+            projectRoot,
+            command: 'rev-parse',
+            args: ['--is-inside-work-tree'] 
+          });
+        } catch (err) {
+          // Если не является Git репозиторием, устанавливаем пустую информацию
+          setLocalGitInfo({ current_branch: '---', status: 'none' });
+          return;
+        }
+        
+        // Если это Git репозиторий, получаем информацию о ветке и изменениях
+        const info = await invoke('get_git_info', { projectRoot });
+        setLocalGitInfo(info as GitInfo);
+      } catch (error) {
+        console.error('Error getting git info:', error);
+        // При ошибке устанавливаем значение по умолчанию
+        setLocalGitInfo({ current_branch: '---', status: 'none' });
+      }
+    };
+
+    updateGitInfo();
+    const interval = setInterval(updateGitInfo, 5000); // Обновляем каждые 5 секунд
+    return () => clearInterval(interval);
+  }, []);
+
+  // Обработчик смены ветки
+  const handleBranchSwitch = async (branchName: string) => {
+    try {
+      // Получаем обновленную информацию о Git
+      if (selectedFolder) {
+        const updatedInfo = await invoke('get_git_info', { projectRoot: selectedFolder }) as GitInfo;
+        
+        // Обновляем локальное состояние
+        setLocalGitInfo(updatedInfo);
+        
+        // Уведомляем родительский компонент
+        if (onGitInfoChange) {
+          onGitInfoChange(updatedInfo);
+        }
+        
+        // Показываем уведомление
+        setNotification({
+          message: `Переключено на ветку: ${branchName}`,
+          type: 'success'
+        });
+        
+        // Скрываем уведомление через 3 секунды
+        setTimeout(() => {
+          setNotification(null);
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Error updating git info after branch switch:', error);
+      setNotification({
+        message: `Ошибка при обновлении информации о ветке`,
+        type: 'error'
+      });
+      
+      setTimeout(() => {
+        setNotification(null);
+      }, 3000);
+    }
+  };
+
   return (
     <>
+      {/* Уведомление о смене ветки */}
+      {notification && (
+        <div className={`branch-notification ${notification.type}`}>
+          {notification.message}
+        </div>
+      )}
+
       <div
         id="context-menu"
         className="context-menu"
         style={{ display: "none" }}
       >
-        <div onClick={(e) => handleToggleVisibility("encoding", e)}>
+        <div onClick={(e: ReactMouseEvent<HTMLDivElement>) => handleToggleVisibility("encoding", e)}>
           <span>Кодировка</span>
           <Check
             color="#fff"
@@ -152,7 +267,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
             className={`check ${visibleElements.encoding ? "active" : ""}`}
           />
         </div>
-        <div onClick={(e) => handleToggleVisibility("position", e)}>
+        <div onClick={(e: ReactMouseEvent<HTMLDivElement>) => handleToggleVisibility("position", e)}>
           <span>Позиция</span>
           <Check
             color="#fff"
@@ -161,7 +276,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
             className={`check ${visibleElements.position ? "active" : ""}`}
           />
         </div>
-        <div onClick={(e) => handleToggleVisibility("language", e)}>
+        <div onClick={(e: ReactMouseEvent<HTMLDivElement>) => handleToggleVisibility("language", e)}>
           <span>Выбор редактора</span>
           <Check
             color="#fff"
@@ -170,7 +285,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
             className={`check ${visibleElements.language ? "active" : ""}`}
           />
         </div>
-        <div onClick={(e) => handleToggleVisibility("notifications", e)}>
+        <div onClick={(e: ReactMouseEvent<HTMLDivElement>) => handleToggleVisibility("notifications", e)}>
           <span>Уведомления</span>
           <Check
             color="#fff"
@@ -179,7 +294,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
             className={`check ${visibleElements.notifications ? "active" : ""}`}
           />
         </div>
-        <div onClick={(e) => handleToggleVisibility("user", e)}>
+        <div onClick={(e: ReactMouseEvent<HTMLDivElement>) => handleToggleVisibility("user", e)}>
           <span>Пользователь</span>
           <Check
             color="#fff"
@@ -191,12 +306,20 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
       </div>
 
       {activeDropdown && (
-        <div className="dropdown-overlay" onClick={closeContextMenu}>
+        <div className="dropdown-overlay" onClick={closeDropdown}>
           <div className="dropdown-wrapper" onClick={(e) => e.stopPropagation()}>
             {activeDropdown === "encoding" && <EncodingDropdown />}
             {activeDropdown === "position" && <PositionDropdown />}
             {activeDropdown === "language" && <LanguageDropdown />}
             {activeDropdown === "notifications" && <NotificationsDropdown />}
+            {activeDropdown === "gitBranch" && (
+              <GitBranches 
+                currentBranch={localGitInfo.current_branch} 
+                onClose={closeDropdown}
+                selectedFolder={selectedFolder}
+                onBranchSwitch={handleBranchSwitch}
+              />
+            )}
           </div>
         </div>
       )}
@@ -211,9 +334,21 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin }) 
             <CircleAlert width={14} height={14} color={editorInfo?.warnings ? "#FFA500" : "#858585"} />
             <span>{editorInfo?.warnings || 0}</span>
           </div>
-          <div className="status-item git-branch">
-            <span>{editorInfo?.gitBranch || "main"}</span>
-          </div>
+          {localGitInfo.status !== 'none' && (
+            <div className="status-item git-branch" onClick={handleGitBranchClick} title="Нажмите, чтобы выбрать ветку">
+              <GitBranch className="icon" />
+              <span 
+                className={`branch-name ${localGitInfo.status}`}
+                onMouseEnter={() => handleMouseEnter("gitBranch")}
+                onMouseLeave={handleMouseLeave}
+              >
+                {localGitInfo.current_branch}
+                {visibleTooltip === "gitBranch" && (
+                  <span className="tooltip">{tooltips.gitBranch}</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="right-info">

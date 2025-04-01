@@ -246,4 +246,34 @@ img {
 .zoom-button:hover {
   background-color: #444;
 }
+
+.module-tooltip {
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid #3d3d3d;
+  max-width: 400px;
+  word-break: break-all;
+  white-space: pre-wrap;
+  pointer-events: none;
+  z-index: 1000;
+  font-family: 'Consolas', 'Monaco', monospace;
+  line-height: 1.4;
+}
+
+.module-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  width: 10px;
+  height: 10px;
+  background-color: #2d2d2d;
+  transform: rotate(45deg);
+  border-left: 1px solid #3d3d3d;
+  border-top: 1px solid #3d3d3d;
+}
   

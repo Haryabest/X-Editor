@@ -9,7 +9,6 @@
     padding: 8px;
     user-select: none;
     overflow-y: auto; /* Добавляем вертикальную прокрутку */
-
   }
   
   /* Tree structure */
@@ -56,15 +55,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
+    margin-right: 6px;
   }
   
   .icon img,
   .icon svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
   }
   
   .chevron {
@@ -72,7 +72,7 @@
     display: inline-flex;
     align-items: center;
     color: #858585;
-    margin-right: 4px;
+    margin-right: 2px;
     flex-shrink: 0;
   }
   
@@ -88,9 +88,10 @@
   
   /* Children container */
   .children-container {
-    margin-left: 20px;
+    margin-left: 16px;
     border-left: 1px solid #333;
-    padding-left: 12px;
+    padding-left: 8px;
+    margin-top: 4px;
     min-width: 0; /* Для корректной работы text-overflow */
   }
   
@@ -214,4 +215,112 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* Добавление стилей для активного файла */
+.file-item.active {
+  background-color: #094771;
+  font-weight: 500;
+  border-radius: 3px;
+}
+
+.file-item.active .name {
+  color: #ffffff;
+}
+
+/* Стили для Git-статусов файлов */
+.file-item .git-status,
+.directory-item .git-status {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+/* Измененный файл */
+.file-item.modified .git-status,
+.directory-item.modified .git-status {
+  background-color: #3498db;
+}
+
+.file-item.modified .name,
+.directory-item.modified .name {
+  color: #3498db;
+}
+
+/* Новый файл */
+.file-item.added .git-status,
+.directory-item.added .git-status {
+  background-color: #2ecc71;
+}
+
+.file-item.added .name,
+.directory-item.added .name {
+  color: #2ecc71;
+}
+
+/* Удаленный файл */
+.file-item.deleted .git-status,
+.directory-item.deleted .git-status {
+  background-color: #e74c3c;
+}
+
+.file-item.deleted .name,
+.directory-item.deleted .name {
+  color: #e74c3c;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+/* Неотслеживаемый файл */
+.file-item.untracked .git-status,
+.directory-item.untracked .git-status {
+  background-color: #f39c12;
+}
+
+.file-item.untracked .name,
+.directory-item.untracked .name {
+  color: #f39c12;
+  font-style: italic;
+}
+
+/* Переименованный файл */
+.file-item.renamed .git-status,
+.directory-item.renamed .git-status {
+  background-color: #9b59b6;
+}
+
+.file-item.renamed .name,
+.directory-item.renamed .name {
+  color: #9b59b6;
+}
+
+/* Файл с ошибками */
+.file-item.error .git-status {
+  background-color: #e74c3c;
+}
+
+.file-item.error .name {
+  color: #e74c3c;
+}
+
+/* Файл с предупреждениями */
+.file-item.warning .git-status {
+  background-color: #f39c12;
+}
+
+.file-item.warning .name {
+  color: #f39c12;
+}
+
+/* Дополнительный маркер для директорий с измененными файлами */
+.directory-item .changes-indicator {
+  font-size: 10px;
+  background-color: #3498db;
+  color: white;
+  border-radius: 10px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-weight: bold;
 }

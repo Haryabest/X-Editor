@@ -1,8 +1,9 @@
 // @ts-nocheck
-import { useState, useEffect, useRef, createContext } from 'react';
+import React, { useState, useEffect, useRef, createContext } from 'react';
 import { FileItem } from './types';
-import { configureMonaco } from './monaco-config';
+import { configureMonaco } from './monaco-config/index';
 import { setCurrentProject } from './main-screen/centerContainer/monacoConfig';
+import { invoke } from '@tauri-apps/api/core';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
@@ -11,6 +12,7 @@ import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
 import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
+import { GitChanges } from './main-screen/lefttoolbar/GitChanges';
 import AboutModal from './components/about/AboutModal';
 import DocumentationModal from './components/documentation/DocumentationModal';
 
@@ -38,6 +40,11 @@ interface IssueInfo {
   }[];
 }
 
+interface GitInfo {
+  current_branch: string;
+  status: string;
+}
+
 // Create a context for sharing font size across components
 export const FontSizeContext = createContext({
   fontSize: 14,
@@ -49,6 +56,7 @@ function App() {
   const [terminalHeight, setTerminalHeight] = useState(200);
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
   const [isTerminalVisible, setIsTerminalVisible] = useState(true);
+  const [activeLeftPanel, setActiveLeftPanel] = useState('explorer');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
@@ -80,6 +88,11 @@ function App() {
   const [issues, setIssues] = useState<IssueInfo[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [gitInfo, setGitInfo] = useState<GitInfo>({
+    current_branch: '---',
+    status: 'none'
+  });
+  const [shouldRefreshFiles, setShouldRefreshFiles] = useState(false);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
@@ -351,6 +364,86 @@ function App() {
   const openDocModal = () => setIsDocModalOpen(true);
   const closeDocModal = () => setIsDocModalOpen(false);
 
+  const handleViewChange = (viewName: string) => {
+    setActiveLeftPanel(viewName);
+    if (!isLeftPanelVisible) {
+      setIsLeftPanelVisible(true);
+    }
+  };
+
+  // Обработчик изменения Git информации
+  const handleGitInfoChange = (updatedGitInfo: GitInfo) => {
+    // Обновляем gitInfo в App
+    setGitInfo(updatedGitInfo);
+    
+    // Устанавливаем флаг для обновления списка файлов
+    setShouldRefreshFiles(true);
+  };
+  
+  // Эффект для обновления списка файлов при смене ветки
+  useEffect(() => {
+    if (shouldRefreshFiles && selectedFolder) {
+      console.log('Обновляем список файлов после смены ветки');
+      
+      // Сбрасываем флаг
+      setShouldRefreshFiles(false);
+      
+      // Инициируем перезагрузку списка файлов
+      const refreshFiles = async () => {
+        try {
+          // Получаем содержимое директории напрямую через tauri
+          const files = await invoke('get_directory_tree', { path: selectedFolder });
+          
+          // Обновляем текущие файлы
+          if (files && files.children) {
+            setCurrentFiles(files.children as UIFileItem[]);
+          }
+        } catch (error) {
+          console.error('Ошибка при обновлении списка файлов:', error);
+        }
+      };
+      
+      refreshFiles();
+    }
+  }, [shouldRefreshFiles, selectedFolder]);
+
+  // Обновляем gitInfo при изменении selectedFolder
+  useEffect(() => {
+    const updateGitInfo = async () => {
+      if (selectedFolder) {
+        try {
+          const info = await invoke('get_git_info', { projectRoot: selectedFolder });
+          setGitInfo(info as GitInfo);
+        } catch (error) {
+          console.error('Error getting git info:', error);
+          setGitInfo({ current_branch: '---', status: 'none' });
+        }
+      } else {
+        setGitInfo({ current_branch: '---', status: 'none' });
+      }
+    };
+
+    updateGitInfo();
+  }, [selectedFolder]);
+
+  // Функция для преобразования списка issues в объект для FileManager
+  const getFileIssuesMap = (issues: IssueInfo[]) => {
+    const issuesMap: { [filePath: string]: { errors: number, warnings: number } } = {};
+    
+    issues.forEach(issueInfo => {
+      if (!issueInfo.issues || issueInfo.issues.length === 0) return;
+      
+      const errors = issueInfo.issues.filter(issue => issue.severity === 'error').length;
+      const warnings = issueInfo.issues.filter(issue => issue.severity === 'warning').length;
+      
+      if (errors > 0 || warnings > 0) {
+        issuesMap[issueInfo.filePath] = { errors, warnings };
+      }
+    });
+    
+    return issuesMap;
+  };
+
   return (
     <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
       <div className="app-container">
@@ -380,24 +473,33 @@ function App() {
 
         <div className="main-content">
           <LeftToolBar 
-            onToggleFileExplorer={() => setIsLeftPanelVisible(prev => !prev)}
+            onToggleFileExplorer={() => setIsLeftPanelVisible(!isLeftPanelVisible)} 
             isFileExplorerOpen={isLeftPanelVisible}
+            onChangeView={handleViewChange}
+            activeView={activeLeftPanel}
           />
           
-          <div className="mainwindow-container" style={{ height: '100%' }}>
-            {/* Left panel with file explorer */}
+          <div className="mainwindow-container">
             {isLeftPanelVisible ? (
               <div
                 className="left-panel visible"
                 style={{ width: leftPanelWidth }}
               >
                 <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
-                <FileManager
-                  selectedFolder={selectedFolder}
-                  setSelectedFile={handleSetSelectedFile}
-                  setSelectedFolder={setSelectedFolder}
-                  setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
-                />
+                {activeLeftPanel === 'explorer' && (
+                  <FileManager
+                    selectedFolder={selectedFolder}
+                    setSelectedFile={handleSetSelectedFile}
+                    setSelectedFolder={setSelectedFolder}
+                    setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
+                    selectedFile={selectedFile}
+                    gitChanges={gitInfo.changes}
+                    fileIssues={getFileIssuesMap(issues)}
+                  />
+                )}
+                {activeLeftPanel === 'git' && (
+                  <GitChanges selectedFolder={selectedFolder} />
+                )}
               </div>
             ) : (
               <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
@@ -431,41 +533,25 @@ function App() {
                     onDeselect={() => editorRef.current?.deselect()}
                   />
                 </div>
-              </div>
-
-              {isTerminalVisible ? (
-                <div className="terminal-container" style={{ 
-                  height: terminalHeight,
-                  minHeight: '200px', 
-                  maxHeight: '50%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  backgroundColor: '#1e1e1e',
-                  borderTop: '1px solid #303030',
-                }}>
-                  <div className="vertical-resizer" onMouseDown={handleVerticalDrag} />
+                {isTerminalVisible && (
                   <Terminal 
-                    terminalHeight={terminalHeight - 5}
-                    issues={issues} 
+                    height={terminalHeight}
+                    selectedFolder={selectedFolder}
+                    issues={issues}
                     onIssueClick={handleIssueClick}
                   />
-                </div>
-              ) : (
-                <button 
-                  className="restore-button bottom" 
-                  onClick={openTerminal}
-                  style={{zIndex: 100}}
-                >
-                  ▲
-                </button>
-              )} 
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <BottomToolbar editorInfo={editorInfo} />
+        <BottomToolbar 
+          editorInfo={editorInfo}
+          gitInfo={gitInfo} 
+          selectedFolder={selectedFolder}
+          onGitInfoChange={handleGitInfoChange}
+        />
         
         {/* Modal components */}
         <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />

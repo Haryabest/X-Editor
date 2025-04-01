@@ -12,13 +12,16 @@ import SettingsComponent from './settings/Settings';
 interface LeftToolBarProps {
   onToggleFileExplorer: () => void;
   isFileExplorerOpen: boolean;
+  onChangeView: (buttonName: string) => void;
+  activeView: string;
 }
 
 const LeftToolBar: React.FC<LeftToolBarProps> = ({ 
   onToggleFileExplorer,
-  isFileExplorerOpen
+  isFileExplorerOpen,
+  onChangeView,
+  activeView,
 }) => {
-  const [activeButton, setActiveButton] = useState<string>('explorer');
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   
@@ -27,22 +30,18 @@ const LeftToolBar: React.FC<LeftToolBarProps> = ({
 
   const handleButtonClick = (buttonName: string) => {
     if (buttonName === 'explorer') {
-      setActiveButton(buttonName);
+      onChangeView('explorer');
       onToggleFileExplorer();
-    } else if (buttonName === 'git' || buttonName === 'files') {
-      setActiveButton(buttonName);
+    } else if (buttonName === 'git') {
+      onChangeView('git');
+      if (!isFileExplorerOpen) {
+        onToggleFileExplorer();
+      }
     } else if (buttonName === 'account') {
       // Гарантируем что меню переключится на противоположное состояние
-      setIsAccountMenuOpen(prevState => {
-        const newState = !prevState;
-        // Активировать кнопку только если меню открывается
-        setActiveButton(newState ? 'account' : '');
-        console.log(`Аккаунт меню ${newState ? 'открыто' : 'закрыто'}`);
-        return newState;
-      });
+      setIsAccountMenuOpen(prevState => !prevState);
     } else if (buttonName === 'settings') {
       setIsSettingsOpen(true);
-      setActiveButton(buttonName);
     }
     
     console.log(`${buttonName} button clicked`);
@@ -51,27 +50,25 @@ const LeftToolBar: React.FC<LeftToolBarProps> = ({
   // Обработчик закрытия меню аккаунта
   const handleAccountMenuClose = () => {
     setIsAccountMenuOpen(false);
-    setActiveButton('');
   };
 
   // Обработчик закрытия окна настроек
   const handleSettingsClose = () => {
     setIsSettingsOpen(false);
-    setActiveButton('');
   };
 
   return (
     <div className="left-toolbar">
       <div className="top-buttons">
         <button 
-          className={`toolbar-button ${activeButton === 'explorer' ? 'active' : ''} ${isFileExplorerOpen ? 'open' : ''}`}
+          className={`toolbar-button ${activeView === 'explorer' ? 'active' : ''} ${isFileExplorerOpen ? 'open' : ''}`}
           onClick={() => handleButtonClick('explorer')}
           title="Проводник"
         >
           <FolderTree size={24} />
         </button>
         <button 
-          className={`toolbar-button ${activeButton === 'git' ? 'active' : ''}`}
+          className={`toolbar-button ${activeView === 'git' ? 'active' : ''}`}
           onClick={() => handleButtonClick('git')}
           title="Ветви Git"
         >
@@ -82,14 +79,14 @@ const LeftToolBar: React.FC<LeftToolBarProps> = ({
       <div className="bottom-buttons">
         <button 
           ref={accountButtonRef}
-          className={`toolbar-button ${activeButton === 'account' ? 'active' : ''}`}
+          className={`toolbar-button ${isAccountMenuOpen ? 'active' : ''}`}
           onClick={() => handleButtonClick('account')}
           title="Аккаунт"
         >
           <User size={24} />
         </button>
         <button 
-          className={`toolbar-button ${activeButton === 'settings' ? 'active' : ''}`}
+          className={`toolbar-button ${isSettingsOpen ? 'active' : ''}`}
           onClick={() => handleButtonClick('settings')}
           title="Настройки"
         >

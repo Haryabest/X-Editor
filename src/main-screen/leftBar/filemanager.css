@@ -1,0 +1,60 @@
+/* Стили для файлового менеджера */
+.file-manager {
+  border: 5px solid #ff0000 !important;
+  padding: 20px !important;
+}
+
+.file-tree {
+  background-color: #333333 !important;
+}
+
+.tree-item {
+  border: 3px dashed #00ff00 !important;
+  margin: 10px 0 !important;
+  padding: 5px !important;
+}
+
+.file-item, .directory-item {
+  background-color: #444444 !important;
+  border-radius: 10px !important;
+  padding: 10px !important;
+}
+
+.file-item .name, .directory-item .name {
+  color: #ffff00 !important;
+  font-weight: bold !important;
+  font-size: 14px !important;
+}
+
+/* Стили для Git-статусов */
+.file-item.modified .name,
+.directory-item.modified .name {
+  color: #3498db !important;
+  text-shadow: 0 0 5px #3498db !important;
+}
+
+.file-item.added .name,
+.directory-item.added .name {
+  color: #2ecc71 !important;
+  text-shadow: 0 0 5px #2ecc71 !important;
+}
+
+.file-item.deleted .name,
+.directory-item.deleted .name {
+  color: #e74c3c !important;
+  text-shadow: 0 0 5px #e74c3c !important;
+  text-decoration: line-through !important;
+}
+
+.file-item.untracked .name,
+.directory-item.untracked .name {
+  color: #f39c12 !important;
+  text-shadow: 0 0 5px #f39c12 !important;
+  font-style: italic !important;
+}
+
+.file-item.renamed .name,
+.directory-item.renamed .name {
+  color: #9b59b6 !important;
+  text-shadow: 0 0 5px #9b59b6 !important;
+} 

@@ -32,7 +32,7 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
     filePath: string;
   } | null>(null);
   const activeFilePath = openedFiles.find(file => file.path === activeFile)?.path || '';
-  const handleContextMenu = (e: React.MouseEvent, filePath: string) => {
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>, filePath: string) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,

@@ -131,6 +131,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   const lspRef = useRef<any>(null);
   const internalEditorRef = useRef<any>(null);
   const internalMonacoRef = useRef<any>(null);
+  const [tooltipContent, setTooltipContent] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   
   // Конфигурируем Monaco сразу при загрузке компонента
   useEffect(() => {
@@ -520,25 +522,6 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     }
 
-    // Инициализация LSP
-    try {
-      const lspInstance = getMonacoLSPInstance();
-      if (lspInstance) {
-        lspRef.current = lspInstance;
-        lspInstance.initialize(editor, monaco);
-
-        // Подключение к языковому серверу
-        if (selectedFile) {
-          const extension = pathUtils.extname(selectedFile).toLowerCase();
-          if (extension === '.ts' || extension === '.tsx') {
-            lspInstance.connectToLanguageServer('typescript');
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error initializing LSP:', error);
-    }
-
     // Обработчик наведения мыши для отображения путей
     editor.onMouseMove((e: any) => {
       const position = editor.getPosition();
@@ -548,46 +531,75 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       const lineContent = model.getLineContent(position.lineNumber);
       const offset = model.getOffsetAt(position);
 
-      // Поиск импортов
-      const importRegex = /from\s+['"]([^'"]+)['"]/g;
-      let importMatch;
-      while ((importMatch = importRegex.exec(lineContent)) !== null) {
+      // Очищаем предыдущий тултип
+      setTooltipContent(null);
+      setTooltipPosition(null);
+
+      // Ищем строки в кавычках
+      const stringRegex = /['"]([^'"]+)['"]/g;
+      let stringMatch;
+      while ((stringMatch = stringRegex.exec(lineContent)) !== null) {
         const startOffset = model.getOffsetAt({
           lineNumber: position.lineNumber,
-          column: importMatch.index + 1
+          column: stringMatch.index + 1
         });
         const endOffset = model.getOffsetAt({
           lineNumber: position.lineNumber,
-          column: importMatch.index + importMatch[0].length - 1
+          column: stringMatch.index + stringMatch[0].length - 1
         });
 
         if (offset >= startOffset && offset <= endOffset) {
-          const importPath = importMatch[1];
-          const resolvedPath = resolvePath(selectedFile, importPath);
-          triggerAutoCompletion(editor);
+          const path = stringMatch[1];
+          if (selectedFile) {
+            resolveModulePath(path, selectedFile).then(fullPath => {
+              setTooltipContent(`module "${fullPath}"`);
+              setTooltipPosition({
+                x: e.event.clientX,
+                y: e.event.clientY
+              });
+            });
+          }
           return;
         }
       }
+    });
 
-      // Поиск путей в строках
-      const pathRegex = /['"]([^'"]+)['"]/g;
-      let pathMatch;
-      while ((pathMatch = pathRegex.exec(lineContent)) !== null) {
-        const startOffset = model.getOffsetAt({
-          lineNumber: position.lineNumber,
-          column: pathMatch.index + 1
-        });
-        const endOffset = model.getOffsetAt({
-          lineNumber: position.lineNumber,
-          column: pathMatch.index + pathMatch[0].length - 1
-        });
+    // Добавляем подсказки для импортов
+    monaco.languages.registerCompletionItemProvider(['typescript', 'javascript', 'typescriptreact', 'javascriptreact'], {
+      provideCompletionItems: async (model: any, position: any) => {
+        const lineContent = model.getLineContent(position.lineNumber);
+        const lineUntilPosition = lineContent.substring(0, position.column - 1);
 
-        if (offset >= startOffset && offset <= endOffset) {
-          const path = pathMatch[1];
-          const resolvedPath = resolvePath(selectedFile, path);
-          triggerAutoCompletion(editor);
-          return;
+        // Проверяем, что мы находимся в строке импорта
+        if (lineUntilPosition.includes('import') || lineUntilPosition.includes('require')) {
+          try {
+            const projectRoot = await invoke('get_project_root', { currentFilePath: selectedFile });
+            const suggestions = await invoke('get_import_suggestions', {
+              projectRoot,
+              currentFile: selectedFile,
+              lineContent,
+              position: {
+                line: position.lineNumber,
+                column: position.column
+              }
+            });
+
+            return {
+              suggestions: suggestions.map((suggestion: any) => ({
+                label: suggestion.label,
+                kind: monaco.languages.CompletionItemKind.Module,
+                detail: suggestion.detail,
+                insertText: suggestion.insertText,
+                documentation: suggestion.documentation
+              }))
+            };
+          } catch (error) {
+            console.error('Error getting import suggestions:', error);
+            return { suggestions: [] };
+          }
         }
+
+        return { suggestions: [] };
       }
     });
   };
@@ -895,6 +907,24 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     };
   }, []);
 
+  // Add this function after other utility functions
+  const resolveModulePath = async (importPath: string, currentFile: string): Promise<string> => {
+    try {
+      // Get project root first
+      const projectRoot = await invoke('get_project_root', { currentFilePath: currentFile });
+      
+      // Then resolve the module path
+      const result = await invoke('resolve_module_path', {
+        projectRoot,
+        moduleName: importPath
+      });
+      return result as string;
+    } catch (error) {
+      console.error('Error resolving module path:', error);
+      return importPath;
+    }
+  };
+
   return (
     <div className="center-container" style={style}>
       {!selectedFile && (
@@ -955,6 +985,20 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         <p className="file-error-message">
           Файл {selectedFile.split(/[/\\]/).pop()} не поддерживается для просмотра.
         </p>
+      )}
+      
+      {tooltipContent && tooltipPosition && (
+        <div 
+          className="module-tooltip"
+          style={{
+            position: 'fixed',
+            left: tooltipPosition.x + 10,
+            top: tooltipPosition.y + 10,
+            zIndex: 1000
+          }}
+        >
+          {tooltipContent}
+        </div>
       )}
     </div>
   );
