@@ -7,6 +7,9 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './App.css';
 import { setupModulePaths } from './monaco-config';
+import { registerTypeScriptSupport } from './monaco-config/register-typescript';
+import { fixTypeScriptErrors } from './monaco-config/ts-error-fix';
+import { setupTypeScriptDirect } from './monaco-config/ts-config-override';
 
 declare global {
   interface Window {
@@ -16,20 +19,34 @@ declare global {
       restart: () => void;
       showSettings: () => void;
     };
+    logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
   }
 }
+
+// Регистрируем поддержку TypeScript сразу при загрузке
+console.log('Первичная регистрация TypeScript на старте приложения');
+registerTypeScriptSupport();
 
 // Инициализируем Tauri интеграцию для модулей после загрузки
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    console.log('DOM загружен, повторная регистрация TypeScript');
+    registerTypeScriptSupport();
+    
     // Запускаем интеграцию с Tauri для путей модулей
     const result = await setupModulePaths();
     console.log('Интеграция модульных путей с Tauri:', result ? 'успешно' : 'не удалось');
     
-    // Когда Monaco становится доступным, регистрируем поддержку TSX
+    // Когда Monaco становится доступным, регистрируем поддержку и исправляем ошибки
     const checkMonaco = () => {
       if (window.monaco) {
-        console.log('Monaco доступен в DOMContentLoaded, регистрируем TSX');
+        console.log('Monaco доступен в DOMContentLoaded, применяем настройки TypeScript');
+        
+        // Последовательно применяем все настройки и исправления
+        registerTypeScriptSupport();
+        setupTypeScriptDirect();
+        fixTypeScriptErrors();
+        
         try {
           import('./monaco-config/register-tsx').then(module => {
             console.log('Модуль register-tsx успешно импортирован');
@@ -37,12 +54,25 @@ document.addEventListener('DOMContentLoaded', async () => {
               const result = module.registerTSX();
               console.log('Регистрация TSX завершена с результатом:', result);
               
+              // После регистрации TSX снова применяем все настройки
+              registerTypeScriptSupport();
+              setupTypeScriptDirect();
+              fixTypeScriptErrors();
+              
               // Проверка успешности регистрации
               if (result) {
                 console.log('Поддержка TSX успешно активирована. Теперь доступны автодополнения для React компонентов и информация при наведении на пути импорта.');
               } else {
                 console.warn('Регистрация TSX не удалась. Автодополнения и подсказки для React могут работать некорректно.');
               }
+              
+              // Добавляем проверку наличия диагностики по TypeScript
+              setTimeout(() => {
+                if (window.logMonacoDiagnostics) {
+                  const diagnostics = window.logMonacoDiagnostics();
+                  console.log('Текущие диагностики Monaco:', diagnostics);
+                }
+              }, 2000);
             } else {
               console.error('Функция registerTSX не найдена в импортированном модуле');
             }

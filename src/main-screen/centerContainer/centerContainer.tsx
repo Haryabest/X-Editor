@@ -218,7 +218,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
               // Устанавливаем правильный язык для текущей модели
               const model = editorInstance.getModel();
               if (model) {
-                correctLanguageFromExtension(monacoInstance, model, selectedFile);
+                correctLanguageFromExtension(selectedFile, model);
               }
             }
           } else if (supportedImageExtensions.includes(ext)) {

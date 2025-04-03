@@ -285,7 +285,21 @@ export const configureMonaco = (monaco: any) => {
                 { open: '"', close: '"' },
                 { open: '\'', close: '\'' },
                 { open: '`', close: '`' }
-              ]
+              ],
+              surroundingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: '\'', close: '\'' },
+                { open: '`', close: '`' }
+              ],
+              folding: {
+                markers: {
+                  start: new RegExp('^\\s*//\\s*#?region\\b'),
+                  end: new RegExp('^\\s*//\\s*#?endregion\\b')
+                }
+              }
             });
           } catch (error) {
             console.error('Ошибка при настройке TypeScript:', error);
@@ -314,15 +328,30 @@ export const configureMonaco = (monaco: any) => {
                 { open: '\'', close: '\'' },
                 { open: '`', close: '`' },
                 { open: '<', close: '>' }
-              ]
+              ],
+              surroundingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: '\'', close: '\'' },
+                { open: '`', close: '`' },
+                { open: '<', close: '>' }
+              ],
+              folding: {
+                markers: {
+                  start: new RegExp('^\\s*//\\s*#?region\\b'),
+                  end: new RegExp('^\\s*//\\s*#?endregion\\b')
+                }
+              }
             });
           } catch (error) {
-            console.error('Ошибка при настройке TypeScriptReact:', error);
+            console.error('Ошибка при настройке TypeScript React:', error);
           }
         });
       }
     } catch (error) {
-      console.error('Ошибка при настройке поддержки языков:', error);
+      console.error('Ошибка при регистрации обработчиков языков:', error);
     }
 
     // TypeScript/JavaScript configuration

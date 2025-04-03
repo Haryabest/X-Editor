@@ -5,6 +5,7 @@ import { FileItem } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { applyLanguageConfiguration, getFileExtension, isJavaScriptFile, isJSXFile, isScriptFile, isTypeScriptFile } from '../utils/fileExtensions';
 import { configureTypeScript } from './typescript-config'; // Импортируем нашу функцию конфигурации TypeScript
+import { safeSetModelMarkers } from './fixMarker';
 
 // Игнорирование ошибок импорта для интеграционного модуля
 // @ts-ignore
@@ -169,7 +170,7 @@ async function setupDependencyAnalysis(monaco: Monaco, model: any) {
       }
       
       // Устанавливаем маркеры для модели
-      monaco.editor.setModelMarkers(model, 'dependency-checker', markers);
+      safeSetModelMarkers(monaco, model, 'dependency-checker', markers);
     }
   } catch (error) {
     console.error('Error in setupDependencyAnalysis:', error);
@@ -263,6 +264,107 @@ export function setupSmartCodeAnalyzer(monaco: Monaco, filePath: string) {
   }
 }
 
+// Проверка моделей при инициализации
+function setupLanguageDetectionForExistingModels() {
+  try {
+    // Получаем все модели и устанавливаем правильный язык на основе имени файла
+    const models = monaco.editor.getModels();
+    
+    models.forEach(model => {
+      const uri = model.uri.toString();
+      const fileName = uri.split('/').pop() || '';
+      
+      // Определяем расширение файла
+      const getExtension = (filename: string): string => {
+        const lastDotIndex = filename.lastIndexOf('.');
+        return lastDotIndex === -1 ? '' : filename.substring(lastDotIndex);
+      };
+      
+      const ext = getExtension(fileName).toLowerCase();
+      let language = model.getLanguageId();
+      
+      // Явно устанавливаем язык на основе расширения
+      if (ext === '.ts' && !fileName.endsWith('.d.ts')) {
+        language = 'typescript';
+      } else if (ext === '.tsx') {
+        language = 'typescriptreact';
+      } else if (ext === '.d.ts') {
+        language = 'typescript';
+      } else if (ext === '.js') {
+        language = 'javascript';
+      } else if (ext === '.jsx') {
+        language = 'javascriptreact';
+      }
+      
+      // Если текущий язык не совпадает с определенным, устанавливаем новый
+      if (language !== model.getLanguageId()) {
+        console.log(`Изменение языка для ${fileName} с ${model.getLanguageId()} на ${language}`);
+        monaco.editor.setModelLanguage(model, language);
+      }
+    });
+    
+    console.log('Проверка и настройка языка для существующих моделей завершена');
+  } catch (error) {
+    console.error('Ошибка при настройке языка для существующих моделей:', error);
+  }
+}
+
+/**
+ * Настраивает компилятор и диагностику для TypeScript и JavaScript
+ */
+function setupDiagnosticsConfiguration() {
+  try {
+    if (!monaco.languages || !monaco.languages.typescript) {
+      console.error('Отсутствует поддержка TypeScript в Monaco Editor');
+      return;
+    }
+
+    // Диагностика для TypeScript
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      noSuggestionDiagnostics: false,
+      diagnosticCodesToIgnore: [
+        // Игнорируем ошибки, связанные с отсутствующими модулями
+        2307, // Cannot find module 'X'
+        2792, // Cannot find module. Did you mean to set the 'moduleResolution' option to 'node'?
+        7016  // Could not find a declaration file for module 'X'
+      ]
+    });
+
+    // Диагностика для JavaScript - игнорируем ошибки TypeScript конструкций
+    monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      noSuggestionDiagnostics: false,
+      diagnosticCodesToIgnore: [
+        // TypeScript-специфичные конструкции в JavaScript
+        8006, // 'interface' declarations can only be used in TypeScript files
+        8008, // Type aliases can only be used in TypeScript files
+        8009, // The 'readonly' modifier can only be used in TypeScript files
+        8010, // Type annotations can only be used in TypeScript files
+        8013, // Non-null assertions can only be used in TypeScript files
+        // Ошибки модулей
+        2307, // Cannot find module 'X'
+        2792, // Cannot find module. Did you mean to set the 'moduleResolution' option to 'node'?
+        7016  // Could not find a declaration file for module 'X'
+      ]
+    });
+
+    // Игнорируем ошибки в режиме ожидания сервера
+    monaco.languages.typescript.typescriptDefaults.setMaximumWorkerIdleTime(-1);
+    monaco.languages.typescript.javascriptDefaults.setMaximumWorkerIdleTime(-1);
+
+    // Включаем синхронизацию моделей, чтобы предотвратить перезагрузку
+    monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
+    monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
+
+    console.log('Конфигурация диагностики TypeScript и JavaScript завершена');
+  } catch (error) {
+    console.error('Ошибка при настройке диагностики:', error);
+  }
+}
+
 /**
  * Конфигурирует Monaco Editor
  * @param openedFiles - Массив открытых файлов
@@ -282,6 +384,50 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
 
     // Сначала настраиваем TypeScript для корректной работы с React и TSX
     configureTypeScript(monaco);
+    
+    // Настраиваем диагностику
+    setupDiagnosticsConfiguration();
+    
+    // Проверяем и устанавливаем правильный язык для существующих моделей
+    setupLanguageDetectionForExistingModels();
+    
+    // Добавляем обработчик для новых моделей
+    monaco.editor.onDidCreateModel((model) => {
+      const uri = model.uri.toString();
+      const fileName = uri.split('/').pop() || '';
+      
+      // Определяем расширение файла
+      const getExtension = (filename: string): string => {
+        const lastDotIndex = filename.lastIndexOf('.');
+        return lastDotIndex === -1 ? '' : filename.substring(lastDotIndex);
+      };
+      
+      const ext = getExtension(fileName).toLowerCase();
+      let language = model.getLanguageId();
+      
+      // Явно устанавливаем язык на основе расширения
+      if (ext === '.ts' && !fileName.endsWith('.d.ts')) {
+        language = 'typescript';
+        console.log(`Установлен язык typescript для ${fileName}`);
+      } else if (ext === '.tsx') {
+        language = 'typescriptreact';
+        console.log(`Установлен язык typescriptreact для ${fileName}`);
+      } else if (ext === '.d.ts') {
+        language = 'typescript';
+        console.log(`Установлен язык typescript для declaration file ${fileName}`);
+      } else if (ext === '.js') {
+        language = 'javascript';
+        console.log(`Установлен язык javascript для ${fileName}`);
+      } else if (ext === '.jsx') {
+        language = 'javascriptreact';
+        console.log(`Установлен язык javascriptreact для ${fileName}`);
+      }
+      
+      // Если текущий язык не совпадает с определенным, устанавливаем новый
+      if (language !== model.getLanguageId()) {
+        monaco.editor.setModelLanguage(model, language);
+      }
+    });
 
     // Используем явное приведение типа для monaco
     const monacoInstance: any = monaco;
@@ -295,16 +441,33 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
       allowJs: true,
       checkJs: true,
       esModuleInterop: true,
-      strict: false,
+      strict: true,
       allowSyntheticDefaultImports: true,
       forceConsistentCasingInFileNames: true,
       resolveJsonModule: true,
       isolatedModules: true,
       noEmit: true,
       skipLibCheck: true,
-      typeRoots: ['node_modules/@types']
+      allowNonTsExtensions: true,
+      typeRoots: ["node_modules/@types"]
     });
 
+    // Настраиваем диагностику для TypeScript
+    monacoInstance.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      noSuggestionDiagnostics: false,
+      diagnosticCodesToIgnore: [
+        // Игнорируем только ошибки, связанные с отсутствующими модулями
+        2307, // Cannot find module 'X'
+        2304, // Cannot find name 'X'
+        2552, // Cannot find name 'require'
+        2580, // Cannot find name 'module'
+        7016  // Could not find a declaration file for module 'X'
+      ]
+    });
+
+    // Настраиваем JavaScript
     monacoInstance.languages.typescript.javascriptDefaults.setCompilerOptions({
       target: monacoInstance.languages.typescript.ScriptTarget.ESNext,
       module: monacoInstance.languages.typescript.ModuleKind.ESNext,
@@ -323,23 +486,24 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
       allowNonTsExtensions: true
     });
     
-    // Исправляем ошибки типа "import type" и Type annotations в JS файлах
+    // Настраиваем диагностику для JavaScript
     monacoInstance.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: false,
       noSyntaxValidation: false,
       diagnosticCodesToIgnore: [
-        // Исправляем ошибки 8006 и 8010 (TypeScript в JS файлах)
-        8006, // 'import type' declarations can only be used in TypeScript files
+        // Игнорируем ошибки TypeScript в JavaScript файлах
+        8006, // 'interface' declarations can only be used in TypeScript files
+        8008, // Type aliases can only be used in TypeScript files
+        8009, // The 'readonly' modifier can only be used in TypeScript files
         8010, // Type annotations can only be used in TypeScript files
+        8013, // Non-null assertions can only be used in TypeScript files
         // Другие коды ошибок, которые нужно игнорировать
         2307, // Cannot find module 'X'
         2304, // Cannot find name 'X'
         2552, // Cannot find name 'require'
         2580, // Cannot find name 'module'
         2692, // Imports are only allowed in TypeScript files
-        7016, // Could not find a declaration file for module 'X'
-        // Другие общие ошибки
-        1005, 1003, 2551, 7006, 7031
+        7016  // Could not find a declaration file for module 'X'
       ]
     });
     
@@ -1249,7 +1413,7 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
             target: 'Определяет, где открывать ссылку (для тега a).',
             name: 'Имя элемента формы.',
             checked: 'Флаг, указывающий, что чекбокс или радиокнопка отмечены.',
-            autoFocus: 'Флаг, указывающий, что элемент должен получить фокус при загрузке страницы.'
+            autoFocus: 'Флаг, указывающий, что элемент должен получить фокус при загрузке страницы.',
           };
           
           return {
@@ -2101,3 +2265,5 @@ export async function resolveModulePath(modulePath: string): Promise<string> {
   
   return modulePath;
 }
+
+export { registerTypeScriptSupport } from './register-typescript';
