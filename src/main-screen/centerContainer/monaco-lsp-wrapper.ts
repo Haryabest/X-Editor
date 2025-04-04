@@ -93,34 +93,32 @@ export class MonacoLSPWrapper {
    * Инициализация LSP интеграции
    */
   public async initialize(): Promise<void> {
-    if (this.initialized) {
-      console.log('MonacoLSPWrapper уже инициализирован');
-      return;
-    }
-
     try {
-      // Проверяем наличие необходимых компонентов
-      if (!this.monaco || !this.editor) {
-        console.error('Monaco или editor не определены');
+      // Получаем глобальные Monaco и Editor
+      if (!window.monaco) {
+        console.error('Monaco не доступен при инициализации LSP.');
         return;
       }
-
-      // Инициализируем менеджер языковых серверов
-      if (languageServerManager) {
-        await languageServerManager.initialize();
-      }
-
-      // Настраиваем TypeScript и TSX
-      this.configureTypeScript();
-
-      // Регистрируем слушатели редактора
-      this.registerEditorListeners();
-
+      
+      // Сохраняем ссылки на Monaco и Editor
+      this.monaco = window.monaco;
+      
+      // Устанавливаем флаг инициализации
       this.initialized = true;
-      console.log('MonacoLSPWrapper успешно инициализирован');
+      this.status.initialized = true;
+      
+      // Регистрируем обработчики событий редактора
+      this.registerEditorListeners();
+      
+      // Настраиваем TypeScript для начала
+      this.configureTypeScript();
+      
+      // Создаем провайдеры
+      this.createProviders();
+      
+      console.log('LSP соединение успешно инициализировано');
     } catch (error) {
-      console.error('Ошибка при инициализации MonacoLSPWrapper:', error);
-      throw error;
+      console.error('Ошибка при инициализации LSP:', error);
     }
   }
 
@@ -627,37 +625,58 @@ export class MonacoLSPWrapper {
    * Подключение к предопределенному серверу LSP
    */
   public async connectToPredefinedServer(serverType: string): Promise<boolean> {
-    if (!serverType) {
-      console.warn('Не удалось подключиться к серверу: не указан тип сервера');
-      return false;
-    }
+    console.log(`Подключение к серверу ${serverType}...`);
+    
+    let success = false;
     
     try {
-      // Проверяем, не подключены ли мы уже к серверу
-      if (this.status.connectedServers.includes(serverType)) {
-        console.log(`Уже подключены к серверу ${serverType}`);
-        return true;
+      switch (serverType) {
+        case 'typescript':
+          if (this.languageClientMap.has('typescript')) {
+            console.log('Соединение с typescript сервером уже установлено.');
+            return true;
+          }
+          
+          success = await languageServerManager.startServer('typescript');
+          
+          if (success) {
+            this.languageClientMap.set('typescript', {
+              connected: true,
+              serverType: 'typescript',
+              supportedLanguages: ['typescript', 'javascript', 'typescriptreact', 'javascriptreact']
+            });
+            
+            this.status.connectedServers.push('typescript');
+            console.log('Успешное подключение к серверу typescript');
+          }
+          break;
+          
+        case 'python':
+          if (this.languageClientMap.has('python')) {
+            console.log('Соединение с python сервером уже установлено.');
+            return true;
+          }
+          
+          success = await languageServerManager.startServer('python');
+          
+          if (success) {
+            this.languageClientMap.set('python', {
+              connected: true,
+              serverType: 'python',
+              supportedLanguages: ['python']
+            });
+            
+            this.status.connectedServers.push('python');
+            console.log('Успешное подключение к серверу python');
+          }
+          break;
+          
+        default:
+          console.warn(`Неизвестный тип сервера: ${serverType}`);
+          break;
       }
       
-      console.log(`Подключение к серверу ${serverType}...`);
-      
-      // Используем менеджер серверов для подключения
-      if (languageServerManager) {
-        const success = await languageServerManager.startServer(serverType);
-        
-        if (success) {
-          // Добавляем сервер в список подключенных
-          this.status.connectedServers.push(serverType);
-          console.log(`Успешное подключение к серверу ${serverType}`);
-        } else {
-          console.warn(`Не удалось подключиться к серверу ${serverType}`);
-        }
-        
-        return success;
-      } else {
-        console.warn('LanguageServerManager не инициализирован');
-        return false;
-      }
+      return success;
     } catch (error) {
       console.error(`Ошибка при подключении к серверу ${serverType}:`, error);
       return false;
@@ -675,42 +694,263 @@ export class MonacoLSPWrapper {
    * Обработка открытия файла
    */
   public handleFileOpen(filePath: string, content: string): void {
-    if (!filePath) {
-      console.warn('Не указан путь к файлу в handleFileOpen');
-      return;
-    }
-
     try {
+      if (!filePath) {
+        console.error('Не указан путь к файлу в handleFileOpen');
+        return;
+      }
+      
       console.log(`Обработка открытия файла: ${filePath}`);
       
-      // Определяем язык на основе расширения файла
-      const fileExtension = filePath.split('.').pop()?.toLowerCase();
-      let languageId = 'plaintext';
+      // Определяем тип файла
+      const fileExtension = this.getFileExtension(filePath);
+      let fileType = this.getLanguageFromExtension(fileExtension);
       
-      if (fileExtension === 'ts') languageId = 'typescript';
-      else if (fileExtension === 'tsx') languageId = 'typescriptreact';
-      else if (fileExtension === 'js') languageId = 'javascript';
-      else if (fileExtension === 'jsx') languageId = 'javascriptreact';
-      else if (fileExtension === 'html' || fileExtension === 'htm') languageId = 'html';
-      else if (fileExtension === 'css') languageId = 'css';
-      else if (fileExtension === 'json') languageId = 'json';
+      // Если тип файла не определен, используем plaintext
+      if (!fileType) {
+        console.warn(`Неизвестный тип файла: ${fileExtension}, используется plaintext`);
+        fileType = 'plaintext';
+      }
       
-      // Обновляем текущий язык
-      this.currentLanguageId = languageId;
+      // Проверяем, есть ли серверы для этого типа файла
+      const serverType = this.getServerForLanguage(fileType);
+      console.log(`Для языка ${fileType} определен сервер: ${serverType || 'нет'}`);
       
-      // Регистрируем документ в менеджере документов
-      lspDocumentManager.addDocument(filePath, languageId, content);
+      // Добавляем документ в менеджер документов LSP
+      lspDocumentManager.addDocument(filePath, fileType, content);
+      console.log(`Документ добавлен в LSP: ${filePath} (${fileType})`);
       
-      // Подключаемся к соответствующему LSP серверу
-      this.connectToLSPForLanguage(languageId);
-      
-      // Если это TypeScript/TSX файл, особая обработка для интеграции TS
-      if (fileExtension === 'ts' || fileExtension === 'tsx') {
+      // Специальная обработка для разных типов файлов
+      if (fileType === 'typescript' || fileType === 'typescriptreact') {
+        // Специальная обработка для TypeScript
+        console.log(`Специальная обработка TypeScript файла ${filePath}`);
         this.registerTypeScriptDocument(filePath, content);
+      } 
+      // Обработка Python файлов
+      else if (fileType === 'python' || fileExtension === 'py' || fileExtension === 'pyw' || fileExtension === 'pyi') {
+        // Специальная обработка для Python
+        console.log(`Специальная обработка Python файла ${filePath}`);
+        
+        // Регистрируем Python документ
+        this.registerPythonDocument(filePath, content);
+        
+        // Загружаем Python LSP, если еще не загружен
+        import('../../monaco-config/register-python').then(async module => {
+          try {
+            if (typeof (window as any).updatePythonDiagnostics !== 'function') {
+              console.log('Python LSP еще не загружен, запускаем регистрацию...');
+              if (typeof module.registerPython === 'function') {
+                const result = module.registerPython();
+                console.log(`Регистрация Python завершена с результатом: ${result}`);
+              } else {
+                console.warn('Функция registerPython не найдена в импортированном модуле');
+              }
+            }
+            
+            // Принудительно запускаем обновление диагностики через глобальную функцию
+            // Используем увеличенную задержку и несколько повторных попыток
+            const updateDiagnosticsWithRetry = async (retryCount = 0, maxRetries = 3) => {
+              if (retryCount >= maxRetries) {
+                console.warn(`Достигнуто максимальное количество попыток обновления диагностики для ${filePath}`);
+                return;
+              }
+              
+              try {
+                if (typeof (window as any).updatePythonDiagnostics === 'function') {
+                  console.log(`Запуск обновления диагностики для Python файла: ${filePath} (попытка ${retryCount + 1}/${maxRetries})`);
+                  const result = await (window as any).updatePythonDiagnostics(filePath);
+                  console.log(`Результат обновления диагностики: ${result}`);
+                  
+                  // Если обновление не удалось, пробуем еще раз через некоторое время
+                  if (result && result.startsWith('error:')) {
+                    setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 2000);
+                  }
+                } else {
+                  console.warn(`Функция updatePythonDiagnostics недоступна (попытка ${retryCount + 1}/${maxRetries})`);
+                  
+                  // Пробуем снова через 1,5 секунды
+                  setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 1500);
+                }
+              } catch (error) {
+                console.error(`Ошибка при обновлении диагностики (попытка ${retryCount + 1}/${maxRetries}):`, error);
+                
+                // В случае ошибки тоже повторяем
+                setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 1500);
+              }
+            };
+            
+            // Запускаем процесс обновления с задержкой 2 секунды
+            setTimeout(() => updateDiagnosticsWithRetry(), 2000);
+          } catch (error) {
+            console.error('Ошибка при обработке Python LSP:', error);
+          }
+        }).catch(error => {
+          console.error('Ошибка при импорте модуля register-python:', error);
+        });
+      }
+      // Общая обработка для других типов файлов
+      else if (serverType) {
+        // Подключаемся к предопределенному серверу для этого типа файла
+        this.connectToPredefinedServer(serverType)
+          .then(success => {
+            if (success) {
+              console.log(`Успешное подключение к серверу ${serverType} для файла ${filePath}`);
+            } else {
+              console.warn(`Не удалось подключиться к серверу ${serverType} для файла ${filePath}`);
+            }
+          })
+          .catch(error => {
+            console.error(`Ошибка при подключении к серверу ${serverType}:`, error);
+          });
+      }
+      
+      // Устанавливаем язык модели, если есть Monaco и модель
+      if (window.monaco) {
+        try {
+          // Находим или создаем модель для этого файла и устанавливаем язык
+          let model = null;
+          const models = window.monaco.editor.getModels();
+          
+          // Сначала ищем существующую модель
+          for (const m of models) {
+            try {
+              const modelUri = m.uri.toString();
+              if (modelUri.includes(filePath) || 
+                  filePath.includes(modelUri.replace('file://', ''))) {
+                model = m;
+                break;
+              }
+            } catch (e) {
+              console.warn(`Ошибка при проверке модели для ${filePath}:`, e);
+            }
+          }
+          
+          // Если модель не найдена, пытаемся создать новую
+          if (!model) {
+            try {
+              const uri = window.monaco.Uri.file(filePath);
+              model = window.monaco.editor.createModel(content, fileType, uri);
+              console.log(`Создана новая модель для ${filePath} с языком ${fileType}`);
+            } catch (e) {
+              console.warn(`Ошибка при создании модели для ${filePath}:`, e);
+            }
+          }
+          
+          // Устанавливаем язык модели если модель найдена
+          if (model) {
+            try {
+              // Обновляем язык модели
+              window.monaco.editor.setModelLanguage(model, fileType);
+              console.log(`Установлен язык модели ${fileType} для ${filePath}`);
+              
+              // Если это Python, дополнительно обновляем модель
+              if (fileType === 'python') {
+                model.setValue(content);
+                console.log(`Обновлено содержимое Python модели для ${filePath}`);
+              }
+            } catch (e) {
+              console.warn(`Ошибка при установке языка модели для ${filePath}:`, e);
+            }
+          }
+        } catch (error) {
+          console.error(`Ошибка при установке языка для ${filePath}:`, error);
+        }
       }
     } catch (error) {
       console.error(`Ошибка при обработке открытия файла ${filePath}:`, error);
     }
+  }
+  
+  // Метод для регистрации Python документа
+  private registerPythonDocument(filePath: string, content: string): void {
+    try {
+      console.log(`Регистрация Python документа: ${filePath}`);
+      
+      // Убедимся, что документ зарегистрирован с правильным языком
+      const documentInfo = lspDocumentManager.getDocument(filePath);
+      if (!documentInfo) {
+        lspDocumentManager.addDocument(filePath, 'python', content);
+      }
+      
+      // Проверяем, подключен ли Python LSP сервер
+      const pythonServerConnected = this.isPythonServerConnected();
+      
+      if (!pythonServerConnected) {
+        // Подключаемся к серверу Python
+        this.connectToPredefinedServer('python').then(success => {
+          if (success) {
+            console.log(`Успешное подключение к серверу Python для файла ${filePath}`);
+            
+            // Запускаем проверку ошибок Python для конкретного файла
+            setTimeout(() => {
+              if (window.updatePythonDiagnostics) {
+                window.updatePythonDiagnostics(filePath);
+              }
+            }, 1000);
+          } else {
+            console.warn(`Не удалось подключиться к серверу Python для файла ${filePath}`);
+          }
+        }).catch(error => {
+          console.error(`Ошибка при подключении к серверу Python: ${error.message || error}`);
+        });
+      } else {
+        console.log('Python LSP сервер уже подключен');
+        
+        // Запускаем проверку ошибок Python для конкретного файла
+        setTimeout(() => {
+          if (window.updatePythonDiagnostics) {
+            window.updatePythonDiagnostics(filePath);
+          }
+        }, 500);
+      }
+      
+      // Если Monaco и Editor доступны, регистрируем модель
+      if (this.monaco && this.editor) {
+        // Проверяем, есть ли модель для этого файла в редакторе
+        const models = this.monaco.editor.getModels();
+        let pythonModel = null;
+        
+        for (const model of models) {
+          try {
+            const modelUri = model.uri.toString();
+            if (modelUri.includes(filePath) || 
+                filePath.includes(modelUri.replace('file://', ''))) {
+              pythonModel = model;
+              
+              // Убедимся, что язык модели установлен как 'python'
+              if (this.monaco.editor.getModelLanguage(model) !== 'python') {
+                this.monaco.editor.setModelLanguage(model, 'python');
+                console.log(`Язык модели для ${filePath} установлен как python`);
+              }
+              
+              break;
+            }
+          } catch (e) {
+            console.warn(`Ошибка при проверке модели для ${filePath}:`, e);
+          }
+        }
+        
+        // Если модель не найдена, пробуем создать ее
+        if (!pythonModel && this.monaco.editor.createModel) {
+          try {
+            console.log(`Попытка создания модели для ${filePath}`);
+            const uri = this.monaco.Uri.file(filePath);
+            pythonModel = this.monaco.editor.createModel(content, 'python', uri);
+            console.log(`Модель для ${filePath} успешно создана`);
+          } catch (e) {
+            console.warn(`Ошибка при создании модели для ${filePath}:`, e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при регистрации Python документа:', error);
+    }
+  }
+  
+  // Проверка, подключен ли Python LSP сервер
+  private isPythonServerConnected(): boolean {
+    return this.languageClientMap.has('python') && 
+           this.status.connectedServers.includes('python');
   }
 
   /**
@@ -741,24 +981,149 @@ export class MonacoLSPWrapper {
    * Обработка изменения файла
    */
   public handleFileChange(filePath: string, content: string): void {
-    if (!filePath) {
-      console.warn('Не указан путь к файлу в handleFileChange');
-      return;
-    }
-
     try {
+      if (!filePath) {
+        console.error('Не указан путь к файлу в handleFileChange');
+        return;
+      }
+      
       console.log(`Обработка изменения файла: ${filePath}`);
       
-      // Обновляем документ в менеджере документов
-      lspDocumentManager.updateDocument(filePath, content);
-      
-      // Если это TypeScript файл, особая обработка для интеграции TS
-      const fileExtension = filePath.split('.').pop()?.toLowerCase();
-      if (fileExtension === 'ts' || fileExtension === 'tsx' || fileExtension === 'js' || fileExtension === 'jsx') {
-        this.registerTypeScriptDocument(filePath, content);
+      try {
+        // Проверяем, существует ли документ в менеджере документов
+        const fileUri = filePath;
+        const documentInfo = lspDocumentManager.getDocument(fileUri);
+        
+        if (!documentInfo) {
+          // Если документа нет, добавляем его как при открытии
+          console.log(`Документ не найден в LSP, обрабатываем как открытие: ${filePath}`);
+          this.handleFileOpen(filePath, content);
+          return;
+        }
+        
+        // Определяем тип файла
+        const fileExtension = this.getFileExtension(filePath);
+        const fileType = this.getLanguageFromExtension(fileExtension) || 'plaintext';
+        
+        // Обновляем документ через удаление и добавление
+        lspDocumentManager.removeDocument(fileUri);
+        lspDocumentManager.addDocument(fileUri, fileType, content);
+        console.log(`Документ обновлен в LSP: ${fileUri} (${fileType})`);
+        
+        // Если это Python файл, выполняем дополнительные действия
+        const isPythonFile = fileType === 'python' || 
+                            filePath.endsWith('.py') || 
+                            filePath.endsWith('.pyw') || 
+                            filePath.endsWith('.pyi');
+        
+        if (isPythonFile) {
+          console.log(`Обновление Python файла: ${filePath}`);
+          
+          // Обновляем модель в Monaco, если она существует
+          try {
+            if (window.monaco) {
+              const models = window.monaco.editor.getModels();
+              let model = null;
+              
+              // Ищем модель для этого файла
+              for (const m of models) {
+                try {
+                  const modelUri = m.uri.toString();
+                  if (modelUri.includes(filePath) || 
+                      filePath.includes(modelUri.replace('file://', ''))) {
+                    model = m;
+                    break;
+                  }
+                } catch (e) {
+                  console.warn(`Ошибка при проверке модели для ${filePath}:`, e);
+                }
+              }
+              
+              // Если модель найдена, обновляем её содержимое
+              if (model) {
+                // Используем операцию замены всего текста для обновления содержимого
+                try {
+                  const oldText = model.getValue();
+                  if (oldText !== content) {
+                    model.setValue(content);
+                    console.log(`Обновлено содержимое модели Python для ${filePath}`);
+                  } else {
+                    console.log(`Содержимое модели не изменилось для ${filePath}`);
+                  }
+                } catch (e) {
+                  console.warn(`Ошибка при обновлении содержимого модели:`, e);
+                }
+              } else {
+                console.log(`Модель для файла ${filePath} не найдена, пропускаем обновление`);
+              }
+            }
+          } catch (modelErr) {
+            console.warn(`Ошибка при работе с моделью Monaco:`, modelErr);
+          }
+          
+          // Запускаем обновление диагностики Python для этого файла
+          const updatePythonDiagnosticsForFile = async () => {
+            try {
+              if (typeof (window as any).updatePythonDiagnostics === 'function') {
+                console.log(`Запуск обновления диагностики для измененного Python файла: ${filePath}`);
+                const result = await (window as any).updatePythonDiagnostics(filePath);
+                console.log(`Результат обновления диагностики для измененного файла: ${result}`);
+              } else {
+                console.warn('Функция updatePythonDiagnostics недоступна для обновления после изменения');
+                
+                // Если функция не найдена, пробуем загрузить модуль Python
+                import('../../monaco-config/register-python').then(module => {
+                  if (typeof module.registerPython === 'function') {
+                    console.log('Регистрация Python для обработки изменений...');
+                    module.registerPython();
+                    
+                    // Пробуем снова после регистрации
+                    setTimeout(() => {
+                      if (typeof (window as any).updatePythonDiagnostics === 'function') {
+                        (window as any).updatePythonDiagnostics(filePath);
+                      }
+                    }, 1000);
+                  }
+                }).catch(error => {
+                  console.error('Ошибка при импорте register-python:', error);
+                });
+              }
+            } catch (error) {
+              console.error('Ошибка при обновлении диагностики Python:', error);
+            }
+          };
+          
+          // Запускаем обновление диагностики с небольшой задержкой
+          setTimeout(updatePythonDiagnosticsForFile, 500);
+        } else {
+          // Обработка для других типов файлов
+          
+          // Получаем серверы для этого типа файла
+          const serverType = this.getServerForLanguage(fileType);
+          
+          if (serverType) {
+            // Если сервер существует, отправляем ему уведомление об изменении
+            try {
+              // Проверяем, запущен ли сервер
+              const isServerRunning = this.isServerConnected(serverType);
+              
+              if (isServerRunning) {
+                console.log(`Отправка уведомления об изменении серверу ${serverType} для ${filePath}`);
+                
+                // В реальной реализации здесь будет отправка уведомления серверу
+              } else {
+                console.log(`Сервер ${serverType} не запущен для файла ${filePath}`);
+              }
+            } catch (e) {
+              console.warn(`Ошибка при отправке уведомления серверу ${serverType}:`, e);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Ошибка при обработке изменения файла ${filePath}:`, error);
       }
     } catch (error) {
-      console.error(`Ошибка при обработке изменения файла ${filePath}:`, error);
+      console.error(`Необработанная ошибка в handleFileChange: ${error}`);
     }
   }
 
@@ -939,7 +1304,549 @@ export class MonacoLSPWrapper {
     this.disposables.forEach(disposable => disposable.dispose());
     this.disposables = [];
   }
+
+  // Получить расширение файла из пути
+  private getFileExtension(filePath: string): string {
+    const lastDotIndex = filePath.lastIndexOf('.');
+    if (lastDotIndex === -1) return '';
+    return filePath.slice(lastDotIndex + 1).toLowerCase();
+  }
+  
+  // Определить язык по расширению файла
+  private getLanguageFromExtension(extension: string): string | null {
+    const extensionMap: Record<string, string> = {
+      'ts': 'typescript',
+      'tsx': 'typescriptreact',
+      'js': 'javascript',
+      'jsx': 'javascriptreact',
+      'html': 'html',
+      'htm': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'less': 'less',
+      'json': 'json',
+      'py': 'python',
+      'pyw': 'python',
+      'pyi': 'python'
+    };
+    
+    return extensionMap[extension] || null;
+  }
+  
+  /**
+   * Получение типа сервера для языка
+   */
+  private getServerForLanguage(languageId: string): string | null {
+    try {
+      // Карта соответствия языков и серверов
+      const languageToServer: Record<string, string> = {
+        'typescript': 'typescript',
+        'typescriptreact': 'typescript',
+        'javascript': 'typescript',
+        'javascriptreact': 'typescript',
+        'python': 'python',
+        'html': 'html',
+        'css': 'css',
+        'scss': 'css',
+        'less': 'css',
+        'json': 'json'
+      };
+      
+      return languageToServer[languageId] || null;
+    } catch (error) {
+      console.error(`Ошибка при определении сервера для языка ${languageId}:`, error);
+      return null;
+    }
+  }
+
+  // Метод для установки редактора после его создания
+  public setEditor(editor: any): void {
+    if (!editor) {
+      console.warn('Попытка установить несуществующий редактор в LSP клиент');
+      return;
+    }
+    
+    try {
+      this.editor = editor;
+      console.log('Редактор Monaco успешно установлен в LSP клиент');
+      
+      // Если редактор изменился, обновляем слушатели событий
+      this.registerEditorListeners();
+      
+      // Обновляем модели для всех открытых документов
+      if (lspDocumentManager) {
+        try {
+          const uris = lspDocumentManager.getAllDocumentUris();
+          if (uris && uris.length > 0) {
+            console.log(`Обновление моделей для ${uris.length} открытых документов...`);
+            
+            // Устанавливаем языки моделей
+            const models = this.monaco.editor.getModels();
+            if (models && models.length > 0) {
+              models.forEach(model => {
+                try {
+                  const modelUri = model.uri.toString();
+                  const matchingUri = uris.find(uri => 
+                    uri === modelUri || 
+                    modelUri.includes(uri) || 
+                    uri.includes(modelUri.replace('file://', ''))
+                  );
+                  
+                  if (matchingUri) {
+                    const doc = lspDocumentManager.getDocument(matchingUri);
+                    if (doc && doc.languageId) {
+                      this.monaco.editor.setModelLanguage(model, doc.languageId);
+                      console.log(`Установлен язык ${doc.languageId} для модели ${modelUri}`);
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Ошибка при обновлении модели:', e);
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при обновлении моделей:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при установке редактора в LSP клиент:', error);
+    }
+  }
+
+  /**
+   * Создание стандартных провайдеров для LSP
+   */
+  private createProviders(): void {
+    try {
+      // Проверяем доступность Monaco
+      if (!this.monaco) {
+        console.warn('Monaco не доступен при создании провайдеров');
+        return;
+      }
+      
+      // Создаем провайдеры завершения для поддерживаемых языков
+      this.registerCompletionProvider('typescript');
+      this.registerCompletionProvider('javascript');
+      this.registerCompletionProvider('python');
+      this.registerCompletionProvider('html');
+      this.registerCompletionProvider('css');
+      
+      // Создаем провайдеры hover для поддерживаемых языков
+      this.registerHoverProvider('typescript');
+      this.registerHoverProvider('javascript');
+      this.registerHoverProvider('python');
+      this.registerHoverProvider('html');
+      this.registerHoverProvider('css');
+      
+      console.log('Все провайдеры успешно зарегистрированы');
+    } catch (error) {
+      console.error('Ошибка при создании провайдеров:', error);
+    }
+  }
+  
+  /**
+   * Регистрация провайдера автодополнений для языка
+   */
+  private registerCompletionProvider(languageId: string): void {
+    try {
+      if (!this.monaco) return;
+      
+      // Регистрируем провайдер автодополнений
+      const disposable = this.monaco.languages.registerCompletionItemProvider(languageId, {
+        provideCompletionItems: async (model, position) => {
+          try {
+            // Получаем URI модели
+            const uri = model.uri.toString();
+            
+            // Проверяем, подключен ли нужный сервер
+            const serverType = this.getServerForLanguage(languageId);
+            if (!serverType || !this.isServerConnected(serverType)) {
+              console.log(`Сервер для языка ${languageId} не подключен, используем базовые автодополнения`);
+              return this.getBasicCompletionItems(languageId);
+            }
+            
+            // Получаем текущую строку текста
+            const textUntilPosition = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            });
+            
+            // Формируем запрос автодополнения для LSP сервера
+            const response = await languageServerManager.sendRequest(serverType, 'textDocument/completion', {
+              textDocument: { uri },
+              position: {
+                line: position.lineNumber - 1,
+                character: position.column - 1
+              },
+              context: {
+                triggerKind: 1, // Invoke
+                triggerCharacter: this.getLastTriggerCharacter(textUntilPosition)
+              }
+            });
+            
+            // Если получен ответ от сервера, преобразуем его в формат Monaco
+            if (response && response.items) {
+              return {
+                suggestions: this.convertCompletionItems(response.items, languageId)
+              };
+            }
+            
+            // Если от сервера нет ответа, возвращаем базовые подсказки
+            return this.getBasicCompletionItems(languageId);
+          } catch (error) {
+            console.error(`Ошибка при получении автодополнений для ${languageId}:`, error);
+            return { suggestions: [] };
+          }
+        }
+      });
+      
+      // Сохраняем disposable для последующей очистки
+      this.disposables.push(disposable);
+      console.log(`Провайдер автодополнений для ${languageId} зарегистрирован`);
+    } catch (error) {
+      console.error(`Ошибка при регистрации провайдера автодополнений для ${languageId}:`, error);
+    }
+  }
+  
+  /**
+   * Получение базовых автодополнений для языка
+   */
+  private getBasicCompletionItems(languageId: string): { suggestions: any[] } {
+    const suggestions: any[] = [];
+    
+    // Базовые предложения для разных языков
+    if (languageId === 'python') {
+      const pythonKeywords = [
+        'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+        'def', 'del', 'elif', 'else', 'except', 'exec', 'finally', 'for', 'from',
+        'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or',
+        'pass', 'print', 'raise', 'return', 'try', 'while', 'with', 'yield',
+        'match', 'case', 'True', 'False', 'None'
+      ];
+      
+      for (const keyword of pythonKeywords) {
+        suggestions.push({
+          label: keyword,
+          kind: this.monaco.languages.CompletionItemKind.Keyword,
+          insertText: keyword,
+          detail: 'Python keyword'
+        });
+      }
+    } else if (languageId === 'typescript' || languageId === 'javascript') {
+      const jsKeywords = [
+        'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+        'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
+        'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
+        'new', 'null', 'return', 'super', 'switch', 'this', 'throw',
+        'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+        'let', 'static', 'enum', 'await', 'async'
+      ];
+      
+      for (const keyword of jsKeywords) {
+        suggestions.push({
+          label: keyword,
+          kind: this.monaco.languages.CompletionItemKind.Keyword,
+          insertText: keyword,
+          detail: 'JavaScript/TypeScript keyword'
+        });
+      }
+    }
+    
+    return { suggestions };
+  }
+  
+  /**
+   * Получение последнего символа-триггера
+   */
+  private getLastTriggerCharacter(text: string): string | undefined {
+    const triggerChars = ['.', ':', '<', '"', '=', '/', '@'];
+    for (let i = text.length - 1; i >= 0; i--) {
+      if (triggerChars.includes(text[i])) {
+        return text[i];
+      }
+    }
+    return undefined;
+  }
+  
+  /**
+   * Преобразование элементов автодополнения из формата LSP в формат Monaco
+   */
+  private convertCompletionItems(items: any[], languageId: string): any[] {
+    try {
+      if (!this.monaco || !items || !Array.isArray(items)) {
+        return [];
+      }
+      
+      return items.map(item => {
+        try {
+          // Базовые поля
+          const result: any = {
+            label: item.label,
+            kind: this.convertCompletionItemKind(item.kind),
+            detail: item.detail || undefined,
+            documentation: item.documentation 
+              ? (typeof item.documentation === 'string' 
+                 ? item.documentation 
+                 : item.documentation.value)
+              : undefined,
+            insertText: item.insertText || item.label,
+            sortText: item.sortText,
+            filterText: item.filterText
+          };
+          
+          // Вставляемый фрагмент
+          if (item.insertTextFormat === 2) { // Snippet
+            result.insertTextRules = this.monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+          }
+          
+          // Дополнительные действия
+          if (item.command) {
+            result.command = {
+              id: item.command.command,
+              title: item.command.title,
+              arguments: item.command.arguments
+            };
+          }
+          
+          return result;
+        } catch (e) {
+          console.warn('Ошибка при преобразовании элемента автодополнения:', e);
+          return {
+            label: item.label || 'Неизвестный элемент',
+            kind: this.monaco.languages.CompletionItemKind.Text
+          };
+        }
+      });
+    } catch (error) {
+      console.error('Ошибка при преобразовании элементов автодополнения:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Преобразование типа элемента автодополнения из формата LSP в формат Monaco
+   */
+  private convertCompletionItemKind(kind: number): any {
+    try {
+      // По умолчанию - текст
+      if (!kind || !this.monaco) {
+        return this.monaco.languages.CompletionItemKind.Text;
+      }
+      
+      // Соответствие типов LSP и Monaco
+      const kindMap: Record<number, number> = {
+        1: this.monaco.languages.CompletionItemKind.Text,
+        2: this.monaco.languages.CompletionItemKind.Method,
+        3: this.monaco.languages.CompletionItemKind.Function,
+        4: this.monaco.languages.CompletionItemKind.Constructor,
+        5: this.monaco.languages.CompletionItemKind.Field,
+        6: this.monaco.languages.CompletionItemKind.Variable,
+        7: this.monaco.languages.CompletionItemKind.Class,
+        8: this.monaco.languages.CompletionItemKind.Interface,
+        9: this.monaco.languages.CompletionItemKind.Module,
+        10: this.monaco.languages.CompletionItemKind.Property,
+        11: this.monaco.languages.CompletionItemKind.Unit,
+        12: this.monaco.languages.CompletionItemKind.Value,
+        13: this.monaco.languages.CompletionItemKind.Enum,
+        14: this.monaco.languages.CompletionItemKind.Keyword,
+        15: this.monaco.languages.CompletionItemKind.Snippet,
+        16: this.monaco.languages.CompletionItemKind.Color,
+        17: this.monaco.languages.CompletionItemKind.File,
+        18: this.monaco.languages.CompletionItemKind.Reference,
+        19: this.monaco.languages.CompletionItemKind.Folder,
+        20: this.monaco.languages.CompletionItemKind.EnumMember,
+        21: this.monaco.languages.CompletionItemKind.Constant,
+        22: this.monaco.languages.CompletionItemKind.Struct,
+        23: this.monaco.languages.CompletionItemKind.Event,
+        24: this.monaco.languages.CompletionItemKind.Operator,
+        25: this.monaco.languages.CompletionItemKind.TypeParameter
+      };
+      
+      return kindMap[kind] || this.monaco.languages.CompletionItemKind.Text;
+    } catch (error) {
+      console.error('Ошибка при преобразовании типа элемента автодополнения:', error);
+      if (this.monaco) {
+        return this.monaco.languages.CompletionItemKind.Text;
+      }
+      return 1; // Text kind
+    }
+  }
+  
+  /**
+   * Регистрация провайдера hover для языка
+   */
+  private registerHoverProvider(languageId: string): void {
+    try {
+      if (!this.monaco) return;
+      
+      // Регистрируем провайдер hover
+      const disposable = this.monaco.languages.registerHoverProvider(languageId, {
+        provideHover: async (model, position) => {
+          try {
+            // Получаем URI модели
+            const uri = model.uri.toString();
+            
+            // Проверяем, подключен ли нужный сервер
+            const serverType = this.getServerForLanguage(languageId);
+            if (!serverType || !this.isServerConnected(serverType)) {
+              console.log(`Сервер для языка ${languageId} не подключен, используем базовый hover`);
+              return this.getBasicHoverContent(model, position, languageId);
+            }
+            
+            // Формируем запрос hover для LSP сервера
+            const response = await languageServerManager.sendRequest(serverType, 'textDocument/hover', {
+              textDocument: { uri },
+              position: {
+                line: position.lineNumber - 1,
+                character: position.column - 1
+              }
+            });
+            
+            // Если получен ответ от сервера, преобразуем его в формат Monaco
+            if (response && response.contents) {
+              return this.convertHoverContent(response, position);
+            }
+            
+            // Если от сервера нет ответа, возвращаем базовую подсказку
+            return this.getBasicHoverContent(model, position, languageId);
+          } catch (error) {
+            console.error(`Ошибка при получении hover для ${languageId}:`, error);
+            return null;
+          }
+        }
+      });
+      
+      // Сохраняем disposable для последующей очистки
+      this.disposables.push(disposable);
+      console.log(`Провайдер hover для ${languageId} зарегистрирован`);
+    } catch (error) {
+      console.error(`Ошибка при регистрации провайдера hover для ${languageId}:`, error);
+    }
+  }
+  
+  /**
+   * Получение базового содержимого hover для языка
+   */
+  private getBasicHoverContent(model: any, position: any, languageId: string): any {
+    try {
+      // Получаем слово под курсором
+      const wordInfo = model.getWordAtPosition(position);
+      if (!wordInfo) {
+        return null;
+      }
+      
+      // Получаем текст строки
+      const lineContent = model.getLineContent(position.lineNumber);
+      
+      // Формируем базовую информацию в зависимости от языка
+      let content = `**${wordInfo.word}**\n\n`;
+      
+      if (languageId === 'python') {
+        content += `Python identifier\n\nLine: ${position.lineNumber}\nColumn: ${position.column}`;
+        
+        // Определяем контекст
+        if (lineContent.includes('def ' + wordInfo.word)) {
+          content = `**${wordInfo.word}**\n\nFunction definition`;
+        } else if (lineContent.includes('class ' + wordInfo.word)) {
+          content = `**${wordInfo.word}**\n\nClass definition`;
+        } else if (lineContent.match(new RegExp(`\\b${wordInfo.word}\\s*=`))) {
+          content = `**${wordInfo.word}**\n\nVariable assignment`;
+        }
+      } else if (languageId === 'typescript' || languageId === 'javascript') {
+        content += `TypeScript/JavaScript identifier\n\nLine: ${position.lineNumber}\nColumn: ${position.column}`;
+        
+        // Определяем контекст
+        if (lineContent.includes('function ' + wordInfo.word)) {
+          content = `**${wordInfo.word}**\n\nFunction definition`;
+        } else if (lineContent.includes('class ' + wordInfo.word)) {
+          content = `**${wordInfo.word}**\n\nClass definition`;
+        } else if (lineContent.match(new RegExp(`\\b(const|let|var)\\s+${wordInfo.word}`))) {
+          content = `**${wordInfo.word}**\n\nVariable declaration`;
+        }
+      }
+      
+      return {
+        contents: [
+          { value: content }
+        ],
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: wordInfo.startColumn,
+          endLineNumber: position.lineNumber,
+          endColumn: wordInfo.endColumn
+        }
+      };
+    } catch (error) {
+      console.error('Ошибка при получении базового hover содержимого:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Преобразование содержимого hover из формата LSP в формат Monaco
+   */
+  private convertHoverContent(response: any, position: any): any {
+    try {
+      let value = '';
+      
+      // Обрабатываем различные форматы содержимого
+      if (typeof response.contents === 'string') {
+        value = response.contents;
+      } else if (response.contents.kind === 'markdown' || response.contents.kind === 'plaintext') {
+        value = response.contents.value;
+      } else if (Array.isArray(response.contents)) {
+        // Объединяем массив содержимого
+        value = response.contents.map((content: any) => {
+          if (typeof content === 'string') {
+            return content;
+          } else if (content.value) {
+            return content.value;
+          }
+          return '';
+        }).join('\n\n');
+      } else if (response.contents.value) {
+        value = response.contents.value;
+      }
+      
+      // Формируем диапазон, если он указан
+      let range = undefined;
+      if (response.range) {
+        range = {
+          startLineNumber: response.range.start.line + 1,
+          startColumn: response.range.start.character + 1,
+          endLineNumber: response.range.end.line + 1,
+          endColumn: response.range.end.character + 1
+        };
+      }
+      
+      return {
+        contents: [
+          { value }
+        ],
+        range
+      };
+    } catch (error) {
+      console.error('Ошибка при преобразовании hover содержимого:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Проверка, подключен ли сервер
+   */
+  private isServerConnected(serverType: string): boolean {
+    try {
+      return this.languageClientMap.has(serverType) && 
+             this.status.connectedServers.includes(serverType);
+    } catch (error) {
+      console.error(`Ошибка при проверке подключения сервера ${serverType}:`, error);
+      return false;
+    }
+  }
 }
 
 // Создаем и экспортируем экземпляр сервиса
-export const monacoLSPService = new MonacoLSPWrapper(); 
+export const monacoLSPService = new MonacoLSPWrapper();

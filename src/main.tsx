@@ -20,6 +20,7 @@ declare global {
       showSettings: () => void;
     };
     logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
+    updatePythonDiagnostics?: () => string;
   }
 }
 
@@ -90,6 +91,19 @@ document.addEventListener('DOMContentLoaded', async () => {
               
               if (result) {
                 console.log('Поддержка Python успешно активирована. Теперь доступны автодополнения для Python кода.');
+                
+                // Запускаем обновление диагностики для Python файлов
+                setTimeout(async () => {
+                  if (window.updatePythonDiagnostics) {
+                    console.log("Обновляем диагностику Python файлов...");
+                    try {
+                      const result = await window.updatePythonDiagnostics();
+                      console.log("Результат обновления диагностики:", result);
+                    } catch (error) {
+                      console.error("Ошибка при обновлении Python диагностики:", error);
+                    }
+                  }
+                }, 1000);
               } else {
                 console.warn('Регистрация Python не удалась. Автодополнения и подсказки для Python могут работать некорректно.');
               }

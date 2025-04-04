@@ -1,5 +1,3 @@
-
-
 /* Контейнер с затемнением фона */
 .dropdown-overlay {
     position: fixed;
@@ -57,7 +55,45 @@
     pointer-events: none;
 }
 
-/* Основные стили для LanguageDropdown */
+/* Заголовок модального окна кодировок */
+.encoding-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 15px;
+    height: 20px;
+}
+
+.encoding-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: #fff;
+    transition: all 0.3s ease;
+
+}
+
+/* Кнопка закрытия */
+.close-button {
+    background: none;
+    border: none;
+    color: #aaa;
+    transition: all 0.3s ease;
+
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+}
+
+.close-button:hover {
+    background-color: #444;
+    color: #fff;
+}
+
+/* Основные стили для EncodingDropdown */
 .dropdown-encoding {
     background: #2d2d2d;
     border: 1px solid #444;
@@ -70,15 +106,15 @@
     color: #fff;
     font-family: 'Inter', sans-serif;
     box-sizing: border-box;
+    animation: dropdownAppear 0.2s ease-out;
 }
 
-/* Список языков */
+/* Список кодировок */
 .encoding-list-container {
     flex: 1;
     overflow-y: auto;
-    width: 100%; /* Совпадает с шириной поля поиска */
-    margin-top: 12px; /* Отступ от поля поиска */
-    padding: 0; /* Убираем внутренние отступы */
+    width: 100%;
+    margin-top: 12px;
     box-sizing: border-box;
 }
 
@@ -90,18 +126,39 @@
 }
 
 .encoding-item {
-    width: calc(100% - 4px); /* Учитываем возможную тень/бордер */
+    width: calc(100% - 4px);
     margin: 4px 0;
-    padding: 5px 12px;
-    font-size: 12px;
+    padding: 8px 12px;
+    font-size: 13px;
     border-radius: 5px;
     box-sizing: border-box;
-    transition: 0.3s;
+    transition: background 0.2s ease;
     display: flex;
     cursor: pointer;
 }
+
 .encoding-item:hover {
     background: #373737;
+}
+
+.encoding-item.active {
+    background-color: #37373d;
+    color: #ffffff;
+    font-weight: 500;
+}
+
+.encoding-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+/* Сообщение, если кодировки не найдены */
+.no-results {
+    text-align: center;
+    padding: 20px;
+    color: #999;
+    font-style: italic;
 }
 
 /* Кастомный скроллбар */
@@ -138,8 +195,6 @@
 .dropdown-language {
     animation: dropdownAppear 0.2s ease-out;
 }
-
-
 
 .language-content {
     display: flex;

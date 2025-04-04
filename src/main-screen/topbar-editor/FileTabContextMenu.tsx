@@ -16,6 +16,7 @@ interface FileTabContextMenuProps {
   onCopyPath: () => Promise<void>;       // Добавлено
   onCopyRelativePath: () => Promise<void>; // Добавлено
   onOpenInExplorer: () => Promise<void>;  // Добавлено
+  isPinned: boolean;
 }
 
 
@@ -34,7 +35,8 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
   onPin,
   onCopyPath,
   onCopyRelativePath,
-  onOpenInExplorer
+  onOpenInExplorer,
+  isPinned
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,11 +86,33 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
       <div className="context-menu-divider" />
 
       <div className="context-menu-section">
-        <button onClick={onCopyPath}><span>Копировать путь</span></button>
-        <button onClick={onCopyRelativePath}><span>Копировать относительный путь</span></button>
-        <button onClick={onOpenInExplorer}><span>Открыть в проводнике</span></button>
+        <button onClick={onCopyPath}>
+          <span className="menu-item-with-icon">
+            Копировать путь
+          </span>
+        </button>
+        <button onClick={onCopyRelativePath}>
+          <span className="menu-item-with-icon">
+            Копировать относительный путь
+          </span>
+        </button>
+        <button onClick={onOpenInExplorer}>
+          <span className="menu-item-with-icon">
+            Открыть в проводнике
+          </span>
+        </button>
         <div className="context-menu-divider" />
-        <button onClick={onPin}><span>Закрепить</span></button>
+        <button onClick={onPin}>
+          {isPinned ? (
+            <span className="menu-item-with-icon">
+              Открепить
+            </span>
+          ) : (
+            <span className="menu-item-with-icon">
+              Закрепить
+            </span>
+          )}
+        </button>
       </div>
     </div>
   );

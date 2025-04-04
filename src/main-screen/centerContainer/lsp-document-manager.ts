@@ -250,50 +250,31 @@ export class LSPDocumentManager {
    * Определение языка по URI
    */
   private detectLanguageFromUri(uri: string): string {
-    if (!uri) return 'plaintext';
+    const lowerUri = uri.toLowerCase();
     
-    try {
-      // Получаем расширение файла
-      const ext = uri.split('.').pop()?.toLowerCase();
-      
-      if (!ext) return 'plaintext';
-      
-      switch (ext) {
-        case 'js': return 'javascript';
-        case 'jsx': return 'javascriptreact';
-        case 'ts': return 'typescript';
-        case 'tsx': return 'typescriptreact';
-        case 'html': 
-        case 'htm': return 'html';
-        case 'css': return 'css';
-        case 'scss': return 'scss';
-        case 'less': return 'less';
-        case 'json': return 'json';
-        case 'md': return 'markdown';
-        case 'py': return 'python';
-        case 'php': return 'php';
-        case 'rb': return 'ruby';
-        case 'java': return 'java';
-        case 'c': return 'c';
-        case 'cpp':
-        case 'cc':
-        case 'h':
-        case 'hpp': return 'cpp';
-        case 'go': return 'go';
-        case 'rs': return 'rust';
-        case 'swift': return 'swift';
-        case 'cs': return 'csharp';
-        case 'xml': return 'xml';
-        case 'yaml':
-        case 'yml': return 'yaml';
-        case 'sql': return 'sql';
-        case 'sh': return 'shell';
-        default: return 'plaintext';
-      }
-    } catch (error) {
-      console.error(`Ошибка при определении языка из URI ${uri}:`, error);
-      return 'plaintext';
-    }
+    // Проверяем расширения файлов
+    if (lowerUri.endsWith('.js')) return 'javascript';
+    if (lowerUri.endsWith('.jsx')) return 'javascriptreact';
+    if (lowerUri.endsWith('.ts')) return 'typescript';
+    if (lowerUri.endsWith('.tsx')) return 'typescriptreact';
+    if (lowerUri.endsWith('.html') || lowerUri.endsWith('.htm')) return 'html';
+    if (lowerUri.endsWith('.css')) return 'css';
+    if (lowerUri.endsWith('.scss')) return 'scss';
+    if (lowerUri.endsWith('.less')) return 'less';
+    if (lowerUri.endsWith('.json')) return 'json';
+    if (lowerUri.endsWith('.md')) return 'markdown';
+    if (lowerUri.endsWith('.xml')) return 'xml';
+    if (lowerUri.endsWith('.yaml') || lowerUri.endsWith('.yml')) return 'yaml';
+    if (lowerUri.endsWith('.py') || lowerUri.endsWith('.pyw') || lowerUri.endsWith('.pyi')) return 'python';
+    
+    // Проверка коротких имен файлов
+    const fileName = uri.substring(uri.lastIndexOf('/') + 1).toLowerCase();
+    if (fileName === 'dockerfile') return 'dockerfile';
+    if (fileName === '.gitignore') return 'plaintext';
+    if (fileName === 'package.json' || fileName === 'tsconfig.json') return 'json';
+    
+    // По умолчанию - plaintext
+    return 'plaintext';
   }
   
   /**
@@ -322,8 +303,8 @@ export class LSPDocumentManager {
    * Обновление документа
    */
   private updateDocument(uri: string, model: any): void {
-    if (!uri || !model) {
-      console.warn('Не удалось обновить документ: параметры не определены');
+    if (!uri) {
+      console.warn('Не удалось обновить документ: URI не определен');
       return;
     }
     
@@ -336,7 +317,20 @@ export class LSPDocumentManager {
       
       // Обновляем TextDocument
       try {
-        const content = model.getValue() || '';
+        // Пытаемся получить текст из модели разными способами
+        let content = '';
+        if (typeof model === 'string') {
+          content = model;
+        } else if (model && typeof model.getValue === 'function') {
+          content = model.getValue();
+        } else if (model && typeof model.content === 'string') {
+          content = model.content;
+        } else if (model && typeof model.text === 'string') {
+          content = model.text;
+        } else {
+          console.warn(`Не удалось получить содержимое из модели для ${uri}, используем пустую строку`);
+        }
+        
         documentInfo.textDocument = TextDocument.update(
           documentInfo.textDocument,
           [{ text: content }],
@@ -367,13 +361,13 @@ export class LSPDocumentManager {
   }
   
   /**
-   * Получение всех URI документов
+   * Получение списка URI всех зарегистрированных документов
    */
   public getAllDocumentUris(): string[] {
     try {
       return Array.from(this.documents.keys());
     } catch (error) {
-      console.error('Ошибка при получении URI всех документов:', error);
+      console.error('Ошибка при получении списка URI документов:', error);
       return [];
     }
   }
@@ -403,15 +397,58 @@ export class LSPDocumentManager {
    * Получение содержимого документа по URI
    */
   public getDocumentContent(uri: string): string | null {
-    if (!uri) return null;
-    
     try {
-      const documentInfo = this.documents.get(uri);
-      if (!documentInfo || !documentInfo.textDocument) return null;
+      const document = this.documents.get(uri);
+      if (!document) {
+        console.warn(`Документ с URI ${uri} не найден`);
+        return null;
+      }
       
-      return documentInfo.textDocument.getText();
+      // Проверяем моделью Monaco
+      const model = this.getModelForUri(uri);
+      if (model) {
+        try {
+          if (typeof model.getValue === 'function') {
+            return model.getValue();
+          }
+        } catch (e) {
+          console.warn(`Не удалось получить содержимое из модели для ${uri}:`, e);
+        }
+      }
+      
+      // Если не удалось получить содержимое из модели, возвращаем сохраненный контент
+      // или пустую строку, если контент не был сохранен
+      return document.content || '';
     } catch (error) {
       console.error(`Ошибка при получении содержимого документа ${uri}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Получение модели Monaco по URI документа
+   */
+  private getModelForUri(uri: string): any | null {
+    try {
+      if (!window.monaco) return null;
+      
+      const models = window.monaco.editor.getModels();
+      for (const model of models) {
+        try {
+          const modelUri = model.uri.toString();
+          if (modelUri === uri || 
+              modelUri.includes(uri) || 
+              uri.includes(modelUri.replace('file://', ''))) {
+            return model;
+          }
+        } catch (e) {
+          // Пропускаем ошибки при проверке модели
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Ошибка при получении модели для URI ${uri}:`, error);
       return null;
     }
   }
@@ -617,6 +654,10 @@ export class LSPDocumentManager {
         return ['css'];
       } else if (uri.endsWith('.json')) {
         return ['json'];
+      } else if (uri.endsWith('.py') || uri.endsWith('.pyw') || uri.endsWith('.pyi')) {
+        return ['python'];
+      } else if (languageId === 'python') {
+        return ['python'];
       }
       
       // По умолчанию возвращаем пустой массив

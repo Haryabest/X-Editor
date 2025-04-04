@@ -51,25 +51,44 @@ fn new_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
-
 #[command]
 fn open_in_explorer(path: String) {
-    let path = std::path::Path::new(&path);
+    let path_obj = std::path::Path::new(&path);
+    
+    // Определяем путь к директории
+    let dir_path = if path_obj.is_file() {
+        // Если это файл, получаем его родительскую директорию
+        path_obj.parent().unwrap_or(path_obj)
+    } else {
+        // Если это директория, используем как есть
+        path_obj
+    };
+    
+    // Логирование пути
+    println!("Открытие проводника для директории: {}", dir_path.display());
 
     if cfg!(target_os = "windows") {
-        // Для Windows открываем проводник
-        if let Err(e) = Command::new("explorer").arg(path).spawn() {
+        // Для Windows открываем проводник, указывая директорию
+        if let Err(e) = Command::new("explorer")
+            .arg(dir_path.to_str().unwrap())
+            .spawn() {
             eprintln!("Ошибка при открытии проводника: {}", e);
+        } else {
+            println!("Проводник успешно открыт на Windows");
         }
     } else if cfg!(target_os = "macos") {
         // Для macOS используем команду 'open'
-        if let Err(e) = Command::new("open").arg(path).spawn() {
+        if let Err(e) = Command::new("open").arg(dir_path).spawn() {
             eprintln!("Ошибка при открытии проводника: {}", e);
+        } else {
+            println!("Проводник успешно открыт на macOS");
         }
     } else if cfg!(target_os = "linux") {
         // Для Linux используем команду 'xdg-open'
-        if let Err(e) = Command::new("xdg-open").arg(path).spawn() {
+        if let Err(e) = Command::new("xdg-open").arg(dir_path).spawn() {
             eprintln!("Ошибка при открытии проводника: {}", e);
+        } else {
+            println!("Проводник успешно открыт на Linux");
         }
     } else {
         eprintln!("Неизвестная операционная система.");

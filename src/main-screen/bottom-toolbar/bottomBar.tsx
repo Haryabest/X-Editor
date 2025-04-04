@@ -24,7 +24,7 @@ const tooltips = {
   gitPull: "Git Pull",
   gitBranch: "Ветки Git",
   user: "Пользователь", // Добавляем тултип для логина
-  gitCommit: "Создать коммит",
+  gitCommit: "Git commit",
 };
 
 type VisibleElementKeys = keyof typeof visibleElementsInitialState;
@@ -53,10 +53,7 @@ interface GitInfo {
   status: string;
 }
 
-// Создадим компонент заглушку для EncodingDropdown
-const EncodingDropdown: React.FC = () => {
-  return <div className="encoding-dropdown">Кодировка</div>;
-};
+
 
 const visibleElementsInitialState = {
   encoding: true,
@@ -385,7 +382,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
       {activeDropdown && (
         <div className="dropdown-overlay" onClick={closeDropdown}>
           <div className="dropdown-wrapper" onClick={(e) => e.stopPropagation()}>
-            {activeDropdown === "encoding" && <EncodingDropdown />}
             {activeDropdown === "position" && <PositionDropdown />}
             {activeDropdown === "language" && <LanguageDropdown />}
             {activeDropdown === "notifications" && <NotificationsDropdown />}
@@ -491,7 +487,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
             className={`right-item ${!visibleElements.encoding ? "hidden" : ""}`}
             onMouseEnter={() => handleMouseEnter("encoding")}
             onMouseLeave={handleMouseLeave}
-            onClick={() => handleButtonClick("encoding")}
           >
             {editorInfo?.encoding || "UTF-8"}
             {visibleTooltip === "encoding" && (
