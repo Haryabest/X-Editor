@@ -984,8 +984,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
        !imageSrc && !videoSrc && (
         <p className="file-error-message">
           Файл {selectedFile.split(/[/\\]/).pop()} не поддерживается для просмотра.
-        </p>
-      )}
+            </p>
+          )}
       
       {tooltipContent && tooltipPosition && (
         <div 

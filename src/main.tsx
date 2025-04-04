@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fixTypeScriptErrors();
         
         try {
+          // Регистрируем поддержку TSX
           import('./monaco-config/register-tsx').then(module => {
             console.log('Модуль register-tsx успешно импортирован');
             if (typeof module.registerTSX === 'function') {
@@ -79,8 +80,27 @@ document.addEventListener('DOMContentLoaded', async () => {
           }).catch(error => {
             console.error('Ошибка при импорте register-tsx:', error);
           });
+          
+          // Регистрируем поддержку Python
+          import('./monaco-config/register-python').then(module => {
+            console.log('Модуль register-python успешно импортирован');
+            if (typeof module.registerPython === 'function') {
+              const result = module.registerPython();
+              console.log('Регистрация Python завершена с результатом:', result);
+              
+              if (result) {
+                console.log('Поддержка Python успешно активирована. Теперь доступны автодополнения для Python кода.');
+              } else {
+                console.warn('Регистрация Python не удалась. Автодополнения и подсказки для Python могут работать некорректно.');
+              }
+            } else {
+              console.error('Функция registerPython не найдена в импортированном модуле');
+            }
+          }).catch(error => {
+            console.error('Ошибка при импорте register-python:', error);
+          });
         } catch (error) {
-          console.error('Ошибка при импорте и выполнении register-tsx:', error);
+          console.error('Ошибка при импорте и выполнении модулей поддержки языков:', error);
         }
       } else {
         console.log('Monaco еще не доступен, повторная проверка через 1 секунду');

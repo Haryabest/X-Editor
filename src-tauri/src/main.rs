@@ -4,13 +4,14 @@
 use tauri::{Window};
 use std::process::Command;
 use std::process::{Stdio};
+use tauri::Manager;
 
+use tauri::command;
 mod commands;
 mod types;
 mod reading;
 mod modules;
 
-use tauri::Manager;
 use std::sync::Arc;
 use commands::terminal::PtyState;
 
@@ -48,6 +49,31 @@ fn new_folder(path: String) -> Result<(), String> {
     }
     
     Ok(())
+}
+
+
+#[command]
+fn open_in_explorer(path: String) {
+    let path = std::path::Path::new(&path);
+
+    if cfg!(target_os = "windows") {
+        // Для Windows открываем проводник
+        if let Err(e) = Command::new("explorer").arg(path).spawn() {
+            eprintln!("Ошибка при открытии проводника: {}", e);
+        }
+    } else if cfg!(target_os = "macos") {
+        // Для macOS используем команду 'open'
+        if let Err(e) = Command::new("open").arg(path).spawn() {
+            eprintln!("Ошибка при открытии проводника: {}", e);
+        }
+    } else if cfg!(target_os = "linux") {
+        // Для Linux используем команду 'xdg-open'
+        if let Err(e) = Command::new("xdg-open").arg(path).spawn() {
+            eprintln!("Ошибка при открытии проводника: {}", e);
+        }
+    } else {
+        eprintln!("Неизвестная операционная система.");
+    }
 }
 
 #[tauri::command]
@@ -130,6 +156,7 @@ fn main() {
             writer: Arc::new(tauri::async_runtime::Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
+            open_in_explorer,
             get_args,
             new_folder,
             create_new_file1,

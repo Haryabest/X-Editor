@@ -122,25 +122,42 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
 
   const handleCopyPath = async () => {
     if (contextMenu) {
-      await invoke('copy_to_clipboard', { text: contextMenu.filePath });
-      handleCloseContextMenu();
+      try {
+        await navigator.clipboard.writeText(contextMenu.filePath);
+        handleCloseContextMenu();
+        alert('Путь скопирован в буфер обмена');
+      } catch (err) {
+        console.error('Ошибка при копировании пути: ', err);
+      }
     }
   };
-
+  
   const handleCopyRelativePath = async () => {
     if (contextMenu) {
-      // TODO: Implement relative path calculation
-      handleCloseContextMenu();
+      const projectRoot = '/home/user/project'; // получи это динамически в будущем
+      const relativePath = contextMenu.filePath.replace(projectRoot + '/', '');
+      
+      try {
+        await navigator.clipboard.writeText(relativePath);
+        handleCloseContextMenu();
+        alert('Относительный путь скопирован в буфер обмена');
+      } catch (err) {
+        console.error('Ошибка при копировании относительного пути: ', err);
+      }
     }
   };
-
+  
   const handleOpenInExplorer = async () => {
     if (contextMenu) {
-      await invoke('open_in_explorer', { path: contextMenu.filePath });
-      handleCloseContextMenu();
+      try {
+        await invoke('open_in_explorer', { path: contextMenu.filePath });
+        handleCloseContextMenu();
+      } catch (err) {
+        console.error('Ошибка при открытии в проводнике: ', err);
+      }
     }
   };
-
+  
   const handlePin = () => {
     if (contextMenu) {
       // TODO: Implement pin/unpin logic
@@ -186,20 +203,19 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
       
       {contextMenu && (
         <FileTabContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={handleCloseContextMenu}
-          onCloseTab={handleCloseTab}
-          onCloseOthers={handleCloseOthers}
-          onCloseRight={handleCloseRight}
-          onCloseLeft={handleCloseLeft}
-          onCloseAll={handleCloseAll}
-          onCloseSaved={handleCloseSaved}
-          onCopyPath={handleCopyPath}
-          onCopyRelativePath={handleCopyRelativePath}
-          onOpenInExplorer={handleOpenInExplorer}
-          onPin={handlePin}
-        />
+                  x={contextMenu.x}
+                  y={contextMenu.y}
+                  onClose={handleCloseContextMenu}
+                  onCloseTab={handleCloseTab}
+                  onCloseOthers={handleCloseOthers}
+                  onCloseRight={handleCloseRight}
+                  onCloseLeft={handleCloseLeft}
+                  onCloseAll={handleCloseAll}
+                  onCloseSaved={handleCloseSaved}
+                  onCopyPath={handleCopyPath}
+                  onCopyRelativePath={handleCopyRelativePath}
+                  onOpenInExplorer={handleOpenInExplorer}
+                  onPin={handlePin} filePath={''} relativePath={''}        />
       )}
     </div>
   );

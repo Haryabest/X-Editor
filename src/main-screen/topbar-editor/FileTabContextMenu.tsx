@@ -1,7 +1,4 @@
-import React from 'react';
-import { 
-  X, 
-} from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 
 interface FileTabContextMenuProps {
   x: number;
@@ -13,74 +10,88 @@ interface FileTabContextMenuProps {
   onCloseLeft: () => void;
   onCloseAll: () => void;
   onCloseSaved: () => void;
-  onCopyPath: () => void;
-  onCopyRelativePath: () => void;
-  onOpenInExplorer: () => void;
+  filePath: string;
+  relativePath: string;
   onPin: () => void;
+  onCopyPath: () => Promise<void>;       // Добавлено
+  onCopyRelativePath: () => Promise<void>; // Добавлено
+  onOpenInExplorer: () => Promise<void>;  // Добавлено
 }
+
 
 const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
   x,
   y,
+  onClose,
   onCloseTab,
   onCloseOthers,
   onCloseRight,
   onCloseLeft,
   onCloseAll,
   onCloseSaved,
+  filePath,
+  relativePath,
+  onPin,
   onCopyPath,
   onCopyRelativePath,
-  onOpenInExplorer,
-  onPin
+  onOpenInExplorer
 }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
-    <div 
+    <div
+      ref={menuRef}
       className="file-tab-context-menu"
       style={{
         position: 'fixed',
         left: x,
         top: y,
-        zIndex: 1000
+        zIndex: 1000,
+        borderRadius: 10
       }}
     >
       <div className="context-menu-section">
-        <button onClick={onCloseTab}>
-          <X size={14} />
-          <span>Закрыть</span>
-        </button>
-        <button onClick={onCloseOthers}>
-          <span>Закрыть другие</span>
-        </button>
-        <button onClick={onCloseRight}>
-          <span>Закрыть справа</span>
-        </button>
-        <button onClick={onCloseLeft}>
-          <span>Закрыть слева</span>
-        </button>
-        <button onClick={onCloseAll}>
-          <span>Закрыть все</span>
-        </button>
-        <button onClick={onCloseSaved}>
-          <span>Закрыть сохраненные</span>
-        </button>
+        <button onClick={onCloseAll}><span>Закрыть все</span></button>
+        <button onClick={onCloseLeft}><span>Закрыть слева</span></button>
+        <button onClick={onCloseOthers}><span>Закрыть другие</span></button>
+        <button onClick={onCloseRight}><span>Закрыть справа</span></button>
+        <button onClick={onCloseSaved}><span>Закрыть сохранённые</span></button>
+        <button onClick={onCloseTab}><span>Закрыть</span></button>
       </div>
+
       <div className="context-menu-divider" />
+
       <div className="context-menu-section">
-        <button onClick={onCopyPath}>
-          <span>Копировать путь</span>
-        </button>
-        <button onClick={onCopyRelativePath}>
-          <span>Копировать относительный путь</span>
-        </button>
-        <button onClick={onOpenInExplorer}>
-          <span>Открыть в проводнике</span>
-        </button>
-        <button onClick={onPin}>
-          <span>Закрепить</span>
-        </button>
+        <button onClick={onCopyPath}><span>Копировать путь</span></button>
+        <button onClick={onCopyRelativePath}><span>Копировать относительный путь</span></button>
+        <button onClick={onOpenInExplorer}><span>Открыть в проводнике</span></button>
+        <div className="context-menu-divider" />
+        <button onClick={onPin}><span>Закрепить</span></button>
       </div>
     </div>
   );
 };
 
-export default FileTabContextMenu; 
+export default FileTabContextMenu;

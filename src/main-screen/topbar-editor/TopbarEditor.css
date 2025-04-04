@@ -133,20 +133,21 @@
 .context-menu-section button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  padding: 4px 6px; /* Отступы внутри кнопки */
+  border-radius: 6px; /* Закругление углов */
   width: 100%;
   background: none;
   border: none;
   color: #d4d4d4;
-  font-size: 13px;
+  font-family: "Inter";
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.3s;
 }
 
 .context-menu-section button:hover {
-  background-color: #2a2d2e;
+  background: #8b8b8b;
 }
 
 .context-menu-section button svg {
