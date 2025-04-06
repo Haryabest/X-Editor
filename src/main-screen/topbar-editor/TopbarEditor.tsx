@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { getFileIcon } from '../leftBar/fileIcons';
 import FileTabContextMenu from './FileTabContextMenu';
 import { invoke } from '@tauri-apps/api/core';
+<<<<<<< HEAD
 import { Pin } from 'lucide-react';
+=======
+import { Pin, PinOff } from 'lucide-react';
+>>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
 
 import './TopbarEditor.css';
 

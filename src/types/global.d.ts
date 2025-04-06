@@ -25,8 +25,20 @@ declare global {
       };
     };
     monaco: any;
+    terminalInstance?: {
+      clear: () => void;
+      restart: () => void;
+      showSettings: () => void;
+    };
     logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
     monacoDebug?: any;
+    updatePythonDiagnostics?: (filepath?: string) => Promise<string>;
+    pythonDiagnosticsStore?: {
+      markers: Map<string, any[]>;
+      setMarkers: (uri: string, markers: any[]) => void;
+      clearMarkers: (uri: string) => void;
+      clearAllMarkers: () => void;
+    };
   }
 }
 

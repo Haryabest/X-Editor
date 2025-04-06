@@ -89,28 +89,48 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
       <div className="context-menu-section">
         <button onClick={onCopyPath}>
           <span className="menu-item-with-icon">
+<<<<<<< HEAD
             <Copy size={14} /> Копировать путь
+=======
+            Копировать путь
+>>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
           </span>
         </button>
         <button onClick={onCopyRelativePath}>
           <span className="menu-item-with-icon">
+<<<<<<< HEAD
             <Copy size={14} /> Копировать относительный путь
+=======
+            Копировать относительный путь
+>>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
           </span>
         </button>
         <button onClick={onOpenInExplorer}>
           <span className="menu-item-with-icon">
+<<<<<<< HEAD
             <FolderOpen size={14} /> Открыть в проводнике
+=======
+            Открыть в проводнике
+>>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
           </span>
         </button>
         <div className="context-menu-divider" />
         <button onClick={onPin}>
           {isPinned ? (
             <span className="menu-item-with-icon">
+<<<<<<< HEAD
               <PinOff size={14} /> Открепить
             </span>
           ) : (
             <span className="menu-item-with-icon">
               <Pin size={14} /> Закрепить
+=======
+              Открепить
+            </span>
+          ) : (
+            <span className="menu-item-with-icon">
+              Закрепить
+>>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
             </span>
           )}
         </button>

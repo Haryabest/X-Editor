@@ -92,6 +92,13 @@ class LanguageServerManager {
       supportedLanguages: ['json']
     });
     
+    // Добавляем Python Language Server
+    this.registerServer({
+      id: 'python',
+      name: 'Python Language Server',
+      supportedLanguages: ['python']
+    });
+    
     this.isInitialized = true;
     console.log('LanguageServerManager инициализирован');
   }

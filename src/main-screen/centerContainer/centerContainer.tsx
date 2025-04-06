@@ -925,6 +925,41 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   };
 
+  // Инициализация LSP клиента
+  useEffect(() => {
+    // Проверяем, есть ли редактор и Monaco
+    if (editorRef.current && window.monaco) {
+      console.log('Инициализация LSP клиента...');
+      
+      try {
+        // Инициализируем LSP клиент
+        if (lspClientRef.current) {
+          // Вызываем initialize при первом монтировании
+          lspClientRef.current.initialize().then(() => {
+            // После инициализации устанавливаем редактор
+            lspClientRef.current.setEditor(editorRef.current);
+            
+            // Устанавливаем корневую директорию проекта
+            if (projectRoot) {
+              lspClientRef.current.setProjectRoot(projectRoot);
+            }
+            
+            // Открываем текущий файл в LSP
+            if (currentFilePath && fileContent !== null) {
+              lspClientRef.current.handleFileOpen(currentFilePath, fileContent);
+            }
+            
+            console.log('LSP клиент успешно инициализирован и подключен к серверам');
+          }).catch(error => {
+            console.error('Ошибка при инициализации LSP клиента:', error);
+          });
+        }
+      } catch (error) {
+        console.error('Ошибка при настройке LSP клиента:', error);
+      }
+    }
+  }, [editorRef.current, window.monaco]);
+
   return (
     <div className="center-container" style={style}>
       {!selectedFile && (

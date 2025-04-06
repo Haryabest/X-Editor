@@ -257,9 +257,6 @@ const Repositories: React.FC<RepositoriesProps> = ({ isVisible }) => {
       
       setLoading(false);
       
-      // Показываем сообщение об успехе
-      alert(`Репозиторий ${repo.name} успешно клонирован в ${targetPath}`);
-      
       // Отправляем событие для открытия папки в проводнике файлов
       const openFolderEvent = new CustomEvent('open-folder', { 
         detail: { 
@@ -323,7 +320,7 @@ const Repositories: React.FC<RepositoriesProps> = ({ isVisible }) => {
       <div className="repositories-content">
         <div className="header">
           <div className="title">
-            <Book size={isNarrow ? 14 : 16} />
+            <Book color="#fff" size={isNarrow ? 14 : 16} />
             <h2>{isNarrow ? 'Репозитории' : `Репозитории GitHub ${userLogin ? `(${userLogin})` : ''}`}</h2>
             {repoCount > 0 && <span className="repo-count">{repoCount}</span>}
           </div>
