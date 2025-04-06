@@ -9,7 +9,6 @@ import {
 import './LeftToolBar.css';
 import AccountMenu from './accountmenu/AccountMenu';
 import SettingsComponent from './settings/Settings';
-import Repositories from './repositories/Repositories';
 
 interface LeftToolBarProps {
   onToggleFileExplorer: () => void;

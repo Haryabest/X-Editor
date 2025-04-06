@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { Pin, PinOff, Copy, FolderOpen } from 'lucide-react';
 
 interface FileTabContextMenuProps {
   x: number;
@@ -16,6 +17,7 @@ interface FileTabContextMenuProps {
   onCopyPath: () => Promise<void>;       // Добавлено
   onCopyRelativePath: () => Promise<void>; // Добавлено
   onOpenInExplorer: () => Promise<void>;  // Добавлено
+  isPinned: boolean;
 }
 
 
@@ -34,7 +36,8 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
   onPin,
   onCopyPath,
   onCopyRelativePath,
-  onOpenInExplorer
+  onOpenInExplorer,
+  isPinned
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,11 +87,33 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
       <div className="context-menu-divider" />
 
       <div className="context-menu-section">
-        <button onClick={onCopyPath}><span>Копировать путь</span></button>
-        <button onClick={onCopyRelativePath}><span>Копировать относительный путь</span></button>
-        <button onClick={onOpenInExplorer}><span>Открыть в проводнике</span></button>
+        <button onClick={onCopyPath}>
+          <span className="menu-item-with-icon">
+            <Copy size={14} /> Копировать путь
+          </span>
+        </button>
+        <button onClick={onCopyRelativePath}>
+          <span className="menu-item-with-icon">
+            <Copy size={14} /> Копировать относительный путь
+          </span>
+        </button>
+        <button onClick={onOpenInExplorer}>
+          <span className="menu-item-with-icon">
+            <FolderOpen size={14} /> Открыть в проводнике
+          </span>
+        </button>
         <div className="context-menu-divider" />
-        <button onClick={onPin}><span>Закрепить</span></button>
+        <button onClick={onPin}>
+          {isPinned ? (
+            <span className="menu-item-with-icon">
+              <PinOff size={14} /> Открепить
+            </span>
+          ) : (
+            <span className="menu-item-with-icon">
+              <Pin size={14} /> Закрепить
+            </span>
+          )}
+        </button>
       </div>
     </div>
   );
