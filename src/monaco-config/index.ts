@@ -2251,7 +2251,7 @@ export async function setupModulePaths() {
 export async function resolveModulePath(modulePath: string): Promise<string> {
   console.log(`[resolveModulePath] Запрос на разрешение пути модуля: ${modulePath}`);
   
-  if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__?.invoke) {
+  if (typeof window.__TAURI__ !== 'undefined') {
     try {
       // Получаем корень проекта
       console.log(`[resolveModulePath] Получение корня проекта через fs_get_project_root...`);

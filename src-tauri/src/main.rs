@@ -213,6 +213,8 @@ fn main() {
             commands::fs_commands::fs_file_exists,
             commands::fs_commands::fs_resolve_module_path,
             commands::fs_commands::get_importable_files,
+            commands::fs_commands::get_npm_packages,
+            commands::fs_commands::editor_get_current_file_path,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

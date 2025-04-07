@@ -1043,18 +1043,6 @@ export function registerImportCompletionProvider(monaco: Monaco) {
             
             console.log(`[Автодополнение импортов] Найдено ${completions.length} вариантов автодополнения`);
 
-            // Если нет предложений, но это относительный путь, добавляем базовые директории
-            if (completions.length === 0 && (prefix === '../' || prefix === './')) {
-              console.log(`[Автодополнение импортов] Добавляем базовые директории для префикса: ${prefix}`);
-              
-              if (prefix === './') {
-                completions.push('./');
-                completions.push('../');
-              } else if (prefix === '../') {
-                completions.push('../');
-              }
-            }
-
             // Преобразуем в CompletionItem
             const suggestions = completions.map((completion) => {
               const isDirectory = completion.endsWith('/');

@@ -11,6 +11,7 @@ import { setupModulePaths } from './monaco-config';
 import { registerTypeScriptSupport } from './monaco-config/register-typescript';
 import { fixTypeScriptErrors } from './monaco-config/ts-error-fix';
 import { setupTypeScriptDirect } from './monaco-config/ts-config-override';
+import { registerImportCompletionProvider } from './monaco-config/import-completion'; // Импортируем провайдер автодополнения
 
 declare global {
   interface Window {
@@ -22,6 +23,7 @@ declare global {
     };
     logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
     updatePythonDiagnostics?: () => string;
+    lastActiveFilePath?: string; // Путь к последнему активному файлу
   }
 }
 
@@ -48,6 +50,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         registerTypeScriptSupport();
         setupTypeScriptDirect();
         fixTypeScriptErrors();
+        
+        // Регистрируем автодополнение импортов
+        try {
+          console.log('Регистрация провайдера автодополнения импортов...');
+          registerImportCompletionProvider(window.monaco);
+          console.log('Провайдер автодополнения импортов зарегистрирован успешно');
+        } catch (error) {
+          console.error('Ошибка при регистрации провайдера автодополнения импортов:', error);
+        }
         
         try {
           // Регистрируем поддержку TSX
