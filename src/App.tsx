@@ -625,8 +625,15 @@ function App() {
   };
 
   // Функция для конвертации UIFileItem в ExtendedFileItem
-  const convertToExtendedFileItem = (files: UIFileItem[]): ExtendedFileItem[] => {
-    return files.map(file => ({
+  const convertToExtendedFileItem = (files: UIFileItem[] | undefined): ExtendedFileItem[] => {
+    // Защита от undefined массива
+    if (!files || !Array.isArray(files)) {
+      console.warn('convertToExtendedFileItem: files is undefined or not an array');
+      return [];
+    }
+    
+    // Фильтруем undefined элементы для дополнительной защиты
+    return files.filter(file => file !== undefined).map(file => ({
       ...file,
       // Преобразование полей при необходимости
     }));
@@ -727,11 +734,11 @@ function App() {
     };
     
     // Регистрируем обработчик события
-    window.addEventListener('scan-folder', handleScanFolder as EventListener);
+    window.addEventListener('scan-folder', handleScanFolder as unknown as EventListener);
     
     // Очищаем при размонтировании
     return () => {
-      window.removeEventListener('scan-folder', handleScanFolder as EventListener);
+      window.removeEventListener('scan-folder', handleScanFolder as unknown as EventListener);
     };
   }, []);
 
@@ -769,11 +776,14 @@ function App() {
   return (
     <FontSizeContext.Provider value={{ 
       fontSize: state.editorFontSize, 
-      setFontSize: (size: number) => setState(prev => ({ ...prev, editorFontSize: size })) as unknown as Dispatch<SetStateAction<number>>
+      setFontSize: (size: React.SetStateAction<number>) => setState(prev => ({
+        ...prev, 
+        editorFontSize: typeof size === 'function' ? size(prev.editorFontSize) : size
+      }))
     }}>
     <div className="app-container">
         <TopToolbar 
-          currentFiles={state.currentFiles.map(file => ({
+          currentFiles={(state.currentFiles || []).map(file => ({
             ...file, 
             icon: file.isFolder ? 'folder' : 'file',
             isFolder: file.isFolder || false
@@ -840,13 +850,25 @@ function App() {
                 <div className="editor-container">
                   <EditorPanelContainer
                     openedFiles={convertToExtendedFileItem(state.openedFiles)}
-              activeFile={state.selectedFile}
-              setSelectedFile={handleSetSelectedFile}
-              closeFile={handleCloseFile}
+                    activeFile={state.selectedFile}
+                    setSelectedFile={handleSetSelectedFile}
+                    closeFile={handleCloseFile}
                     handleCreateFile={handleCreateFile}
                     selectedFolder={state.selectedFolder}
                     setSelectedFolder={(path) => setState(prev => ({ ...prev, selectedFolder: path }))}
-                    onEditorInfoChange={setState}
+                    onEditorInfoChange={(editorInfo) => {
+                      if (editorInfo && typeof editorInfo === 'function') {
+                        setState(editorInfo);
+                      } else {
+                        setState(prev => ({
+                          ...prev,
+                          editorInfo: {
+                            ...prev.editorInfo,
+                            ...(editorInfo?.editorInfo || {})
+                          }
+                        }));
+                      }
+                    }}
                     onIssuesChange={setState}
                     onDebugStart={handleDebugStart}
                     onSplitEditor={handleSplitEditor}
@@ -855,20 +877,48 @@ function App() {
                     setOpenedFiles={(files) => {
                       if (Array.isArray(files)) {
                         // Конвертируем ExtendedFileItem[] в UIFileItem[]
-                        const convertedFiles = files.map(file => ({
+                        const validFiles = files.filter(file => file !== undefined);
+                        const convertedFiles = validFiles.map(file => ({
                           ...file,
                           icon: file.icon || 'file' // Убедимся, что icon всегда присутствует
                         } as UIFileItem));
+                        
                         setState(prev => ({ ...prev, openedFiles: convertedFiles }));
-                      } else {
+                      } else if (typeof files === 'function') {
                         // Если это функция обновления
-                        setState(prev => ({
-                          ...prev,
-                          openedFiles: prev.openedFiles.map(file => ({
-                            ...file,
-                            icon: file.icon || 'file' // Убедимся, что icon всегда присутствует
-                          } as UIFileItem))
-                        }));
+                        setState(prev => {
+                          // Защита от undefined в openedFiles
+                          const currentFiles = prev.openedFiles || [];
+                          
+                          try {
+                            // Применяем функцию обновления
+                            const updatedFiles = files(currentFiles);
+                            
+                            // Проверяем результат
+                            if (!Array.isArray(updatedFiles)) {
+                              console.warn('setOpenedFiles: функция не вернула массив');
+                              return prev;
+                            }
+                            
+                            // Фильтруем undefined элементы и добавляем значение по умолчанию для icon
+                            const safeUpdatedFiles = updatedFiles
+                              .filter(file => file !== undefined)
+                              .map(file => ({
+                                ...file,
+                                icon: file.icon || 'file'
+                              } as UIFileItem));
+                            
+                            return {
+                              ...prev,
+                              openedFiles: safeUpdatedFiles
+                            };
+                          } catch (error) {
+                            console.error('Ошибка при обновлении открытых файлов:', error);
+                            return prev;
+                          }
+                        });
+                      } else {
+                        console.warn('setOpenedFiles: неожиданный тип аргумента', typeof files);
                       }
                     }}
                   />
@@ -891,12 +941,12 @@ function App() {
             editorInfo={{
               errors: scannerErrorCount,
               warnings: scannerWarningCount,
-              language: state.editorInfo.language,
+              language: state.editorInfo?.language || 'plaintext',
               encoding: "UTF-8",
-              cursorInfo: state.editorInfo.cursorInfo,
-              gitBranch: state.gitInfo.current_branch
+              cursorInfo: state.editorInfo?.cursorInfo || {},
+              gitBranch: state.gitInfo?.current_branch || ''
             }}
-            gitInfo={state.gitInfo} 
+            gitInfo={state.gitInfo || {}} 
             selectedFolder={state.selectedFolder}
             onGitInfoChange={handleGitInfoChange}
           />

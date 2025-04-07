@@ -209,6 +209,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editorInstance]);
 
+  // Упрощенная версия функции загрузки файла для аварийного режима
   useEffect(() => {
     const loadFileContent = async () => {
       if (selectedFile) {
@@ -216,33 +217,51 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
         try {
           if (supportedTextExtensions.includes(ext)) {
-            const content: string = await invoke('read_text_file', { path: selectedFile });
-            setFileContent(content);
-            setCode(content);
-            setImageSrc(null);
-            setVideoSrc(null);
+            console.log('АВАРИЙНЫЙ РЕЖИМ: Загрузка содержимого файла:', selectedFile);
             
-            // Уведомляем LSP об открытии файла только если инициализация LSP выполнена
-            if (monacoInstance && editorInstance && lspStatus.initialized) {
-              monacoLSPService.handleFileOpen(selectedFile, content);
+            // Загружаем содержимое файла напрямую, без дополнительной обработки
+            try {
+              const content: string = await invoke('read_text_file', { path: selectedFile });
               
-              // Устанавливаем правильный язык для текущей модели
-              const model = editorInstance.getModel();
-              if (model) {
-                correctLanguageFromExtension(selectedFile, model);
-              }
+              // Устанавливаем содержимое без задержек и дополнительных вызовов
+              setFileContent(content);
+              setCode(content);
+              setImageSrc(null);
+              setVideoSrc(null);
+              
+              console.log('АВАРИЙНЫЙ РЕЖИМ: Файл успешно загружен');
+            } catch (readError) {
+              // Приводим unknown к типу Error для получения доступа к свойству message
+              const error = readError as Error;
+              console.error('АВАРИЙНЫЙ РЕЖИМ: Ошибка чтения файла:', error);
+              setFileContent('// Ошибка при загрузке файла: ' + error.message);
+              setCode('// Ошибка при загрузке файла: ' + error.message);
             }
           } else if (supportedImageExtensions.includes(ext)) {
-            const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
-            const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
-            setImageSrc(fileUrl);
-            setFileContent(null);
-            setVideoSrc(null);
+            try {
+              const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
+              const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
+              setImageSrc(fileUrl);
+              setFileContent(null);
+              setVideoSrc(null);
+            } catch (imageError) {
+              const error = imageError as Error;
+              console.error('АВАРИЙНЫЙ РЕЖИМ: Ошибка загрузки изображения:', error);
+              setImageSrc(null);
+              setFileContent('// Ошибка при загрузке изображения: ' + error.message);
+            }
           } else if (supportedVideoExtensions.includes(ext)) {
-            const videoUrl: string = await invoke('stream_video', { path: selectedFile });
-            setVideoSrc(videoUrl);
-            setFileContent(null);
-            setImageSrc(null);
+            try {
+              const videoUrl: string = await invoke('stream_video', { path: selectedFile });
+              setVideoSrc(videoUrl);
+              setFileContent(null);
+              setImageSrc(null);
+            } catch (videoError) {
+              const error = videoError as Error;
+              console.error('АВАРИЙНЫЙ РЕЖИМ: Ошибка загрузки видео:', error);
+              setVideoSrc(null);
+              setFileContent('// Ошибка при загрузке видео: ' + error.message);
+            }
           } else if (selectedFile.startsWith('untitled-')) {
             setFileContent('');
             setCode('');
@@ -254,8 +273,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             setVideoSrc(null);
           }
         } catch (error) {
-          console.error('Error reading file:', error);
-          setFileContent(null);
+          console.error('АВАРИЙНЫЙ РЕЖИМ: Общая ошибка загрузки файла:', error);
+          setFileContent('// Ошибка загрузки файла: ' + (error as Error).message);
           setImageSrc(null);
           setVideoSrc(null);
         }
@@ -265,8 +284,13 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         setVideoSrc(null);
       }
     };
-    loadFileContent();
-  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions, lspStatus.initialized, monacoInstance, editorInstance]);
+    
+    try {
+      loadFileContent();
+    } catch (e) {
+      console.error('АВАРИЙНЫЙ РЕЖИМ: Критическая ошибка при загрузке файла:', e);
+    }
+  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions]);
 
   // Добавляем функцию для открытия папки
   const handleOpenFolder = async () => {
@@ -497,234 +521,43 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }, 100);
   }, [openedFiles, selectedFile, editorInstance, handleFileSelect]);
 
-  // Обновляем сигнатуру handleCodeChange, чтобы она принимала параметр правильного типа
-  const handleCodeChange = (newValue: string) => {
-    setCode(newValue);
-    // Notify LSP of code changes
-    if (selectedFile && lspStatus.initialized) {
-      monacoLSPService.handleFileChange(selectedFile, newValue);
-    }
-  };
-
   // Создаем адаптер для совместимости с типом OnChange из monaco-editor/react
   const handleMonacoChange: OnChange = (value) => {
     if (value !== undefined) {
-      handleCodeChange(value);
+      setCode(value);
+      // LSP уведомления полностью отключены
     }
   };
 
+  // Упрощенный handleEditorDidMount для аварийного режима
   const handleEditorDidMount = (editor: any, monaco: any) => {
-    console.log('Monaco editor mounted successfully');
-    
-    // Save references
-    internalEditorRef.current = editor;
-    internalMonacoRef.current = monaco;
-    setEditorInstance(editor);
-    setMonacoInstance(monaco);
-
-    // If external editorRef is provided, update it
-    if (editorRef && editorRef.current !== undefined) {
-      // Используем неизменяемое присваивание через доп. переменную
-      const editorRefAny = editorRef as React.MutableRefObject<any>;
-      editorRefAny.current = editor;
-    }
-
-    // Инициализация Monaco
-    initializeMonacoEditor(monaco);
-    
-    // Инициализируем сервис сканирования файлов
-    fileScannerService.initialize(monaco);
-    
-    // Если есть выбранная директория, запускаем сканирование
-    if (selectedFolder) {
-      console.log('Triggering initial folder scan for:', selectedFolder);
-      
-      // Отправляем событие для сканирования
-      window.dispatchEvent(new CustomEvent('scan-folder', { 
-        detail: { folderPath: selectedFolder } 
-      }));
-    }
-
-    // Регистрация TypeScript моделей
-    registerTypeScriptModels(monaco, editor, selectedFile || '');
-
-    // Connect to language servers
-    const connectToServers = async () => {
-      try {
-        // Здесь код для подключения к языковым серверам
-        console.log("Connecting to language servers...");
-        // В будущем можно добавить реальные подключения
-      } catch (error) {
-        console.error('Error connecting to language servers:', error);
-      }
-    };
-    
-    // Вызываем функцию подключения
-    connectToServers();
-
-    // Обработчик наведения мыши для отображения путей
-    editor.onMouseMove((e: any) => {
-      const position = editor.getPosition();
-      const model = editor.getModel();
-      if (!model) return;
-
-      const lineContent = model.getLineContent(position.lineNumber);
-      const offset = model.getOffsetAt(position);
-
-      // Очищаем предыдущий тултип
-      setTooltipContent(null);
-      setTooltipPosition(null);
-
-      // Ищем строки в кавычках
-      const stringRegex = /['"]([^'"]+)['"]/g;
-      let stringMatch;
-      while ((stringMatch = stringRegex.exec(lineContent)) !== null) {
-        const startOffset = model.getOffsetAt({
-          lineNumber: position.lineNumber,
-          column: stringMatch.index + 1
-        });
-        const endOffset = model.getOffsetAt({
-          lineNumber: position.lineNumber,
-          column: stringMatch.index + stringMatch[0].length - 1
-        });
-
-        if (offset >= startOffset && offset <= endOffset) {
-          const path = stringMatch[1];
-          if (selectedFile) {
-            resolveModulePath(path, selectedFile).then(fullPath => {
-              setTooltipContent(`module "${fullPath}"`);
-              setTooltipPosition({
-                x: e.event.clientX,
-                y: e.event.clientY
-              });
-            });
-          }
-          return;
-        }
-      }
-    });
-
-    // Добавляем подсказки для импортов
-    monaco.languages.registerCompletionItemProvider(['typescript', 'javascript', 'typescriptreact', 'javascriptreact'], {
-      provideCompletionItems: async (model: any, position: any) => {
-        const lineContent = model.getLineContent(position.lineNumber);
-        const lineUntilPosition = lineContent.substring(0, position.column - 1);
-
-        // Проверяем, что мы находимся в строке импорта
-        if (lineUntilPosition.includes('import') || lineUntilPosition.includes('require')) {
-          try {
-            const projectRoot = await invoke('get_project_root', { currentFilePath: selectedFile });
-            const suggestions = await invoke('get_import_suggestions', {
-              projectRoot,
-              currentFile: selectedFile,
-              lineContent,
-              position: {
-                line: position.lineNumber,
-                column: position.column
-              }
-            });
-
-            return {
-              suggestions: (suggestions as any[]).map((suggestion: any) => ({
-                label: suggestion.label,
-                kind: monaco.languages.CompletionItemKind.Module,
-                detail: suggestion.detail,
-                insertText: suggestion.insertText,
-                documentation: suggestion.documentation
-              }))
-            };
-                    } catch (error) {
-            console.error('Error getting import suggestions:', error);
-            return { suggestions: [] };
-          }
-        }
-
-        return { suggestions: [] };
-      }
-    });
-  };
-
-  // Функция для разрешения путей
-  const resolvePath = (currentFile: string, importPath: string): string => {
-    try {
-      if (!currentFile) return importPath;
-      
-      // Используем простую обработку путей без использования модуля path
-      const getDirectory = (path: string): string => {
-        const lastSlashIndex = path.lastIndexOf('/');
-        if (lastSlashIndex === -1) {
-          const lastBackslashIndex = path.lastIndexOf('\\');
-          return lastBackslashIndex === -1 ? '' : path.substring(0, lastBackslashIndex);
-        }
-        return path.substring(0, lastSlashIndex);
-      };
-      
-      const joinPaths = (base: string, relative: string): string => {
-        if (!base) return relative;
-        return base.endsWith('/') || base.endsWith('\\') ? `${base}${relative}` : `${base}/${relative}`;
-      };
-      
-      const workspaceRoot = getDirectory(currentFile);
-      let resolvedPath = importPath;
-
-      // Абсолютный путь
-      if (importPath.startsWith('/') || /^[A-Z]:/.test(importPath)) {
-        resolvedPath = importPath;
-      }
-      // Относительный путь
-      else if (importPath.startsWith('./') || importPath.startsWith('../')) {
-        resolvedPath = joinPaths(workspaceRoot, importPath);
-      }
-      // Путь с алиасом @
-      else if (importPath.startsWith('@/')) {
-        // Находим src директорию
-        let srcPath = workspaceRoot;
-        while (srcPath && !srcPath.endsWith('/src') && !srcPath.endsWith('\\src')) {
-          srcPath = getDirectory(srcPath);
-        }
-        if (!srcPath) srcPath = workspaceRoot;
-        resolvedPath = joinPaths(srcPath, importPath.slice(2));
-      }
-
-      return resolvedPath;
-    } catch (error) {
-      console.error('Error resolving path:', error);
-      return importPath;
-    }
-  };
-
-  /**
-   * Вызывает автодополнение в редакторе
-   * @param editor Экземпляр редактора
-   */
-  function triggerAutoCompletion(editor: any) {
-    if (!editor) {
-      console.warn('Редактор не определен для вызова автодополнения');
-      return;
-    }
+    console.log('АВАРИЙНЫЙ РЕЖИМ: Monaco editor mounted successfully');
     
     try {
-      // Проверяем наличие suggestController
-      const suggestController = editor.getContribution('editor.contrib.suggestController');
+      // Сохраняем только базовые ссылки
+      setEditorInstance(editor);
+      setMonacoInstance(monaco);
       
-      if (suggestController && typeof suggestController.triggerSuggest === 'function') {
-        console.log('Вызов автодополнения через suggestController');
-        suggestController.triggerSuggest();
-      } else {
-        console.warn('suggestController недоступен или метод triggerSuggest не является функцией');
-        // Альтернативный способ вызова автодополнения
-        editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+      // Обновляем внешнюю ссылку, если она предоставлена
+      if (editorRef && editorRef.current !== undefined) {
+        const editorRefAny = editorRef as React.MutableRefObject<any>;
+        editorRefAny.current = editor;
       }
+      
+      // Применяем только базовые настройки редактора
+      if (editor) {
+        editor.updateOptions({ 
+          fontSize: fontSize,
+          automaticLayout: true,
+          scrollBeyondLastLine: false
+        });
+      }
+      
+      console.log('АВАРИЙНЫЙ РЕЖИМ: Базовая инициализация редактора завершена');
     } catch (error) {
-      console.error('Ошибка при вызове автодополнения:', error);
-      // Резервный способ
-      try {
-        editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
-      } catch (fallbackError) {
-        console.error('Резервный способ автодополнения также не сработал:', fallbackError);
-      }
+      console.error('АВАРИЙНЫЙ РЕЖИМ: Ошибка при инициализации редактора:', error);
     }
-  }
+  };
 
   useEffect(() => {
     // Передаем текущую директорию в monacoConfig
@@ -890,48 +723,45 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     try {
       // При изменении текущего файла уведомляем LSP
       if (selectedFile && editorRef && editorRef.current && monacoInstance) {
-        const lspInstance = getMonacoLSPInstance();
-        if (lspInstance) {
-          // Определяем язык файла на основе расширения
+        // АВАРИЙНЫЙ РЕЖИМ - ТОЛЬКО МИНИМАЛЬНЫЕ ОПЕРАЦИИ
+        try {
+          // Получаем язык на основе расширения файла - простейшая операция
           const fileExtension = pathUtils.extname(selectedFile).toLowerCase();
           let languageId = 'plaintext';
           
-          // Определяем язык на основе расширения
           if (fileExtension === '.ts') languageId = 'typescript';
           else if (fileExtension === '.js') languageId = 'javascript';
           else if (fileExtension === '.tsx') languageId = 'typescriptreact';
           else if (fileExtension === '.jsx') languageId = 'javascriptreact';
+          else if (fileExtension === '.py') languageId = 'python';
           else if (fileExtension === '.html') languageId = 'html';
           else if (fileExtension === '.css') languageId = 'css';
           else if (fileExtension === '.json') languageId = 'json';
           
-          // Устанавливаем язык для модели редактора
+          // Устанавливаем язык напрямую, без дополнительных вызовов LSP
           if (editorRef.current && editorRef.current.getModel()) {
             monacoInstance.editor.setModelLanguage(editorRef.current.getModel(), languageId);
           }
           
-          // Уведомляем LSP об открытии файла
-          lspInstance.handleFileOpen(selectedFile, languageId, fileContent || code);
+          // Уведомляем LSP максимально осторожно
+          setTimeout(() => {
+            try {
+              const lspInstance = getMonacoLSPInstance();
+              if (lspInstance) {
+                lspInstance.handleFileOpen(selectedFile, fileContent || code);
+              }
+            } catch (e) {
+              // Игнорируем ошибки в аварийном режиме
+            }
+          }, 500); // Большая задержка для предотвращения блокировки UI
+        } catch (e) {
+          // Игнорируем ошибки в аварийном режиме
         }
       }
     } catch (error) {
-      console.error('Ошибка при обработке открытия файла для LSP:', error);
+      // Игнорируем ошибки в аварийном режиме
     }
-    
-    // При размонтировании компонента уведомляем LSP о закрытии файла
-    return () => {
-      try {
-        if (selectedFile) {
-          const lspInstance = getMonacoLSPInstance();
-          if (lspInstance) {
-            lspInstance.handleFileClose(selectedFile);
-                      }
-                    }
-                  } catch (error) {
-        console.error('Ошибка при обработке закрытия файла для LSP:', error);
-      }
-    };
-  }, [selectedFile, fileContent, code, editorRef, monacoInstance]);
+  }, [selectedFile]); // Вызываем только при изменении выбранного файла
 
   // Очистка ресурсов LSP при размонтировании компонента
   useEffect(() => {

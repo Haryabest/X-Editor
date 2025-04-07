@@ -12,6 +12,27 @@ import {
   isPythonDiagnosticsAvailable
 } from '../main-screen/centerContainer/python-lsp-starter';
 
+// Определение констант для Python
+const pythonKeywords = [
+  'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+  'def', 'del', 'elif', 'else', 'except', 'exec', 'finally', 'for', 'from',
+  'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or',
+  'pass', 'print', 'raise', 'return', 'try', 'while', 'with', 'yield',
+  'match', 'case', 'type', 'True', 'False', 'None'
+];
+
+const pythonBuiltins = [
+  'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
+  'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
+  'divmod', 'enumerate', 'eval', 'filter', 'float', 'format', 'frozenset',
+  'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'input',
+  'int', 'isinstance', 'issubclass', 'iter', 'len', 'list', 'locals', 'map',
+  'max', 'memoryview', 'min', 'next', 'object', 'oct', 'open', 'ord', 'pow',
+  'print', 'property', 'range', 'repr', 'reversed', 'round', 'set', 'setattr',
+  'slice', 'sorted', 'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
+  'vars', 'zip', '__import__'
+];
+
 /**
  * Регистрирует поддержку Python в Monaco Editor через LSP
  * @returns Успешность регистрации
@@ -334,7 +355,7 @@ export function registerPython(): boolean {
           setTimeout(async () => {
             await updateAllPythonDiagnostics();
           }, 2000);
-        } else {
+          } else {
           console.warn('Не удалось автоматически инициализировать Python LSP');
           
           // Повторяем попытку инициализации еще раз через 3 секунды
@@ -445,7 +466,7 @@ export function registerPython(): boolean {
               });
               
               return { suggestions };
-            } else {
+              } else {
               console.log('От Python LSP не получено предложений автодополнения, используем базовые');
             }
           } catch (lspError) {
@@ -457,33 +478,46 @@ export function registerPython(): boolean {
         } catch (error) {
           console.error('Ошибка в провайдере автодополнений Python:', error);
           return { suggestions: [] };
+          }
         }
-      }
-    });
-    
+      });
+      
     // Регистрируем провайдер hover для Python
     monaco.languages.registerHoverProvider('python', {
       provideHover: async (model: monaco.editor.ITextModel, position: monaco.Position) => {
         try {
-          // Проверяем, подключен ли LSP
-          if (!isPythonLSPConnected()) {
+          // Быстрая проверка слова под курсором
+          const wordInfo = model.getWordAtPosition(position);
+          if (!wordInfo) {
+      return null;
+    }
+    
+          // Получаем данные из редактора
+          const uri = model.uri.toString();
+          
+          // Быстрая проверка, подключен ли LSP (с таймаутом)
+          let lspConnected = false;
+          try {
+            const checkPromise = isPythonLSPConnected();
+            lspConnected = await Promise.race([
+              checkPromise,
+              new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50)) // 50мс таймаут
+            ]);
+          } catch (e) {
+            lspConnected = false;
+          }
+          
+          // Если LSP не подключен, сразу возвращаем базовую информацию
+          if (!lspConnected) {
             return getBasicHoverContent(model, position);
           }
           
-          // Получаем данные из редактора
-          const uri = model.uri.toString();
-          const wordInfo = model.getWordAtPosition(position);
-          
-          if (!wordInfo) {
-            return null;
-          }
-          
-          // Импортируем менеджер LSP серверов
-          const { languageServerManager } = await import('../main-screen/centerContainer/monaco-lsp-server-manager');
-          
-          // Запрашиваем hover у LSP
+          // Запрашиваем hover у LSP с таймаутом
           try {
-            const hoverResponse = await languageServerManager.sendRequest('python', 'textDocument/hover', {
+            const { languageServerManager } = await import('../main-screen/centerContainer/monaco-lsp-server-manager');
+            
+            // Ограничиваем запрос по времени
+            const hoverPromise = languageServerManager.sendRequest('python', 'textDocument/hover', {
               textDocument: { uri },
               position: {
                 line: position.lineNumber - 1,
@@ -491,42 +525,19 @@ export function registerPython(): boolean {
               }
             });
             
+            // Устанавливаем таймаут
+            const hoverResponse = await Promise.race([
+              hoverPromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('hover timeout')), 150))
+            ]);
+            
             if (hoverResponse && hoverResponse.contents) {
-              // Преобразуем ответ LSP в формат Monaco
-              let content = '';
-              
-              // Обрабатываем различные форматы содержимого из LSP
-              if (typeof hoverResponse.contents === 'string') {
-                content = hoverResponse.contents;
-              } else if (hoverResponse.contents.kind === 'markdown' || hoverResponse.contents.kind === 'plaintext') {
-                content = hoverResponse.contents.value;
-              } else if (Array.isArray(hoverResponse.contents)) {
-                // Объединяем массив содержимого
-                content = hoverResponse.contents.map((item: any) => {
-                  if (typeof item === 'string') {
-                    return item;
-                  } else if (item.value) {
-                    return item.value;
-                  }
-                  return '';
-                }).join('\n\n');
-              } else if (hoverResponse.contents.value) {
-                content = hoverResponse.contents.value;
-              }
-              
-              // Формируем результат hover
-              return {
-                contents: [{ value: content }],
-                range: {
-                  startLineNumber: position.lineNumber,
-                  startColumn: wordInfo.startColumn,
-                  endLineNumber: position.lineNumber,
-                  endColumn: wordInfo.endColumn
-                }
-              };
+              // Преобразуем ответ LSP в формат Monaco с ограничением размера
+              return convertLSPHoverToMonaco(hoverResponse, wordInfo, position);
             }
           } catch (lspError) {
-            console.warn('Ошибка при получении hover от LSP:', lspError);
+            // Игнорируем ошибки и таймауты
+            console.debug('Ошибка hover LSP:', lspError);
           }
           
           // Если не получили hover от LSP, используем базовый
@@ -539,8 +550,8 @@ export function registerPython(): boolean {
     });
     
     console.log('Регистрация Python в Monaco успешно завершена');
-    return true;
-  } catch (error) {
+        return true;
+        } catch (error) {
     console.error('Ошибка при регистрации Python:', error);
     return false;
   }
@@ -559,28 +570,6 @@ function getBasicCompletionItems(): { suggestions: monaco.languages.CompletionIt
     const monaco = window.monaco;
     const suggestions: monaco.languages.CompletionItem[] = [];
     
-    // Базовые ключевые слова Python
-    const pythonKeywords = [
-      'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-      'def', 'del', 'elif', 'else', 'except', 'exec', 'finally', 'for', 'from',
-      'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or',
-      'pass', 'print', 'raise', 'return', 'try', 'while', 'with', 'yield',
-      'match', 'case', 'True', 'False', 'None'
-    ];
-    
-    // Базовые встроенные функции Python
-    const builtinFunctions = [
-      'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
-      'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
-      'divmod', 'enumerate', 'eval', 'filter', 'float', 'format', 'frozenset',
-      'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'input',
-      'int', 'isinstance', 'issubclass', 'iter', 'len', 'list', 'locals', 'map',
-      'max', 'memoryview', 'min', 'next', 'object', 'oct', 'open', 'ord', 'pow',
-      'print', 'property', 'range', 'repr', 'reversed', 'round', 'set', 'setattr',
-      'slice', 'sorted', 'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
-      'vars', 'zip'
-    ];
-    
     // Добавляем ключевые слова
     for (const keyword of pythonKeywords) {
       suggestions.push({
@@ -592,7 +581,7 @@ function getBasicCompletionItems(): { suggestions: monaco.languages.CompletionIt
     }
     
     // Добавляем встроенные функции
-    for (const func of builtinFunctions) {
+    for (const func of pythonBuiltins) {
       suggestions.push({
         label: func,
         kind: monaco.languages.CompletionItemKind.Function,
@@ -680,63 +669,107 @@ function convertCompletionItemKind(lspKind: number): monaco.languages.Completion
 }
 
 /**
- * Получение базового содержимого для hover
+ * Базовое содержимое для hover в Python
  */
 function getBasicHoverContent(model: monaco.editor.ITextModel, position: monaco.Position): monaco.languages.Hover | null {
   try {
-    if (!window.monaco) {
-      console.warn('Monaco не определен при создании базового hover содержимого');
-      return null;
+    // Получение слова под курсором
+        const word = model.getWordAtPosition(position);
+        if (!word) return null;
+        
+    const wordText = word.word;
+    if (!wordText) return null;
+    
+    // Получение строки текста
+    const lineText = model.getLineContent(position.lineNumber);
+    
+    // Определение типа содержимого в зависимости от контекста
+    let hoverContent = `**${wordText}**\n\n`;
+    let contentType = 'Identifier';
+
+    // Проверяем различные паттерны Python
+    if (lineText.match(new RegExp(`\\bdef\\s+${wordText}\\b`))) {
+      contentType = 'Function';
+      hoverContent += 'Function definition';
+    } else if (lineText.match(new RegExp(`\\bclass\\s+${wordText}\\b`))) {
+      contentType = 'Class';
+      hoverContent += 'Class definition';
+    } else if (lineText.match(new RegExp(`\\b${wordText}\\s*=`))) {
+      contentType = 'Variable';
+      hoverContent += 'Variable assignment';
+    } else if (lineText.includes('import') && lineText.includes(wordText)) {
+      contentType = 'Import';
+      hoverContent += 'Module import';
+    } else if (pythonKeywords.includes(wordText)) {
+      contentType = 'Keyword';
+      hoverContent += 'Python keyword';
+    } else if (pythonBuiltins.includes(wordText)) {
+      contentType = 'Builtin';
+      hoverContent += 'Python built-in function';
+    } else {
+      hoverContent += `Python ${contentType}`;
     }
     
-    const wordInfo = model.getWordAtPosition(position);
-    if (!wordInfo) {
-      return null;
-    }
+    // Добавляем информацию о позиции
+    hoverContent += `\n\nLine: ${position.lineNumber}, Column: ${position.column}`;
     
-    const word = wordInfo.word;
-    
-    // Получаем контекст строки
-    const lineContent = model.getLineContent(position.lineNumber);
-    
-    // Определяем тип элемента по контексту
-    let elementType = 'unknown';
-    if (lineContent.includes('def ' + word)) {
-      elementType = 'function';
-    } else if (lineContent.includes('class ' + word)) {
-      elementType = 'class';
-    } else if (/\b(True|False|None)\b/.test(word)) {
-      elementType = 'constant';
-    } else if (lineContent.match(new RegExp(`\\b${word}\\s*=`))) {
-      elementType = 'variable';
-    }
-    
-    // Формируем содержимое hover
-    let content = `**${word}**\n\n`;
-    switch (elementType) {
-      case 'function':
-        content += `Функция\n\n\`\`\`python\ndef ${word}():\n    pass\n\`\`\``;
-        break;
-      case 'class':
-        content += `Класс\n\n\`\`\`python\nclass ${word}:\n    pass\n\`\`\``;
-        break;
-      case 'constant':
-        if (word === 'True' || word === 'False') {
-          content += `Константа (логическое значение)`;
-        } else if (word === 'None') {
-          content += `Константа (отсутствие значения)`;
-        } else {
-          content += `Константа`;
+    // Возвращаем объект hover
+            return {
+              contents: [
+        {
+          value: hoverContent
         }
-        break;
-      case 'variable':
-        content += `Переменная`;
-        break;
-      default:
-        content += `Идентификатор Python\n\nСтрока: ${position.lineNumber}\nПозиция: ${position.column}`;
+      ],
+      range: {
+        startLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endLineNumber: position.lineNumber,
+        endColumn: word.endColumn
+      }
+    };
+  } catch (error) {
+    console.error('Ошибка при создании hover для Python:', error);
+    return null;
+  }
+}
+
+/**
+ * Преобразование LSP hover-ответа в формат Monaco с ограничением размера
+ */
+function convertLSPHoverToMonaco(hoverResponse: any, wordInfo: any, position: monaco.Position): monaco.languages.Hover | null {
+  try {
+    // Максимальный размер содержимого
+    const MAX_CONTENT_SIZE = 2000;
+    
+    // Преобразуем ответ LSP в формат Monaco
+    let content = '';
+    
+    // Обрабатываем различные форматы содержимого из LSP
+    if (typeof hoverResponse.contents === 'string') {
+      content = hoverResponse.contents;
+    } else if (hoverResponse.contents.kind === 'markdown' || hoverResponse.contents.kind === 'plaintext') {
+      content = hoverResponse.contents.value;
+    } else if (Array.isArray(hoverResponse.contents)) {
+      // Объединяем массив содержимого
+      content = hoverResponse.contents.map((item: any) => {
+        if (typeof item === 'string') {
+          return item;
+        } else if (item.value) {
+          return item.value;
+        }
+        return '';
+      }).join('\n\n');
+    } else if (hoverResponse.contents.value) {
+      content = hoverResponse.contents.value;
     }
     
-    return {
+    // Ограничиваем размер содержимого
+    if (content.length > MAX_CONTENT_SIZE) {
+      content = content.substring(0, MAX_CONTENT_SIZE) + '...';
+    }
+    
+    // Формируем результат hover
+          return {
       contents: [{ value: content }],
       range: {
         startLineNumber: position.lineNumber,
@@ -746,7 +779,7 @@ function getBasicHoverContent(model: monaco.editor.ITextModel, position: monaco.
       }
     };
   } catch (error) {
-    console.error('Ошибка при создании базового hover содержимого:', error);
+    console.debug('Ошибка при преобразовании hover содержимого:', error);
     return null;
   }
 }
