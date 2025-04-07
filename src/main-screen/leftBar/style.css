@@ -1,326 +1,304 @@
-/* Base styles */
+/* Базовый контейнер */
 .file-manager {
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', Roboto, Oxygen, Ubuntu, Cantarell;
-    font-size: 12px;
-    color: #e8e8e8;
-    background: #252526;
-    height: calc(100vh - 50px); /* Оставляем место для заголовка */
-
-    padding: 8px;
-    user-select: none;
-    overflow-y: auto; /* Добавляем вертикальную прокрутку */
-  }
-  
-  /* Tree structure */
-  .file-tree {
-    list-style: none;
-    padding-left: 0;
-    margin: 0;
-  }
-  
-  .tree-item {
-    padding: 4px 0;
-    margin: 2px 0;
-    border-radius: 3px;
-    transition: background-color 0.2s ease;
-  }
-  
-  /* Hover effect for all items */
-  .tree-item:hover {
-    background: #2a2d2e;
-  }
-  
-  /* Directory item */
-  .directory-item {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 0px 8px;
-    margin: 2px 0;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-  
-  /* File item */
-  .file-item {
-    display: flex;
-    align-items: center;
-    padding: 0px 8px;
-    margin: 2px 0;
-    gap: 8px;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-  
-  /* Icons and chevrons */
-  .icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    margin-right: 6px;
-  }
-  
-  .icon img,
-  .icon svg {
-    width: 16px;
-    height: 16px;
-  }
-  
-  .chevron {
-    width: 20px;
-    display: inline-flex;
-    align-items: center;
-    color: #858585;
-    margin-right: 2px;
-    flex-shrink: 0;
-  }
-  
-  /* Name text */
-  .name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 2px 0;
-    flex: 1;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-  
-  /* Children container */
-  .children-container {
-    margin-left: 16px;
-    border-left: 1px solid #333;
-    padding-left: 8px;
-    margin-top: 4px;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-  
-  /* Context menu */
-  .context-menu {
-    background: #252526;
-    border: 1px solid #454545;
-    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
-    min-width: 160px;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  
-  .context-menu button {
-    color: #e8e8e8;
-    padding: 8px 16px;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-  }
-  
-  .context-menu button:hover {
-    background: #094771;
-  }
-  
-  /* Additional spacing adjustments */
-  .directory-item,
-  .file-item {
-    gap: 6px;
-  }
-  
-  .children-container {
-    margin-top: 4px;
-  }
-
-
-  .file-manager-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    background-color: #252526;
-    border-bottom: 1px solid #333;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-
-  .file-manager-header h4 {
-    margin: 0;
-    color: #d4d4d4;
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0; /* Для корректной работы text-overflow */
-  }
-
-  .header-buttons {
-    display: flex;
-    gap: 5px;
-    margin-left: 8px;
-    flex-shrink: 0; /* Предотвращаем сжатие кнопок */
-  }
-
-  .file-icons {
-    color: #858585;
-    cursor: pointer;
-    transition: color 0.3s, background-color 0.3s;
-    padding: 4px;
-    border-radius: 4px;
-    background: none;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .file-icons:hover {
-    color: #fff;
-    background-color: #575757;
-  }
-
-  .file-icons svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  /* Адаптивные стили для разных размеров */
-  @media (max-width: 300px) {
-    .file-manager-header h4 {
-      font-size: 12px;
-    }
-    
-    .header-buttons {
-      gap: 0px;
-    }
-    
-    .file-icons {
-      padding: 2px;
-    }
-  }
-
-/* Custom scrollbar styles */
-::-webkit-scrollbar {
-  width: 6px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px !important;
+  color: #cccccc;
+  background: #1e1e1e;
+  height: 100%;
+  overflow-y: auto;
+  user-select: none;
+  padding: 0;
 }
 
-::-webkit-scrollbar-track {
-  background: #252525;
-  border-radius: 3px;
+/* Заголовок */
+.file-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 8px;
+  height: 28px;
+  margin-bottom: 4px;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-/* Добавление стилей для активного файла */
-.file-item.active {
-  background-color: #094771;
-  font-weight: 500;
-  border-radius: 3px;
-}
-
-.file-item.active .name {
-  color: #ffffff;
-}
-
-/* Стили для Git-статусов файлов */
-.file-item .git-status,
-.directory-item .git-status {
-  margin-left: auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-
-/* Измененный файл */
-.file-item.modified .git-status,
-.directory-item.modified .git-status {
-  background-color: #3498db;
-}
-
-.file-item.modified .name,
-.directory-item.modified .name {
-  color: #3498db;
-}
-
-/* Новый файл */
-.file-item.added .git-status,
-.directory-item.added .git-status {
-  background-color: #2ecc71;
-}
-
-.file-item.added .name,
-.directory-item.added .name {
-  color: #2ecc71;
-}
-
-/* Удаленный файл */
-.file-item.deleted .git-status,
-.directory-item.deleted .git-status {
-  background-color: #e74c3c;
-}
-
-.file-item.deleted .name,
-.directory-item.deleted .name {
-  color: #e74c3c;
-  text-decoration: line-through;
+.file-manager-header h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #bbbbbb;
   opacity: 0.8;
 }
 
-/* Неотслеживаемый файл */
-.file-item.untracked .git-status,
-.directory-item.untracked .git-status {
-  background-color: #f39c12;
+.header-buttons {
+  display: flex;
+  gap: 4px;
 }
 
-.file-item.untracked .name,
-.directory-item.untracked .name {
-  color: #f39c12;
+.file-icons {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: #cccccc;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0;
+}
+
+.file-icons:hover {
+  background-color: #2d2d2d;
+  opacity: 1;
+}
+
+/* Основное дерево файлов */
+.file-tree {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-tree li {
+  list-style: none;
+}
+
+/* Файлы и папки */
+.directory-item, .file-item {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 11px !important;
+  line-height: 22px;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.directory-item:hover, .file-item:hover {
+  background-color: #2a2d2e;
+}
+
+.file-item.active {
+  background-color: #37373d;
+}
+
+.file-item.active .name,
+.file-item.active .icon {
+  color: #ffffff;
+}
+
+/* Иконки */
+.chevron, .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  line-height: 22px;
+  vertical-align: middle;
+}
+
+.chevron {
+  margin-right: 2px;
+}
+
+.icon {
+  margin-right: 4px;
+}
+
+/* Имя файла */
+.name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px !important;
+  line-height: 22px;
+  height: 22px;
+  vertical-align: middle;
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+}
+
+/* Вложенные элементы */
+.children-container {
+  display: none;
+  margin-left: 12px;
+  border-left: 1px dotted #383838;
+  padding-left: 3px;
+}
+
+.tree-item.expanded > .children-container {
+  display: block;
+}
+
+/* Статусы Git */
+.modified .name { color: #4b91e2; }
+.added .name { color: #73c991; }
+.deleted .name { 
+  color: #f14c4c;
+  text-decoration: line-through;
+}
+.untracked .name {
+  color: #73c991;
   font-style: italic;
 }
+.renamed .name { color: #c586c0; }
+.error .name { color: #f14c4c; }
+.warning .name { color: #cca700; }
 
-/* Переименованный файл */
-.file-item.renamed .git-status,
-.directory-item.renamed .git-status {
-  background-color: #9b59b6;
+/* Индикаторы */
+.changes-indicator,
+.error-count,
+.warning-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  margin-left: 4px;
+  font-size: 9px;
+  padding: 0 3px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.file-item.renamed .name,
-.directory-item.renamed .name {
-  color: #9b59b6;
+.changes-indicator {
+  background-color: #3c3c3c;
+  color: #cccccc;
+  border-radius: 6px;
+  min-width: 12px;
 }
 
-/* Файл с ошибками */
-.file-item.error .git-status {
-  background-color: #e74c3c;
+.issue-indicators {
+  display: flex;
+  align-items: center;
+  margin-left: 3px;
+  gap: 2px;
 }
 
-.file-item.error .name {
-  color: #e74c3c;
+.error-count {
+  background-color: rgba(241, 76, 76, 0.2);
+  color: #f14c4c;
+  border-radius: 6px;
 }
 
-/* Файл с предупреждениями */
-.file-item.warning .git-status {
-  background-color: #f39c12;
+.warning-count {
+  background-color: rgba(204, 167, 0, 0.2);
+  color: #cca700;
+  border-radius: 6px;
 }
 
-.file-item.warning .name {
-  color: #f39c12;
+/* Поле переименования */
+.inline-rename-input {
+  width: calc(100% - 12px);
+  margin: 0 4px;
+  height: 18px;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border: 1px solid #007fd4;
+  border-radius: 2px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  box-sizing: border-box;
 }
 
-/* Дополнительный маркер для директорий с измененными файлами */
-.directory-item .changes-indicator {
-  font-size: 10px;
-  background-color: #3498db;
-  color: white;
-  border-radius: 10px;
-  padding: 1px 5px;
-  margin-left: 6px;
-  font-weight: bold;
+.inline-rename-input:focus {
+  outline: none;
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4e4e4e;
+}
+
+/* Контекстное меню */
+.context-menu {
+  background-color: #252526;
+  border: 1px solid #454545;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+  padding: 6px 0;
+  min-width: 150px;
+  z-index: 1000;
+  position: absolute;
+}
+
+.context-menu button {
+  background: none;
+  border: none;
+  color: #cccccc;
+  padding: 6px 12px;
+  text-align: left;
+  width: 100%;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.context-menu button:hover {
+  background-color: #04395e;
+}
+
+/* Цвета для иконок файлов */
+.icon svg[data-file-type="js"] {
+  color: #eac31c;
+}
+
+.icon svg[data-file-type="ts"] {
+  color: #3178c6;
+}
+
+.icon svg[data-file-type="jsx"],
+.icon svg[data-file-type="tsx"] {
+  color: #61dafb;
+}
+
+.icon svg[data-file-type="html"] {
+  color: #e44d26;
+}
+
+.icon svg[data-file-type="css"] {
+  color: #42a5f5;
+}
+
+.icon svg[data-file-type="json"] {
+  color: #f6c342;
+}
+
+.icon svg[data-file-type="py"] {
+  color: #4b8bbe;
+}
+
+.icon svg[data-file-type="md"] {
+  color: #42a5f5;
+}
+
+/* Принудительно устанавливаем высоту для всех элементов */
+* {
+  box-sizing: border-box;
+}
+
+.file-tree *:not(.children-container) {
+  max-height: 22px;
 }

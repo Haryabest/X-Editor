@@ -43,8 +43,8 @@ interface BottomToolbarProps {
     gitBranch?: string;
   };
   userLogin?: string | null; // Добавляем пропс для логина
-  gitInfo: GitInfo;
-  selectedFolder: string | null;
+  gitInfo?: GitInfo;
+  selectedFolder?: string | null;
   onGitInfoChange?: (gitInfo: GitInfo) => void; // Добавляем колбэк для обновления gitInfo
 }
 
@@ -52,8 +52,6 @@ interface GitInfo {
   current_branch: string;
   status: string;
 }
-
-
 
 const visibleElementsInitialState = {
   encoding: true,
@@ -66,7 +64,7 @@ const visibleElementsInitialState = {
   user: true,
 };
 
-const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gitInfo, selectedFolder, onGitInfoChange }) => {
+const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gitInfo = { current_branch: '', status: 'none' }, selectedFolder, onGitInfoChange }) => {
   const [visibleTooltip, setVisibleTooltip] = useState<string | null>(null);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -499,7 +497,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
             onMouseLeave={handleMouseLeave}
             onClick={() => handleButtonClick("position")}
           >
-            Строка {editorInfo?.cursorInfo.line || 1} Столбец {editorInfo?.cursorInfo.column || 1} Всего {editorInfo?.cursorInfo.totalChars || 0}
+            Строка {editorInfo?.cursorInfo?.line || 1} Столбец {editorInfo?.cursorInfo?.column || 1} Всего {editorInfo?.cursorInfo?.totalChars || 0}
             {visibleTooltip === "position" && (
               <span className="tooltip">{tooltips.position}</span>
             )}
@@ -532,4 +530,4 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
   );
 };
 
-export default BottomToolbar;
+export default BottomToolbar; 

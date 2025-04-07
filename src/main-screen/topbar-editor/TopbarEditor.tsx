@@ -2,11 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getFileIcon } from '../leftBar/fileIcons';
 import FileTabContextMenu from './FileTabContextMenu';
 import { invoke } from '@tauri-apps/api/core';
-<<<<<<< HEAD
-import { Pin } from 'lucide-react';
-=======
-import { Pin, PinOff } from 'lucide-react';
->>>>>>> 4525cdb55c45b6104997e8a42ee0eb2b5d5b54aa
+import { Pin, Play, SplitSquareVertical } from 'lucide-react';
 
 import './TopbarEditor.css';
 
@@ -24,13 +20,17 @@ interface TopbarEditorProps {
   activeFile: string | null;
   setSelectedFile: (filePath: string | null) => void;
   closeFile: (filePath: string) => void;
+  onDebugStart?: (filePath: string) => void;
+  onSplitEditor?: (filePath: string) => void;
 }
 
 const TopbarEditor: React.FC<TopbarEditorProps> = ({
   openedFiles,
   activeFile,
   setSelectedFile,
-  closeFile
+  closeFile,
+  onDebugStart,
+  onSplitEditor
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -211,6 +211,19 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
     }
   };
 
+  // Обработчики для кнопок в правом углу
+  const handleDebugStartActive = () => {
+    if (activeFile && onDebugStart) {
+      onDebugStart(activeFile);
+    }
+  };
+
+  const handleSplitEditorActive = () => {
+    if (activeFile && onSplitEditor) {
+      onSplitEditor(activeFile);
+    }
+  };
+
   return (
     <div className="topbar-editor">      
       <div className="tabs-container">
@@ -253,6 +266,28 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
             </div>
           );
         })}
+      </div>
+      
+      {/* Кнопки действий справа */}
+      <div className="editor-actions">
+        {activeFile && (
+          <>
+            <button
+              className="editor-action-button"
+              onClick={handleSplitEditorActive}
+              title="Разделить редактор"
+            >
+              <SplitSquareVertical size={16} />
+            </button>
+            <button
+              className="editor-action-button"
+              onClick={handleDebugStartActive}
+              title="Запустить"
+            >
+              <Play size={16} />
+            </button>
+          </>
+        )}
       </div>
       
       {/* Строка статуса */}

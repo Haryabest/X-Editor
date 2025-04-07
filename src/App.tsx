@@ -1,25 +1,34 @@
-// @ts-nocheck
-import React, { useState, useEffect, useRef, createContext } from 'react';
+import React, { useState, useEffect, useRef, createContext, Dispatch, SetStateAction, Suspense, useCallback } from 'react';
 import { FileItem } from './types';
 import { configureMonaco } from './monaco-config/index';
 import { setCurrentProject } from './main-screen/centerContainer/monacoConfig';
 import { invoke } from '@tauri-apps/api/core';
+import { fileScannerService, IssueInfo as FileScannerIssueInfo } from './main-screen/centerContainer/fileScannerService';
+import { FontFamilyContext, DarkModeContext, FullScreenContext } from './context';
+import { useAsyncInitialization } from './hooks/useAsyncInitialization';
 
 import TopToolbar from './main-screen/top-toolbar/toolbar';
 import FileManager from './main-screen/leftBar/FileManager';
-import CenterContainer from './main-screen/centerContainer/centerContainer';
 import Terminal from './main-screen/terminal/terminal';
 import BottomToolbar from './main-screen/bottom-toolbar/bottomBar';
-import TopbarEditor from './main-screen/topbar-editor/TopbarEditor';
 import LeftToolBar from './main-screen/lefttoolbar/LeftToolBar';
 import { GitChanges } from './main-screen/lefttoolbar/GitChanges';
 import Repositories from './main-screen/lefttoolbar/repositories/Repositories';
 import AboutModal from './components/about/AboutModal';
 import DocumentationModal from './components/documentation/DocumentationModal';
+import EditorPanelContainer from './components/EditorPanelContainer';
 
 import './App.css';
 
-interface UIFileItem extends FileItem {
+export interface UIFileItem extends FileItem {
+  icon: string;
+  type?: string;
+  isDirectory?: boolean;
+  content?: string;
+}
+
+// Интерфейс для файлов в EditorPanelContainer
+export interface ExtendedFileItem extends FileItem {
   icon?: string;
   type?: string;
   isDirectory?: boolean;
@@ -44,56 +53,110 @@ interface IssueInfo {
 interface GitInfo {
   current_branch: string;
   status: string;
+  changes?: GitChange[];
+}
+
+interface GitChange {
+  path: string;
+  status: string;
 }
 
 // Create a context for sharing font size across components
-export const FontSizeContext = createContext({
+export const FontSizeContext = createContext<{
+  fontSize: number;
+  setFontSize: Dispatch<SetStateAction<number>>;
+}>({
   fontSize: 14,
   setFontSize: () => {}
 });
 
-function App() {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
-  const [terminalHeight, setTerminalHeight] = useState(200);
-  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
-  const [isTerminalVisible, setIsTerminalVisible] = useState(true);
-  const [activeLeftPanel, setActiveLeftPanel] = useState('explorer');
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
-  const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
-  const [monaco, setMonaco] = useState<any>(null);
-  const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
-  const [editorFontSize, setEditorFontSize] = useState<number>(() => {
-    const saved = localStorage.getItem('editor-font-size');
-    return saved ? parseInt(saved, 10) : 14;
-  });
-  const editorRef = useRef<{ 
+interface AppState {
+  leftPanelWidth: number;
+  terminalHeight: number;
+  isLeftPanelVisible: boolean;
+  isTerminalVisible: boolean;
+  activeLeftPanel: string;
+  selectedFolder: string | null;
+  selectedFile: string | null;
+  currentFiles: UIFileItem[];
+  openedFiles: UIFileItem[];
+  monaco: any;
+  lastOpenedFolder: string | null;
+  editorFontSize: number;
+  editorRef: React.RefObject<{ 
     selectAll: () => void; 
     deselect: () => void;
     invertSelection: () => void;
     expandSelection: () => void;
-  }>(null);
-
-  const [editorInfo, setEditorInfo] = useState({
-    errors: 0,
-    warnings: 0,
-    language: 'plaintext',
-    encoding: 'UTF-8',
+  }>;
+  editorInfo: {
+    errors: number;
+    warnings: number;
+    language: string;
+    encoding: string;
     cursorInfo: {
-      line: 1,
-      column: 1,
-      totalChars: 0
-    }
+      line: number;
+      column: number;
+      totalChars: number;
+    };
+  };
+  issues: IssueInfo[];
+  isAboutModalOpen: boolean;
+  isDocModalOpen: boolean;
+  gitInfo: GitInfo;
+  shouldRefreshFiles: boolean;
+  isSplitView: boolean;
+  secondaryFile: string | null;
+  fileIssues: FileScannerIssueInfo[];
+  totalErrors: number;
+  totalWarnings: number;
+  scanIntervalId?: NodeJS.Timeout;
+}
+
+function App() {
+  const [state, setState] = useState<AppState>({
+    leftPanelWidth: 250,
+    terminalHeight: 200,
+    isLeftPanelVisible: true,
+    isTerminalVisible: true,
+    activeLeftPanel: 'explorer',
+    selectedFolder: null,
+    selectedFile: null,
+    currentFiles: [],
+    openedFiles: [],
+    monaco: null,
+    lastOpenedFolder: null,
+    editorFontSize: (() => {
+      const saved = localStorage.getItem('editor-font-size');
+      return saved ? parseInt(saved, 10) : 14;
+    })(),
+    editorRef: React.createRef(),
+    editorInfo: {
+      errors: 0,
+      warnings: 0,
+      language: 'plaintext',
+      encoding: 'UTF-8',
+      cursorInfo: {
+        line: 1,
+        column: 1,
+        totalChars: 0
+      }
+    },
+    issues: [],
+    isAboutModalOpen: false,
+    isDocModalOpen: false,
+    gitInfo: {
+      current_branch: '---',
+      status: 'none',
+      changes: []
+    },
+    shouldRefreshFiles: false,
+    isSplitView: false,
+    secondaryFile: null,
+    fileIssues: [],
+    totalErrors: 0,
+    totalWarnings: 0,
   });
-  const [issues, setIssues] = useState<IssueInfo[]>([]);
-  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
-  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [gitInfo, setGitInfo] = useState<GitInfo>({
-    current_branch: '---',
-    status: 'none'
-  });
-  const [shouldRefreshFiles, setShouldRefreshFiles] = useState(false);
 
   const MIN_LEFT_PANEL_WIDTH = 150;
   const COLLAPSE_THRESHOLD = 50;
@@ -101,19 +164,25 @@ function App() {
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
 
+  // Добавляем состояния для результатов сканирования
+  const [fileIssuesFromScanner, setFileIssuesFromScanner] = useState<FileScannerIssueInfo[]>([]);
+  const [scannerErrorCount, setScannerErrorCount] = useState(0);
+  const [scannerWarningCount, setScannerWarningCount] = useState(0);
+  const [scanIntervalId, setScanIntervalId] = useState<NodeJS.Timeout | undefined>(undefined);
+
   // Функции для изменения масштаба
   const handleZoomIn = () => {
     console.log('App.tsx: handleZoomIn called');
-    const newFontSize = Math.min(editorFontSize + 2, 32);
-    setEditorFontSize(newFontSize);
+    const newFontSize = Math.min(state.editorFontSize + 2, 32);
+    setState(prev => ({ ...prev, editorFontSize: newFontSize }));
     localStorage.setItem('editor-font-size', newFontSize.toString());
     
     // Apply to all editors directly
     setTimeout(() => {
-      if (window.monaco && window.monaco.editor) {
-        const editors = window.monaco.editor.getEditors();
+      if (state.monaco && state.monaco.editor) {
+        const editors = state.monaco.editor.getEditors();
         if (editors.length > 0) {
-          editors.forEach(editor => {
+          editors.forEach((editor: any) => {
             editor.updateOptions({ fontSize: newFontSize });
           });
         }
@@ -123,16 +192,16 @@ function App() {
 
   const handleZoomOut = () => {
     console.log('App.tsx: handleZoomOut called');
-    const newFontSize = Math.max(editorFontSize - 2, 8);
-    setEditorFontSize(newFontSize);
+    const newFontSize = Math.max(state.editorFontSize - 2, 8);
+    setState(prev => ({ ...prev, editorFontSize: newFontSize }));
     localStorage.setItem('editor-font-size', newFontSize.toString());
     
     // Apply to all editors directly
     setTimeout(() => {
-      if (window.monaco && window.monaco.editor) {
-        const editors = window.monaco.editor.getEditors();
+      if (state.monaco && state.monaco.editor) {
+        const editors = state.monaco.editor.getEditors();
         if (editors.length > 0) {
-          editors.forEach(editor => {
+          editors.forEach((editor: any) => {
             editor.updateOptions({ fontSize: newFontSize });
           });
         }
@@ -143,15 +212,15 @@ function App() {
   const handleResetZoom = () => {
     console.log('App.tsx: handleResetZoom called');
     const defaultFontSize = 14;
-    setEditorFontSize(defaultFontSize);
+    setState(prev => ({ ...prev, editorFontSize: defaultFontSize }));
     localStorage.setItem('editor-font-size', defaultFontSize.toString());
     
     // Apply to all editors directly
     setTimeout(() => {
-      if (window.monaco && window.monaco.editor) {
-        const editors = window.monaco.editor.getEditors();
+      if (state.monaco && state.monaco.editor) {
+        const editors = state.monaco.editor.getEditors();
         if (editors.length > 0) {
-          editors.forEach(editor => {
+          editors.forEach((editor: any) => {
             editor.updateOptions({ fontSize: defaultFontSize });
           });
         }
@@ -160,16 +229,16 @@ function App() {
   };
 
   useEffect(() => {
-    if (monaco) {
-      configureMonaco(openedFiles);
+    if (state.monaco) {
+      configureMonaco(state.openedFiles);
     }
-  }, [monaco, openedFiles]);
+  }, [state.monaco, state.openedFiles]);
 
   useEffect(() => {
-    if (selectedFolder) {
-      setCurrentProject(selectedFolder);
+    if (state.selectedFolder) {
+      setCurrentProject(state.selectedFolder);
     }
-  }, [selectedFolder]);
+  }, [state.selectedFolder]);
 
   // Add global keyboard shortcuts for zooming
   useEffect(() => {
@@ -197,7 +266,10 @@ function App() {
     const checkMonaco = () => {
       if (window.monaco) {
         console.log('Monaco is now available on window');
-        setMonaco(window.monaco);
+        setState(prev => ({ ...prev, monaco: window.monaco }));
+        
+        // Инициализируем сервис сканирования
+        fileScannerService.initialize(window.monaco);
       } else {
         console.log('Monaco not yet available, retrying in 1 second');
         setTimeout(checkMonaco, 1000);
@@ -212,24 +284,16 @@ function App() {
   }, []);
 
   const handleSetSelectedFile = (filePath: string | null) => {
-    if (filePath && !openedFiles.some(file => file.path === filePath)) {
-      const file = currentFiles.find(f => f.path === filePath);
-      if (file) {
-        console.log('Adding file to openedFiles:', file);
-        setOpenedFiles(prev => [...prev, { ...file, isFolder: false, expanded: false, loaded: true }]);
-      } else {
-        console.log('File not found in currentFiles:', filePath);
-      }
-    }
-    setSelectedFile(filePath);
+    setState(prev => ({ ...prev, selectedFile: filePath }));
   };
 
   const handleCloseFile = (filePath: string) => {
-    const updatedFiles = openedFiles.filter(file => file.path !== filePath);
-    setOpenedFiles(updatedFiles);
-    if (selectedFile === filePath) {
-      setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
-    }
+    const updatedFiles = state.openedFiles.filter(file => file.path !== filePath);
+    setState(prev => ({
+      ...prev,
+      openedFiles: updatedFiles,
+      selectedFile: updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null
+    }));
   };
 
   const handleCreateFile = () => {
@@ -237,27 +301,33 @@ function App() {
       name: 'Без названия 1',
       path: `untitled-${Date.now()}`,
       isFolder: false,
+      icon: 'file', // Добавляем обязательное поле icon
+      isDirectory: false, // Исправляем с is_directory на isDirectory
     };
-    setOpenedFiles(prev => [...prev, newFile]);
-    setSelectedFile(newFile.path);
+    setState(prev => ({
+      ...prev,
+      openedFiles: [...prev.openedFiles, newFile],
+      selectedFile: newFile.path
+    }));
   };
 
   const handleHorizontalDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     e.preventDefault();
     const startX = e.clientX;
-    const startWidth = leftPanelWidth;
+    const startWidth = state.leftPanelWidth;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
       const newWidth = startWidth + delta;
 
       if (newWidth <= MIN_LEFT_PANEL_WIDTH - COLLAPSE_THRESHOLD) {
-        setIsLeftPanelVisible(false);
+        setState(prev => ({ ...prev, isLeftPanelVisible: false }));
         document.removeEventListener('mousemove', onMouseMove);
       } else {
-        setLeftPanelWidth(
-          Math.min(Math.max(MIN_LEFT_PANEL_WIDTH, newWidth), MAX_LEFT_PANEL_WIDTH)
-        );
+        setState(prev => ({
+          ...prev,
+          leftPanelWidth: Math.min(Math.max(MIN_LEFT_PANEL_WIDTH, newWidth), MAX_LEFT_PANEL_WIDTH)
+        }));
       }
     };
 
@@ -273,7 +343,7 @@ function App() {
   const handleVerticalDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     e.preventDefault();
     const startY = e.clientY;
-    const startHeight = terminalHeight;
+    const startHeight = state.terminalHeight;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = startY - moveEvent.clientY;
@@ -282,10 +352,10 @@ function App() {
       newHeight = Math.min(Math.max(newHeight, MIN_TERMINAL_HEIGHT), MAX_TERMINAL_HEIGHT);
       
       if (newHeight <= MIN_TERMINAL_HEIGHT + COLLAPSE_THRESHOLD) {
-        setIsTerminalVisible(false);
+        setState(prev => ({ ...prev, isTerminalVisible: false }));
         document.removeEventListener('mousemove', onMouseMove);
       } else {
-        setTerminalHeight(newHeight);
+        setState(prev => ({ ...prev, terminalHeight: newHeight }));
       }
     };
 
@@ -299,31 +369,31 @@ function App() {
   };
 
   const handleRestoreTerminal = () => {
-    console.log("Restoring terminal, current visibility:", isTerminalVisible);
+    console.log("Restoring terminal, current visibility:", state.isTerminalVisible);
     // Force terminal to be visible regardless of previous state
-    setIsTerminalVisible(true);
+    setState(prev => ({ ...prev, isTerminalVisible: true }));
     // Ensure terminal has a reasonable height
-    setTerminalHeight(prev => {
-      // Set terminal to at least 200px height
-      return Math.max(200, prev); 
-    });
+    setState(prev => ({
+      ...prev,
+      terminalHeight: Math.max(200, prev.terminalHeight)
+    }));
   };
 
   const handleIssueClick = (filePath: string, line: number, column: number) => {
-    if (!openedFiles.some(file => file.path === filePath)) {
-      const fileName = filePath.split(/[\\/]/).pop() || '';
-      setOpenedFiles(prev => [...prev, { name: fileName, path: filePath, isFolder: false }]);
-    }
-    
+    // Выбираем файл
     handleSetSelectedFile(filePath);
+    
+    // В будущем можно добавить логику для перехода к конкретной строке в редакторе
+    console.log(`Navigate to issue: ${filePath}:${line}:${column}`);
   };
 
   // More explicit terminal toggle function
+  // @ts-ignore - функция будет использоваться в будущем
   const toggleTerminal = () => {
-    console.log("Toggling terminal, current state:", isTerminalVisible);
-    if (isTerminalVisible) {
+    console.log("Toggling terminal, current state:", state.isTerminalVisible);
+    if (state.isTerminalVisible) {
       console.log("Hiding terminal");
-      setIsTerminalVisible(false);
+      setState(prev => ({ ...prev, isTerminalVisible: false }));
     } else {
       console.log("Showing terminal");
       handleRestoreTerminal();
@@ -333,13 +403,14 @@ function App() {
   // Explicit open terminal function
   const openTerminal = () => {
     console.log("Explicitly opening terminal");
-    if (!isTerminalVisible) {
+    if (!state.isTerminalVisible) {
       console.log("Terminal was hidden, now showing it");
     }
     handleRestoreTerminal();
   };
 
   // Function to restart terminal process
+  // @ts-ignore - функция будет использоваться в будущем
   const restartTerminalProcess = () => {
     console.log("Restarting terminal process");
     document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'restart' } }));
@@ -349,7 +420,7 @@ function App() {
   useEffect(() => {
     const handleTerminalClose = () => {
       console.log("Terminal close event received");
-      setIsTerminalVisible(false);
+      setState(prev => ({ ...prev, isTerminalVisible: false }));
     };
     
     document.addEventListener('terminal-close', handleTerminalClose);
@@ -361,73 +432,63 @@ function App() {
 
   // Listen for open-folder events
   useEffect(() => {
-    const handleOpenFolder = (event: CustomEvent) => {
-      console.log("Open folder event received", event.detail);
-      const { path } = event.detail;
+    const handleOpenFolder = (event: Event) => {
+      const customEvent = event as unknown as CustomEvent;
+      console.log("Open folder event received", customEvent.detail);
+      const { path } = customEvent.detail || {};
       
       if (path) {
         // Set the selected folder to the path provided
-        setSelectedFolder(path);
-        setActiveLeftPanel('explorer');
-        
-        // Ensure the left panel is visible
-        if (!isLeftPanelVisible) {
-          setIsLeftPanelVisible(true);
-        }
-        
-        // Save as last opened folder
-        if (setLastOpenedFolder) {
-          setLastOpenedFolder(path);
-        }
+        setState(prev => ({
+          ...prev,
+          selectedFolder: path,
+          activeLeftPanel: 'explorer',
+          isLeftPanelVisible: true,
+          lastOpenedFolder: path
+        }));
       }
     };
     
-    document.addEventListener('open-folder', handleOpenFolder as EventListener);
+    document.addEventListener('open-folder', handleOpenFolder as unknown as EventListener);
     
     return () => {
-      document.removeEventListener('open-folder', handleOpenFolder as EventListener);
+      document.removeEventListener('open-folder', handleOpenFolder as unknown as EventListener);
     };
-  }, [isLeftPanelVisible]);
+  }, [state.isLeftPanelVisible]);
 
   // Functions to open/close modals
-  const openAboutModal = () => setIsAboutModalOpen(true);
-  const closeAboutModal = () => setIsAboutModalOpen(false);
-  const openDocModal = () => setIsDocModalOpen(true);
-  const closeDocModal = () => setIsDocModalOpen(false);
+  const openAboutModal = () => setState(prev => ({ ...prev, isAboutModalOpen: true }));
+  const closeAboutModal = () => setState(prev => ({ ...prev, isAboutModalOpen: false }));
+  const openDocModal = () => setState(prev => ({ ...prev, isDocModalOpen: true }));
+  const closeDocModal = () => setState(prev => ({ ...prev, isDocModalOpen: false }));
 
   const handleViewChange = (viewName: string) => {
-    setActiveLeftPanel(viewName);
-    if (!isLeftPanelVisible) {
-      setIsLeftPanelVisible(true);
-    }
+    setState(prev => ({ ...prev, activeLeftPanel: viewName, isLeftPanelVisible: true }));
   };
 
   // Обработчик изменения Git информации
   const handleGitInfoChange = (updatedGitInfo: GitInfo) => {
     // Обновляем gitInfo в App
-    setGitInfo(updatedGitInfo);
-    
-    // Устанавливаем флаг для обновления списка файлов
-    setShouldRefreshFiles(true);
+    setState(prev => ({ ...prev, gitInfo: updatedGitInfo, shouldRefreshFiles: true }));
   };
   
   // Эффект для обновления списка файлов при смене ветки
   useEffect(() => {
-    if (shouldRefreshFiles && selectedFolder) {
+    if (state.shouldRefreshFiles && state.selectedFolder) {
       console.log('Обновляем список файлов после смены ветки');
       
       // Сбрасываем флаг
-      setShouldRefreshFiles(false);
+      setState(prev => ({ ...prev, shouldRefreshFiles: false }));
       
       // Инициируем перезагрузку списка файлов
       const refreshFiles = async () => {
         try {
           // Получаем содержимое директории напрямую через tauri
-          const files = await invoke('get_directory_tree', { path: selectedFolder });
+          const files = await invoke('get_directory_tree', { path: state.selectedFolder }) as any;
           
           // Обновляем текущие файлы
           if (files && files.children) {
-            setCurrentFiles(files.children as UIFileItem[]);
+            setState(prev => ({ ...prev, currentFiles: files.children as UIFileItem[] }));
           }
         } catch (error) {
           console.error('Ошибка при обновлении списка файлов:', error);
@@ -436,26 +497,26 @@ function App() {
       
       refreshFiles();
     }
-  }, [shouldRefreshFiles, selectedFolder]);
+  }, [state.shouldRefreshFiles, state.selectedFolder]);
 
   // Обновляем gitInfo при изменении selectedFolder
   useEffect(() => {
     const updateGitInfo = async () => {
-      if (selectedFolder) {
+      if (state.selectedFolder) {
         try {
-          const info = await invoke('get_git_info', { projectRoot: selectedFolder });
-          setGitInfo(info as GitInfo);
+          const info = await invoke('get_git_info', { projectRoot: state.selectedFolder });
+          setState(prev => ({ ...prev, gitInfo: info as GitInfo }));
         } catch (error) {
           console.error('Error getting git info:', error);
-          setGitInfo({ current_branch: '---', status: 'none' });
+          setState(prev => ({ ...prev, gitInfo: { current_branch: '---', status: 'none', changes: [] } }));
         }
       } else {
-        setGitInfo({ current_branch: '---', status: 'none' });
+        setState(prev => ({ ...prev, gitInfo: { current_branch: '---', status: 'none', changes: [] } }));
       }
     };
 
     updateGitInfo();
-  }, [selectedFolder]);
+  }, [state.selectedFolder]);
 
   // Функция для преобразования списка issues в объект для FileManager
   const getFileIssuesMap = (issues: IssueInfo[]) => {
@@ -475,121 +536,375 @@ function App() {
     return issuesMap;
   };
 
+  // Обработчик запуска отладки
+  const handleDebugStart = (filePath: string) => {
+    console.log('Запуск отладки для файла:', filePath);
+    
+    // Здесь будет логика для запуска отладки
+    // Например, отправка команды на бэкенд через Tauri
+    if (filePath) {
+      const extension = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
+      
+      // Определяем действие в зависимости от типа файла
+      let command = '';
+      let args: string[] = [];
+      
+      switch (extension) {
+        case 'js':
+        case 'ts':
+          command = 'node';
+          args = [filePath];
+          break;
+        case 'py':
+          command = 'python';
+          args = [filePath];
+          break;
+        case 'html':
+          // Для HTML файлов можно открыть в браузере
+          invoke('open_in_browser', { path: filePath });
+          return;
+        default:
+          console.log(`Отладка для файлов с расширением .${extension} не поддерживается`);
+          return;
+      }
+      
+      // Запускаем терминал, если он не открыт
+      if (!state.isTerminalVisible) {
+        setState(prev => ({ ...prev, isTerminalVisible: true }));
+      }
+      
+      // Выполняем команду в терминале
+      invoke('run_command_in_terminal', { 
+        command, 
+        args,
+        cwd: state.selectedFolder || undefined 
+      }).catch(err => {
+        console.error('Ошибка запуска команды:', err);
+      });
+    }
+  };
+  
+  // Обработчик разделения редактора
+  const handleSplitEditor = (filePath: string) => {
+    console.log(`App.tsx: Запрос на разделение редактора с файлом ${filePath}`);
+    
+    // Проверяем, не пытаемся ли мы разделить с тем же файлом, который уже активен
+    if (state.selectedFile === filePath && state.isSplitView) {
+      // Если да, то просто закрываем режим разделения
+      setState(prev => ({ ...prev, isSplitView: false, secondaryFile: null }));
+    } else {
+      // Если режим разделения уже активен, просто меняем вторичный файл
+      if (state.isSplitView) {
+        setState(prev => ({ ...prev, secondaryFile: filePath }));
+      } else {
+        // Устанавливаем режим разделенного представления и вторичный файл
+        setState(prev => ({ ...prev, isSplitView: true, secondaryFile: filePath }));
+      }
+    }
+    
+    // Определяем, есть ли файл в списке открытых
+    const fileExists = state.openedFiles.some(file => file.path === filePath);
+    console.log(`Файл ${filePath} ${fileExists ? 'найден' : 'не найден'} в списке открытых файлов`);
+    
+    // Если файл не открыт, добавляем его в список открытых файлов
+    if (!fileExists) {
+      // Получаем имя файла из пути
+      const fileName = filePath.split(/[/\\]/).pop() || '';
+      console.log(`Добавляем файл ${fileName} в список открытых файлов`);
+      
+      // Добавляем файл в список открытых
+      const newFile: UIFileItem = {
+        name: fileName, 
+        path: filePath,
+        isFolder: false,
+        icon: 'file', // добавляем обязательное свойство
+        isDirectory: false, // Исправляем с is_directory на isDirectory
+      };
+      setState(prev => ({ ...prev, openedFiles: [...prev.openedFiles, newFile] }));
+    }
+  };
+
+  // Функция для конвертации UIFileItem в ExtendedFileItem
+  const convertToExtendedFileItem = (files: UIFileItem[]): ExtendedFileItem[] => {
+    return files.map(file => ({
+      ...file,
+      // Преобразование полей при необходимости
+    }));
+  };
+
+  // Функция для сканирования папки
+  const scanFolder = async (folderPath: string) => {
+    console.log(`Scanning folder for issues: ${folderPath}`);
+    
+    try {
+      const scanResult = await fileScannerService.scanDirectory(folderPath);
+      
+      setFileIssuesFromScanner(scanResult.allIssues);
+      setScannerErrorCount(scanResult.errorCount);
+      setScannerWarningCount(scanResult.warningCount);
+      
+      console.log(`Scan completed: ${scanResult.errorCount} errors, ${scanResult.warningCount} warnings`);
+    } catch (error) {
+      console.error('Error scanning folder for issues:', error);
+    }
+  };
+
+  // Функция для планирования периодического сканирования
+  const scheduleFolderScan = (folderPath: string) => {
+    if (!folderPath) return;
+    
+    // Сканируем папку сразу
+    scanFolder(folderPath);
+    
+    // Очищаем предыдущий интервал, если он был
+    if (scanIntervalId) {
+      clearInterval(scanIntervalId);
+    }
+    
+    // Устанавливаем новый интервал для периодического сканирования
+    const intervalId = setInterval(() => {
+      // Проверяем, что выбранная папка не изменилась
+      if (state.selectedFolder === folderPath) {
+        scanFolder(folderPath);
+      } else {
+        clearInterval(intervalId);
+      }
+    }, 60000); // Сканируем каждую минуту
+    
+    setScanIntervalId(intervalId);
+  };
+
+  // Добавляем эффект для очистки интервала при размонтировании
+  useEffect(() => {
+    return () => {
+      if (scanIntervalId) {
+        clearInterval(scanIntervalId);
+      }
+    };
+  }, [scanIntervalId]);
+
+  // Обновляем функцию проверки Monaco для инициализации сканера
+  const checkMonaco = () => {
+    if (window.monaco) {
+      console.log('Monaco is now available on window');
+      setState(prev => ({ ...prev, monaco: window.monaco }));
+      
+      // Инициализируем сервис сканирования
+      fileScannerService.initialize(window.monaco);
+    } else {
+      console.log('Monaco not yet available, retrying in 1 second');
+      setTimeout(checkMonaco, 1000);
+    }
+  };
+
+  // Добавляем сканирование при изменении выбранной папки
+  useEffect(() => {
+    if (state.selectedFolder) {
+      // Запускаем сканирование при изменении выбранной папки
+      scheduleFolderScan(state.selectedFolder);
+    }
+  }, [state.selectedFolder]);
+
+  // Добавим эффект для сканирования
+  useEffect(() => {
+    // Обработчик для запуска сканирования папки
+    const handleScanFolder = async (event: CustomEvent) => {
+      const { folderPath } = event.detail || {};
+      if (folderPath) {
+        try {
+          console.log(`Scanning folder for issues: ${folderPath}`);
+          const scanResult = await fileScannerService.scanDirectory(folderPath);
+          
+          setFileIssuesFromScanner(scanResult.allIssues);
+          setScannerErrorCount(scanResult.errorCount);
+          setScannerWarningCount(scanResult.warningCount);
+          
+          console.log(`Scan completed: ${scanResult.errorCount} errors, ${scanResult.warningCount} warnings`);
+        } catch (error) {
+          console.error('Error scanning folder:', error);
+        }
+      }
+    };
+    
+    // Регистрируем обработчик события
+    window.addEventListener('scan-folder', handleScanFolder as EventListener);
+    
+    // Очищаем при размонтировании
+    return () => {
+      window.removeEventListener('scan-folder', handleScanFolder as EventListener);
+    };
+  }, []);
+
+  // Обработчик для сканирования файлов с корректной типизацией
+  const handleScanFolder = useCallback(async (event: Event) => {
+    const customEvent = event as unknown as CustomEvent;
+    const { folderPath } = customEvent.detail || {};
+    if (folderPath) {
+      try {
+        console.log(`Scanning folder for issues: ${folderPath}`);
+        const scanResult = await fileScannerService.scanDirectory(folderPath);
+        
+        setFileIssuesFromScanner(scanResult.allIssues);
+        setScannerErrorCount(scanResult.errorCount);
+        setScannerWarningCount(scanResult.warningCount);
+        
+        console.log(`Scan completed: ${scanResult.errorCount} errors, ${scanResult.warningCount} warnings`);
+      } catch (error) {
+        console.error('Error scanning folder:', error);
+      }
+    }
+  }, []);
+  
+  // Корректная типизация для addEventListener
+  useEffect(() => {
+    // Регистрируем обработчик события с корректной типизацией
+    window.addEventListener('scan-folder', handleScanFolder as unknown as EventListener);
+    
+    // Очищаем при размонтировании
+    return () => {
+      window.removeEventListener('scan-folder', handleScanFolder as unknown as EventListener);
+    };
+  }, [handleScanFolder]);
+
   return (
-    <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
-      <div className="app-container">
+    <FontSizeContext.Provider value={{ 
+      fontSize: state.editorFontSize, 
+      setFontSize: (size: number) => setState(prev => ({ ...prev, editorFontSize: size })) as unknown as Dispatch<SetStateAction<number>>
+    }}>
+    <div className="app-container">
         <TopToolbar 
-          currentFiles={currentFiles.map(file => ({
+          currentFiles={state.currentFiles.map(file => ({
             ...file, 
             icon: file.isFolder ? 'folder' : 'file',
             isFolder: file.isFolder || false
           }))} 
           setSelectedFile={handleSetSelectedFile}
-          selectedFolder={selectedFolder}
-          selectedFile={selectedFile}
+          selectedFolder={state.selectedFolder}
+          selectedFile={state.selectedFile}
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onResetZoom={handleResetZoom}
-          onSelectAll={() => editorRef.current?.selectAll()}
-          onDeselect={() => editorRef.current?.deselect()}
-          onInvertSelection={() => editorRef.current?.invertSelection()}
-          onExpandSelection={() => editorRef.current?.expandSelection()}
+          onSelectAll={() => state.editorRef.current?.selectAll()}
+          onDeselect={() => state.editorRef.current?.deselect()}
+          onInvertSelection={() => state.editorRef.current?.invertSelection()}
+          onExpandSelection={() => state.editorRef.current?.expandSelection()}
           onOpenConsole={openTerminal}
           onClearConsole={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'clear' } }))}
-          onCloseConsole={() => setIsTerminalVisible(false)}
+          onCloseConsole={() => setState(prev => ({ ...prev, isTerminalVisible: false }))}
           onConsoleSettings={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'settings' } }))}
           onOpenAboutModal={openAboutModal}
           onOpenDocModal={openDocModal}
         />
 
-        <div className="main-content">
+      <div className="main-content">
           <LeftToolBar 
-            onToggleFileExplorer={() => setIsLeftPanelVisible(!isLeftPanelVisible)} 
-            isFileExplorerOpen={isLeftPanelVisible}
+            onToggleFileExplorer={() => setState(prev => ({ ...prev, isLeftPanelVisible: !prev.isLeftPanelVisible }))} 
+            isFileExplorerOpen={state.isLeftPanelVisible}
             onChangeView={handleViewChange}
-            activeView={activeLeftPanel}
+            activeView={state.activeLeftPanel}
           />
           
           <div className="mainwindow-container">
-            {isLeftPanelVisible ? (
+        {state.isLeftPanelVisible ? (
               <div
                 className="left-panel visible"
-                style={{ width: leftPanelWidth }}
+                style={{ width: state.leftPanelWidth }}
               >
                 <div className="horizontal-resizer" onMouseDown={handleHorizontalDrag} />
-                {activeLeftPanel === 'explorer' && (
-                  <FileManager
-                    selectedFolder={selectedFolder}
-                    setSelectedFile={handleSetSelectedFile}
-                    setSelectedFolder={setSelectedFolder}
-                    setCurrentFiles={(files) => setCurrentFiles(files as unknown as UIFileItem[])}
-                    selectedFile={selectedFile}
-                    gitChanges={gitInfo.changes}
-                    fileIssues={getFileIssuesMap(issues)}
+                {state.activeLeftPanel === 'explorer' && (
+            <FileManager
+              selectedFolder={state.selectedFolder}
+              setSelectedFile={handleSetSelectedFile}
+                    setSelectedFolder={(path) => setState(prev => ({ ...prev, selectedFolder: path }))}
+                    setCurrentFiles={(files) => setState(prev => ({ ...prev, currentFiles: files as unknown as UIFileItem[] }))}
+                    selectedFile={state.selectedFile}
+                    gitChanges={state.gitInfo.changes || []}
+                    fileIssues={getFileIssuesMap(state.issues)}
                   />
                 )}
-                {activeLeftPanel === 'git' && (
-                  <GitChanges selectedFolder={selectedFolder} />
+                {state.activeLeftPanel === 'git' && (
+                  <GitChanges selectedFolder={state.selectedFolder} />
                 )}
-                {activeLeftPanel === 'repositories' && (
+                {state.activeLeftPanel === 'repositories' && (
                   <Repositories isVisible={true} />
                 )}
-              </div>
-            ) : (
-              <button className="restore-button left" onClick={() => setIsLeftPanelVisible(true)}>
-                ➤
-              </button>
-            )}
+          </div>
+        ) : (
+          <button className="restore-button left" onClick={() => setState(prev => ({ ...prev, isLeftPanelVisible: true }))}>
+            ➤
+          </button>
+        )}
 
-            <div className="center-and-terminal">
+        <div className="center-and-terminal">
               <div className="monaco-editor-container">
                 <div className="editor-container">
-                  {openedFiles.length > 0 && (
-                    <TopbarEditor
-                      openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
-                      activeFile={selectedFile}
-                      setSelectedFile={handleSetSelectedFile}
-                      closeFile={handleCloseFile}
-                    />
-                  )}
-                  <CenterContainer
-                    editorRef={editorRef}
-                    selectedFile={selectedFile}
-                    openedFiles={openedFiles}
-                    setOpenedFiles={setOpenedFiles}
+                  <EditorPanelContainer
+                    openedFiles={convertToExtendedFileItem(state.openedFiles)}
+              activeFile={state.selectedFile}
+              setSelectedFile={handleSetSelectedFile}
+              closeFile={handleCloseFile}
                     handleCreateFile={handleCreateFile}
-                    setSelectedFolder={setSelectedFolder}
-                    selectedFolder={selectedFolder}
-                    onEditorInfoChange={setEditorInfo}
-                    onIssuesChange={setIssues}
-                    handleFileSelect={setSelectedFile}
-                    onSelectAll={() => editorRef.current?.selectAll()}
-                    onDeselect={() => editorRef.current?.deselect()}
+                    selectedFolder={state.selectedFolder}
+                    setSelectedFolder={(path) => setState(prev => ({ ...prev, selectedFolder: path }))}
+                    onEditorInfoChange={setState}
+                    onIssuesChange={setState}
+                    onDebugStart={handleDebugStart}
+                    onSplitEditor={handleSplitEditor}
+                    isSplitView={state.isSplitView}
+                    secondaryFile={state.secondaryFile}
+                    setOpenedFiles={(files) => {
+                      if (Array.isArray(files)) {
+                        // Конвертируем ExtendedFileItem[] в UIFileItem[]
+                        const convertedFiles = files.map(file => ({
+                          ...file,
+                          icon: file.icon || 'file' // Убедимся, что icon всегда присутствует
+                        } as UIFileItem));
+                        setState(prev => ({ ...prev, openedFiles: convertedFiles }));
+                      } else {
+                        // Если это функция обновления
+                        setState(prev => ({
+                          ...prev,
+                          openedFiles: prev.openedFiles.map(file => ({
+                            ...file,
+                            icon: file.icon || 'file' // Убедимся, что icon всегда присутствует
+                          } as UIFileItem))
+                        }));
+                      }
+                    }}
                   />
                 </div>
-                {isTerminalVisible && (
+                {state.isTerminalVisible && (
                   <Terminal 
-                    height={terminalHeight}
-                    selectedFolder={selectedFolder}
-                    issues={issues}
+                    terminalHeight={state.terminalHeight}
+                    selectedFolder={state.selectedFolder}
+                    issues={fileIssuesFromScanner}
                     onIssueClick={handleIssueClick}
                   />
                 )}
-              </div>
+          </div>
             </div>
           </div>
         </div>
 
-        <BottomToolbar 
-          editorInfo={editorInfo}
-          gitInfo={gitInfo} 
-          selectedFolder={selectedFolder}
-          onGitInfoChange={handleGitInfoChange}
-        />
+        <div className="bottom-section-container">
+          <BottomToolbar
+            editorInfo={{
+              errors: scannerErrorCount,
+              warnings: scannerWarningCount,
+              language: state.editorInfo.language,
+              encoding: "UTF-8",
+              cursorInfo: state.editorInfo.cursorInfo,
+              gitBranch: state.gitInfo.current_branch
+            }}
+            gitInfo={state.gitInfo} 
+            selectedFolder={state.selectedFolder}
+            onGitInfoChange={handleGitInfoChange}
+          />
+        </div>
         
         {/* Modal components */}
-        <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
-        <DocumentationModal isOpen={isDocModalOpen} onClose={closeDocModal} />
+        <AboutModal isOpen={state.isAboutModalOpen} onClose={closeAboutModal} />
+        <DocumentationModal isOpen={state.isDocModalOpen} onClose={closeDocModal} />
       </div>
     </FontSizeContext.Provider>
   );

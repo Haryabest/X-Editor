@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::fs;
 use std::process::Command;
-use std::env;
+use std::env::{self};
+use std::fs;
+use std::collections::HashSet;
 
 #[tauri::command]
 pub fn tauri_current_dir() -> Result<String, String> {
@@ -98,9 +99,8 @@ pub fn get_import_suggestions(
     project_root: &str,
     current_file: &str,
     line_content: &str,
-    position: serde_json::Value,
+    _position: serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, String> {
-    use std::path::{Path, PathBuf};
     use std::fs;
     
     let mut suggestions = Vec::new();
@@ -315,4 +315,41 @@ pub fn git_command(project_root: &str, command: &str, args: Vec<String>) -> Resu
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         Err(format!("Ошибка git команды: {}", stderr))
     }
+}
+
+#[tauri::command]
+pub fn get_all_files_in_directory(directory: String) -> Result<Vec<String>, String> {
+    let mut files = Vec::new();
+    let dir_path = Path::new(&directory);
+    
+    if !dir_path.exists() {
+        return Err(format!("Директория не существует: {}", directory));
+    }
+    
+    if !dir_path.is_dir() {
+        return Err(format!("Путь не является директорией: {}", directory));
+    }
+    
+    // Рекурсивный обход директории
+    collect_files_recursively(dir_path, &mut files)?;
+    
+    Ok(files)
+}
+
+fn collect_files_recursively(dir_path: &Path, files: &mut Vec<String>) -> Result<(), String> {
+    for entry in fs::read_dir(dir_path).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        
+        if path.is_file() {
+            if let Some(path_str) = path.to_str() {
+                files.push(path_str.to_string());
+            }
+        } else if path.is_dir() {
+            // Рекурсивно обрабатываем поддиректории
+            collect_files_recursively(&path, files)?;
+        }
+    }
+    
+    Ok(())
 } 

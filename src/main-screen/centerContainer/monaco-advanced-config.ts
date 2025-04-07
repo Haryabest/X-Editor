@@ -1,23 +1,22 @@
-// @ts-nocheck
 /**
  * Универсальная конфигурация Monaco Editor с поддержкой всех языков и улучшенной подсветкой.
  */
 
 // Вспомогательные функции для обработки путей без использования модуля path
 const pathUtils = {
-  extname: (filePath) => {
+  extname: (filePath: string) => {
     const lastDotIndex = filePath.lastIndexOf('.');
     return lastDotIndex !== -1 ? filePath.slice(lastDotIndex) : '';
   },
-  basename: (filePath) => {
+  basename: (filePath: string) => {
     const lastSlashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     return lastSlashIndex !== -1 ? filePath.slice(lastSlashIndex + 1) : filePath;
   },
-  dirname: (filePath) => {
+  dirname: (filePath: string) => {
     const lastSlashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     return lastSlashIndex !== -1 ? filePath.slice(0, lastSlashIndex) : '';
   },
-  join: (...parts) => {
+  join: (...parts: string[]) => {
     return parts.filter(Boolean).join('/').replace(/\/+/g, '/');
   }
 };
@@ -294,8 +293,14 @@ const configureTypeScript = (monaco: any) => {
     // Простой провайдер автодополнения для TSX
     monaco.languages.registerCompletionItemProvider('typescriptreact', {
       triggerCharacters: ['<', '.', ':', '"', "'", '/', '@', '{'],
-      provideCompletionItems: function(model, position) {
-        const suggestions = [];
+      provideCompletionItems: function(model: any, position: any) {
+        const suggestions: Array<{
+          label: string;
+          kind: any;
+          documentation: string;
+          insertText: string;
+          range: any;
+        }> = [];
         const wordToReplace = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
@@ -605,7 +610,7 @@ export const registerFileInMonaco = (monaco: any, filePath: string, content: str
  * Инициализирует продвинутую конфигурацию редактора Monaco
  * @param monaco Экземпляр monaco-editor
  */
-export function initializeMonacoEditor(monaco) {
+export function initializeMonacoEditor(monaco: any) {
   if (!monaco) {
     console.error('Monaco instance is undefined');
     return;
@@ -631,7 +636,7 @@ export function initializeMonacoEditor(monaco) {
  * Регистрирует цветовые схемы для различных языков
  * @param monaco Экземпляр monaco-editor
  */
-function registerLanguageThemes(monaco) {
+function registerLanguageThemes(monaco: any) {
   try {
     // Проверяем наличие необходимых методов
     if (!monaco || !monaco.languages || !monaco.languages.registerTokensProviderFactory) {
@@ -652,7 +657,7 @@ function registerLanguageThemes(monaco) {
  * Улучшает подсветку синтаксиса для JSX/TSX
  * @param monaco Экземпляр monaco-editor
  */
-function enhanceTsxSyntaxHighlighting(monaco) {
+function enhanceTsxSyntaxHighlighting(monaco: any) {
   try {
     // Проверка наличия необходимых API
     if (!monaco?.languages || !monaco.languages.setMonarchTokensProvider) {

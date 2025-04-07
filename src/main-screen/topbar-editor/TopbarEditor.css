@@ -4,6 +4,7 @@
   flex-direction: column;
   background: #1e1e1e;
   border-bottom: 1px solid #3d3d3d;
+  width: 100%;
 }
 
 .tabs-container {
@@ -15,6 +16,7 @@
   padding: 0 8px;
   gap: 2px;
   position: relative;
+  flex: 1;
 }
 
 .tabs-container::-webkit-scrollbar {
@@ -84,6 +86,43 @@
   white-space: nowrap;
 }
 
+.tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tab-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  color: #8c8c8c;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.tab:hover .tab-action-button {
+  opacity: 1;
+}
+
+.tab-action-button:hover {
+  background: #3d3d3d;
+  color: #ffffff;
+}
+
+.tab-action-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Закрытие таба */
 .close-tab {
   display: flex;
   align-items: center;
@@ -217,4 +256,43 @@
 
 .rotate-180 {
   transform: rotate(180deg);
+}
+
+/* Кнопки действий справа */
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 35px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  margin-left: auto;
+  background-color: #1e1e1e;
+  z-index: 10;
+}
+
+.editor-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  color: #8c8c8c;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.editor-action-button:hover {
+  background-color: #3d3d3d;
+  color: #ffffff;
+}
+
+.editor-action-button:active {
+  background-color: #505050;
 }

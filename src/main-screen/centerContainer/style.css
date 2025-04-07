@@ -1,8 +1,10 @@
 .center-container {
-  position: relative;
+  flex: 1;
   height: 100%;
-  width: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   background-color: #1e1e1e;
   color: #d4d4d4;
 }
@@ -10,66 +12,54 @@
 .welcome-message {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   height: 100%;
   text-align: center;
-  padding: 20px;
+  padding: 2rem;
+  color: #ccc;
 }
 
 .welcome-message h2 {
-  font-size: 2rem;
   margin-bottom: 1rem;
-  color: #f0f0f0;
+  font-weight: 300;
 }
 
 .welcome-message p {
   margin-bottom: 2rem;
-  font-size: 1.1rem;
-  color: #a0a0a0;
+  font-size: 0.9rem;
+  max-width: 500px;
 }
 
 .welcome-buttons {
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
+  gap: 1rem;
 }
 
-.welcome-message button {
-  background-color: #0e639c;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
+.welcome-buttons button {
+  padding: 0.5rem 1rem;
+  background-color: #2d2d2d;
+  border: 1px solid #3d3d3d;
+  color: #fff;
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 14px;
   transition: background-color 0.2s;
 }
 
-.welcome-message button:hover {
-  background-color: #1177bb;
+.welcome-buttons button:hover {
+  background-color: #3d3d3d;
 }
 
-.welcome-message button:active {
-  background-color: #0b5086;
-}
-
-.welcome-message button:disabled {
-  background-color: #555;
+.welcome-buttons button:disabled {
+  background-color: #1e1e1e;
+  color: #666;
   cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .file-error-message {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  font-size: 16px;
-  color: #e74c3c;
+  padding: 1rem;
+  color: #ff6b6b;
   text-align: center;
-  padding: 20px;
 }
 
 /* Стили для редактора */
@@ -275,5 +265,100 @@ img {
   transform: rotate(45deg);
   border-left: 1px solid #3d3d3d;
   border-top: 1px solid #3d3d3d;
+}
+
+/* Стили для разделенного редактора */
+.editor-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.editor-wrapper.split-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.editor-pane {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-pane.primary-pane {
+  min-width: 40%;
+}
+
+.editor-pane.secondary-pane {
+  max-width: 60%;
+  border-left: 4px solid #2d2d2d;
+  position: relative;
+}
+
+.editor-wrapper.split-view .editor-pane {
+  border-right: none;
+}
+
+.secondary-editor-header {
+  height: 30px;
+  background-color: #2d2d2d;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  justify-content: space-between;
+  color: #cccccc;
+  font-size: 13px;
+  border-bottom: 1px solid #3d3d3d;
+}
+
+.secondary-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.close-split-view {
+  background: none;
+  border: none;
+  color: #8c8c8c;
+  font-size: 16px;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.close-split-view:hover {
+  background-color: #3d3d3d;
+  color: #ffffff;
+}
+
+.secondary-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 30px);
+  color: #888;
+  font-size: 14px;
+  background: #1e1e1e;
+}
+
+/* Стиль для разделителя между панелями, когда включено перетаскивание */
+.split-view-resizer {
+  width: 4px;
+  background-color: #2d2d2d;
+  cursor: col-resize;
+  transition: background-color 0.2s;
+}
+
+.split-view-resizer:hover,
+.split-view-resizer.dragging {
+  background-color: #0078d4;
 }
   

@@ -1,0 +1,93 @@
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.editor-panel-container {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Стили для режима с разделенным редактором */
+.editor-panel-container.split-view {
+  display: flex;
+  gap: 0;
+}
+
+.editor-panel-container.split-view .primary-editor,
+.editor-panel-container.split-view .secondary-editor {
+  flex: 1;
+  width: 50%;
+  min-width: 0; /* Важно для правильного расчета flex */
+  max-width: none; /* Убираем ограничение максимальной ширины */
+  position: relative;
+}
+
+/* Стили для активного редактора */
+.primary-editor.active-editor,
+.secondary-editor.active-editor {
+  border: 2px solid rgba(0, 120, 212, 0.3);
+  box-sizing: border-box;
+}
+
+.primary-editor {
+  flex: 1;
+  min-width: 40%;
+  display: flex;
+  flex-direction: column;
+}
+
+.secondary-editor {
+  flex: 1;
+  max-width: 60%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Стили для разделителя панелей */
+.editor-resizer {
+  width: 5px;
+  cursor: col-resize;
+  background-color: #2d2d2d;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.editor-resizer:hover,
+.editor-resizer.resizing {
+  background-color: #0078d4;
+}
+
+.close-secondary-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: none;
+  border: none;
+  color: #8c8c8c;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  border-radius: 3px;
+  z-index: 1000;
+}
+
+.close-secondary-button:hover {
+  background-color: #3d3d3d;
+  color: #ffffff;
+} 
