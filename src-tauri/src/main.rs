@@ -1,9 +1,9 @@
 // main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Window;
+use tauri::{Window};
 use std::process::Command;
-use std::process::Stdio;
+use std::process::{Stdio};
 use tauri::Manager;
 
 use tauri::command;
@@ -19,7 +19,7 @@ use commands::terminal::PtyState;
 use crate::modules::{
   resolve_module_path, get_project_root, file_exists, 
   get_import_suggestions, get_git_info, tauri_current_dir,
-  get_git_branches, switch_git_branch, git_command, get_all_files_in_directory
+  get_git_branches, switch_git_branch, git_command
 };
 
 #[tauri::command]
@@ -166,26 +166,6 @@ fn git_clone_repository(url: String, target_path: String) -> Result<String, Stri
     Ok(format!("Репозиторий успешно клонирован в {}", target_path))
 }
 
-#[command]
-fn delete_file(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
-}
-
-#[command]
-fn delete_folder(path: String) -> Result<(), String> {
-    std::fs::remove_dir_all(&path).map_err(|e| e.to_string())
-}
-
-#[command]
-fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
-}
-
-#[command]
-fn rename_folder(old_path: String, new_path: String) -> Result<(), String> {
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
-}
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -227,11 +207,12 @@ fn main() {
             git_command,
             toggle_fullscreen,
             git_clone_repository,
-            delete_file,
-            delete_folder,
-            rename_file,
-            rename_folder,
-            get_all_files_in_directory,
+            commands::fs_commands::list_dir,
+            commands::fs_commands::scan_directory,
+            commands::fs_commands::fs_get_project_root,
+            commands::fs_commands::fs_file_exists,
+            commands::fs_commands::fs_resolve_module_path,
+            commands::fs_commands::get_importable_files,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

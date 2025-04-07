@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 // Импортируем функционал поиска файлов
 import { FileSearchSystem } from '../monaco-config/file-search';
-import FileSearchDialog from './FileSearchDialog';
+import { FileSearchDialog } from './FileSearchDialog';
 import './TitleBar.css';
 
 // Функция поиска файлов для использования в TitleBar

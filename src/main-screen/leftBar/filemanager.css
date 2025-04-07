@@ -1,292 +1,60 @@
-/* Основной контейнер */
+/* Стили для файлового менеджера */
 .file-manager {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 11px;
-  color: #cccccc;
-  background: #1e1e1e;
-  height: 100%;
-  overflow-y: auto;
-  user-select: none;
+  border: 5px solid #ff0000 !important;
+  padding: 20px !important;
 }
 
-/* Заголовок */
-.file-manager-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 8px;
-  height: 28px;
-  margin-bottom: 4px;
-}
-
-.file-manager-header h4 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #bbbbbb;
-  opacity: 0.8;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.header-buttons {
-  display: flex;
-  gap: 4px;
-}
-
-.file-icons {
-  background: none;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  color: #cccccc;
-  opacity: 0.7;
-  cursor: pointer;
-}
-
-.file-icons:hover {
-  background-color: #2d2d2d;
-  opacity: 1;
-}
-
-/* Дерево файлов */
 .file-tree {
-  padding: 0;
-  margin: 0;
-  list-style-type: none;
-}
-
-.file-tree li {
-  height: auto;
-  min-height: 22px;
-  margin: 0;
-  padding: 0;
-  position: relative;
-  overflow: visible;
+  background-color: #333333 !important;
 }
 
 .tree-item {
-  min-height: 22px;
+  border: 3px dashed #00ff00 !important;
+  margin: 10px 0 !important;
+  padding: 5px !important;
 }
 
-/* Базовые элементы */
 .file-item, .directory-item {
-  display: flex;
-  align-items: center;
-  height: 22px;
-  max-height: 22px;
-  min-height: 22px;
-  padding: 0 4px;
-  cursor: pointer;
-  white-space: nowrap;
-  box-sizing: border-box;
-  overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #444444 !important;
+  border-radius: 10px !important;
+  padding: 10px !important;
 }
 
-.file-item:hover, .directory-item:hover {
-  background-color: #2a2d2e;
+.file-item .name, .directory-item .name {
+  color: #ffff00 !important;
+  font-weight: bold !important;
+  font-size: 14px !important;
 }
 
-.file-item.active {
-  background-color: #37373d;
+/* Стили для Git-статусов */
+.file-item.modified .name,
+.directory-item.modified .name {
+  color: #3498db !important;
+  text-shadow: 0 0 5px #3498db !important;
 }
 
-.file-item.active .name, 
-.file-item.active .icon {
-  color: #ffffff;
+.file-item.added .name,
+.directory-item.added .name {
+  color: #2ecc71 !important;
+  text-shadow: 0 0 5px #2ecc71 !important;
 }
 
-/* Иконки */
-.chevron, .icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  line-height: 14px;
+.file-item.deleted .name,
+.directory-item.deleted .name {
+  color: #e74c3c !important;
+  text-shadow: 0 0 5px #e74c3c !important;
+  text-decoration: line-through !important;
 }
 
-.chevron {
-  color: #6a6a6a;
-  margin-right: 2px;
+.file-item.untracked .name,
+.directory-item.untracked .name {
+  color: #f39c12 !important;
+  text-shadow: 0 0 5px #f39c12 !important;
+  font-style: italic !important;
 }
 
-.icon {
-  color: #c5c5c5;
-  margin-right: 4px;
-}
-
-/* Имя файла/папки */
-.name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  line-height: 22px;
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0;
-  padding: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-/* Контейнер дочерних элементов */
-.children-container {
-  display: none;
-  margin-left: 16px;
-  border-left: 1px dotted #383838;
-  padding-left: 4px;
-  overflow: visible;
-}
-
-.tree-item.expanded > .children-container {
-  display: block;
-  height: auto;
-  min-height: 22px;
-}
-
-/* Git статусы */
-.modified .name { color: #4b91e2; }
-.added .name { color: #73c991; }
-.deleted .name { 
-  color: #f14c4c;
-  text-decoration: line-through;
-}
-.untracked .name {
-  color: #73c991;
-  font-style: italic;
-}
-.renamed .name { color: #c586c0; }
-.error .name { color: #f14c4c; }
-.warning .name { color: #cca700; }
-
-/* Индикаторы */
-.changes-indicator {
-  font-size: 9px;
-  background-color: #3c3c3c;
-  color: #cccccc;
-  border-radius: 6px;
-  padding: 0 3px;
-  min-width: 12px;
-  height: 12px;
-  line-height: 12px;
-  text-align: center;
-  margin-left: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.issue-indicators {
-  display: flex;
-  align-items: center;
-  margin-left: 3px;
-  gap: 2px;
-}
-
-.error-count, .warning-count {
-  border-radius: 6px;
-  padding: 0 3px;
-  font-size: 9px;
-  height: 12px;
-  line-height: 12px;
-  min-width: 12px;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.error-count {
-  background-color: rgba(241, 76, 76, 0.2);
-  color: #f14c4c;
-}
-
-.warning-count {
-  background-color: rgba(204, 167, 0, 0.2);
-  color: #cca700;
-}
-
-/* Поле переименования */
-.inline-rename-input {
-  width: calc(100% - 8px);
-  margin: 0 4px;
-  height: 18px;
-  background-color: #1e1e1e;
-  color: #cccccc;
-  border: 1px solid #007fd4;
-  border-radius: 2px;
-  padding: 0 4px;
-  font-size: 11px;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.inline-rename-input:focus {
-  outline: none;
-}
-
-/* Скроллбар */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #424242;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #4e4e4e;
-}
-
-/* Контекстное меню */
-.context-menu {
-  background-color: #252526;
-  border: 1px solid #454545;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  border-radius: 3px;
-  padding: 6px 0;
-  min-width: 150px;
-  z-index: 1000;
-  position: absolute;
-}
-
-.context-menu button {
-  background: none;
-  border: none;
-  color: #cccccc;
-  padding: 6px 12px;
-  text-align: left;
-  width: 100%;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.context-menu button:hover {
-  background-color: #04395e;
-}
-
-/* Стили для больших файлов */
-.file-tree li:not(.expanded) .file-item,
-.file-tree li:not(.expanded) .directory-item {
-  height: 22px;
-  max-height: 22px;
-  overflow: hidden;
-  line-height: 22px;
-}
-
+.file-item.renamed .name,
+.directory-item.renamed .name {
+  color: #9b59b6 !important;
+  text-shadow: 0 0 5px #9b59b6 !important;
+} 

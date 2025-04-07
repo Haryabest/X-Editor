@@ -1,0 +1,62 @@
+/**
+ * Стили для Monaco Editor
+ * Этот файл содержит переопределения стилей для корректного отображения элементов редактора
+ */
+
+/* Стили для hover-подсказок */
+.monaco-hover {
+  position: absolute !important;
+  z-index: 50 !important;
+  transform: none !important;
+  max-width: 500px !important;
+  overflow: visible !important;
+}
+
+.monaco-hover-content {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  padding: 6px 10px !important;
+}
+
+/* Исправляем позиционирование виджетов содержимого, чтобы они не были зафиксированы внизу экрана */
+.monaco-editor .overflowingContentWidget {
+  position: absolute !important;
+  bottom: auto !important;
+  left: auto !important;
+  max-height: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid #3c3c3c !important;
+}
+
+/* Стили для модульных подсказок */
+.monaco-editor .monaco-hover .hover-row .codicon {
+  color: #75beff !important; 
+  margin-right: 4px !important;
+}
+
+/* Улучшение отображения markdown-содержимого в подсказках */
+.monaco-hover .hover-row .markdown-hover-content {
+  padding: 2px 0 !important;
+}
+
+.monaco-hover .hover-row .markdown-hover-content code {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+}
+
+/* Стили для различных типов подсказок */
+.monaco-hover .hover-contents .package-path {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.monaco-hover .hover-contents .module-path {
+  color: #75beff;
+  font-family: monospace;
+}
+
+/* Важно - фиксируем отображение hover-подсказок непосредственно рядом с курсором */
+.monaco-editor-hover {
+  position: fixed !important;
+} 

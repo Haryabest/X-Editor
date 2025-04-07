@@ -6,6 +6,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './App.css';
+import './monaco-config/monaco-styles.css'; // Импортируем стили для Monaco Editor
 import { setupModulePaths } from './monaco-config';
 import { registerTypeScriptSupport } from './monaco-config/register-typescript';
 import { fixTypeScriptErrors } from './monaco-config/ts-error-fix';

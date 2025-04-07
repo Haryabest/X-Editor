@@ -6,9 +6,8 @@ import { ChevronRight, ChevronDown, FolderOpen, FilePlus, RefreshCcw } from 'luc
 
 import FileContextMenu from './context/FileContextMenu';
 import FolderContextMenu from './context/FolderContextMenu';
-import InlineRenameInput from './InlineRenameInput';
 
-import "./filemanager.css";
+import "./style.css";
 
 interface FileItem {
   name: string;
@@ -67,7 +66,6 @@ const FileManager: React.FC<FileManagerProps> = ({
   } | null>(null);
   const [gitStatusMap, setGitStatusMap] = useState<Map<string, string>>(new Map());
   const [directoryChangesMap, setDirectoryChangesMap] = useState<Map<string, number>>(new Map());
-  const [renamingItem, setRenamingItem] = useState<string | null>(null);
 
   const prepareGitStatusMap = (changes: GitChange[]) => {
     const newStatusMap = new Map<string, string>();
@@ -163,36 +161,38 @@ const FileManager: React.FC<FileManagerProps> = ({
     return allFiles;
   };
 
-  // Функция для загрузки дерева директорий
-  const loadTree = async () => {
-    if (selectedFolder) {
-      try {
-        const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
-        
-        // Базовая обработка дерева
-        const processedTree = {
-          ...tree,
-          expanded: true,
-          loaded: true,
-          children: tree.children?.map(child => ({
-            ...child,
-            expanded: false,
-            loaded: child.children !== undefined
-          }))
-        };
-        
-        setFileTree([processedTree]);
-        const allFiles = collectAllFiles([processedTree]);
-        setCurrentFiles(allFiles);
-      } catch (error) {
-        console.error('Error loading directory:', error);
-        alert(`Failed to load directory: ${error}`);
+  useEffect(() => {
+    const loadTree = async () => {
+      if (selectedFolder) {
+        try {
+          const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
+          
+          // Базовая обработка дерева без вычисления статусов Git
+          const processedTree = {
+            ...tree,
+            expanded: true,
+            loaded: true,
+            children: tree.children?.map(child => ({
+              ...child,
+              expanded: false,
+              loaded: child.children !== undefined
+            }))
+          };
+          
+          setFileTree([processedTree]);
+          const allFiles = collectAllFiles([processedTree]);
+          setCurrentFiles(allFiles);
+        } catch (error) {
+          console.error('Error loading directory:', error);
+          alert(`Failed to load directory: ${error}`);
+        }
+      } else {
+        setFileTree([]);
+        setCurrentFiles([]);
       }
-    } else {
-      setFileTree([]);
-      setCurrentFiles([]);
-    }
-  };
+    };
+    loadTree();
+  }, [selectedFolder]);
 
   useEffect(() => {
     const loadInitialFolder = async () => {
@@ -313,128 +313,9 @@ const FileManager: React.FC<FileManagerProps> = ({
     }
   };
 
-  // Проверка наличия элемента в дереве
-  const isItemInTree = (
-    item: FileItem,
-    path: string,
-    checkIsDirectory: boolean
-  ): boolean => {
-    if (item.path === path) {
-      return !checkIsDirectory || item.is_directory;
-    }
-    
-    if (item.children) {
-      return item.children.some(child => isItemInTree(child, path, checkIsDirectory));
-    }
-    
-    return false;
-  };
-
-  // Функция для переименования
-  const handleRename = (path: string) => {
-    const isDirectory = fileTree.some(item => isItemInTree(item, path, true));
-    console.log(`Rename requested for ${isDirectory ? 'directory' : 'file'}: ${path}`);
-    setRenamingItem(path);
-    setContextMenu(null);
-  };
-
-  // Функция для обработки завершения переименования
-  const handleRenameSubmit = async (newName: string) => {
-    if (!renamingItem) return;
-    
-    try {
-      const oldPath = renamingItem;
-      const pathParts = oldPath.split('/');
-      pathParts.pop(); // Удаляем старое имя файла/папки
-      const parentPath = pathParts.join('/');
-      const newPath = `${parentPath}/${newName}`;
-      
-      const isDirectory = fileTree.some(item => isItemInTree(item, oldPath, true));
-      console.log(`Renaming ${isDirectory ? 'directory' : 'file'} from ${oldPath} to ${newPath}`);
-      
-      await invoke("rename_item", { oldPath, newPath });
-      
-      // Обновляем дерево после переименования
-      if (parentPath) {
-        const result = await invoke<FileItem>("get_subdirectory", { path: parentPath });
-        setFileTree(prev => {
-          const updated = updateTree(prev, parentPath, processTree(result));
-          const allFiles = collectAllFiles(updated);
-          setCurrentFiles(allFiles);
-          return updated;
-        });
-      } else {
-        // Если это корневой элемент, перезагружаем все дерево
-        loadTree();
-      }
-    } catch (error) {
-      console.error('Error renaming item:', error);
-      alert(`Failed to rename: ${error}`);
-    } finally {
-      setRenamingItem(null);
-    }
-  };
-
-  // Функция для отмены переименования
-  const handleRenameCancel = () => {
-    setRenamingItem(null);
-  };
-
-  // Функция для удаления файла или папки
-  const deleteItem = async (path: string, isDirectory: boolean) => {
-    const itemName = path.split('/').pop() || '';
-    const confirmMessage = isDirectory 
-      ? `Are you sure you want to delete folder "${itemName}" and all its contents?`
-      : `Are you sure you want to delete file "${itemName}"?`;
-      
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-    
-    try {
-      if (isDirectory) {
-        await invoke("delete_folder", { path });
-      } else {
-        await invoke("delete_file", { path });
-      }
-      
-      // Обновляем дерево после удаления
-      const pathParts = path.split('/');
-      pathParts.pop();
-      const parentPath = pathParts.join('/');
-      
-      if (parentPath) {
-        const result = await invoke<FileItem>("get_subdirectory", { path: parentPath });
-        setFileTree(prev => {
-          const updated = updateTree(prev, parentPath, processTree(result));
-          const allFiles = collectAllFiles(updated);
-          setCurrentFiles(allFiles);
-          return updated;
-        });
-      } else {
-        // Если это корневой элемент, перезагружаем все дерево
-        loadTree();
-      }
-    } catch (error) {
-      console.error(`Error deleting ${isDirectory ? 'folder' : 'file'}:`, error);
-      alert(`Failed to delete: ${error}`);
-    }
-  };
-
-  // Функция для обработки клика по файлу
   const handleFileClick = (path: string, isDirectory: boolean) => {
-    console.log(`Clicked on ${isDirectory ? 'directory' : 'file'}: ${path}`);
-    
-    if (isDirectory) {
-      // Для директорий находим элемент и переключаем его состояние
-      const directory = fileTree.find(item => item.path === path) || 
-                         fileTree.flatMap(item => item.children || []).find(child => child.path === path);
-      
-      if (directory) {
-        toggleDirectory(directory);
-      }
-    } else {
-      // Для файлов устанавливаем выбранный файл
+    if (!isDirectory) {
+      console.log('Selected file:', path);
       setSelectedFile(path);
     }
   };
@@ -469,28 +350,17 @@ const FileManager: React.FC<FileManagerProps> = ({
     return '';
   };
 
-  // Рекурсивная функция для отрисовки дерева файлов
   const renderTree = (items: FileItem[]) => (
-    <ul className="file-tree" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+    <ul className="file-tree">
       {items.map((item) => {
         const gitStatusClass = getGitStatusClass(item);
         const issueClass = getIssueClass(item.path);
         const isActive = selectedFile === item.path;
-        const isRenaming = renamingItem === item.path;
         
-        // Элемент дерева
         return (
           <li
             key={item.path}
-            className={`tree-item ${item.expanded ? 'expanded' : ''}`}
-            style={{ 
-              height: item.expanded && item.children ? 'auto' : '22px',
-              maxHeight: item.expanded && item.children ? 'none' : '22px',
-              overflow: 'hidden',
-              position: 'relative',
-              margin: 0,
-              padding: 0
-            }}
+            className="tree-item"
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -502,92 +372,50 @@ const FileManager: React.FC<FileManagerProps> = ({
               });
             }}
           >
-            {isRenaming ? (
-              <InlineRenameInput
-                initialValue={item.name}
-                onSubmit={handleRenameSubmit}
-                onCancel={handleRenameCancel}
-              />
-            ) : item.is_directory ? (
-              <div
-                onClick={() => toggleDirectory(item)}
-                className={`directory-item ${gitStatusClass} ${item.expanded ? 'expanded' : ''}`}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  height: '22px',
-                  maxHeight: '22px',
-                  minHeight: '22px',
-                  padding: '0 4px 0 2px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  boxSizing: 'border-box'
-                }}
-              >
-                <span className="chevron">
-                  {item.expanded ? (
-                    <ChevronDown width={14} height={14} />
-                  ) : (
-                    <ChevronRight width={14} height={14} />
+            {item.is_directory ? (
+              <div className="directory">
+                <div
+                  onClick={() => toggleDirectory(item)}
+                  className={`directory-item ${gitStatusClass}`}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <span className="chevron">
+                    {item.expanded ? (
+                      <ChevronDown width={14} height={14} />
+                    ) : (
+                      <ChevronRight width={14} height={14} />
+                    )}
+                  </span>
+                  <span className={`icon ${gitStatusClass}`}>
+                    {item.expanded ? (
+                      <FolderOpen width={14} height={14} />
+                    ) : (
+                      <FolderIcon width={14} height={14} />
+                    )}
+                  </span>
+                  <span className="name">{item.name}</span>
+                  
+                  {item.changesCount && item.changesCount > 0 && (
+                    <span className="changes-indicator">{item.changesCount}</span>
                   )}
-                </span>
-                <span className={`icon ${gitStatusClass}`}>
-                  {item.expanded ? (
-                    <FolderOpen width={14} height={14} />
-                  ) : (
-                    <FolderIcon width={14} height={14} />
-                  )}
-                </span>
-                <span className="name">{item.name}</span>
-                
-                {item.changesCount && item.changesCount > 0 && (
-                  <span className="changes-indicator">{item.changesCount}</span>
+                  
+                  {gitStatusClass && <div className="git-status" />}
+                </div>
+                {item.expanded && item.loaded && item.children && (
+                  <div className="children-container">{renderTree(item.children)}</div>
                 )}
               </div>
             ) : (
               <div
                 className={`file-item ${gitStatusClass} ${issueClass} ${isActive ? 'active' : ''}`}
                 onClick={() => handleFileClick(item.path, item.is_directory)}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  height: '22px',
-                  maxHeight: '22px',
-                  minHeight: '22px',
-                  padding: '0 4px 0 2px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  boxSizing: 'border-box'
-                }}
               >
                 <span className={`icon ${gitStatusClass}`}>
                   {getFileIcon(item.name)}
                 </span>
                 <span className="name">{item.name}</span>
                 
-                {fileIssues[item.path] && (
-                  <div className="issue-indicators">
-                    {fileIssues[item.path].errors > 0 && (
-                      <span className="error-count">{fileIssues[item.path].errors}</span>
-                    )}
-                    {fileIssues[item.path].warnings > 0 && (
-                      <span className="warning-count">{fileIssues[item.path].warnings}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {item.is_directory && item.children && (
-              <div className="children-container" style={{ 
-                display: item.expanded ? 'block' : 'none', 
-                marginLeft: '16px', 
-                borderLeft: '1px dotted #383838',
-                paddingLeft: '4px'
-              }}>
-                {renderTree(item.children)}
+                {(gitStatusClass || issueClass) && <div className="git-status" />}
               </div>
             )}
           </li>
@@ -596,47 +424,18 @@ const FileManager: React.FC<FileManagerProps> = ({
     </ul>
   );
 
-  // Загружаем дерево при изменении выбранной папки
-  useEffect(() => {
-    loadTree();
-  }, [selectedFolder]);
-
   return (
     <div className="file-manager" onClick={() => setContextMenu(null)}>
       <div className="file-manager-header">
         <h4 title="Проводник">Проводник</h4>
         <div className="header-buttons">
-          <button 
-            className="file-icons" 
-            title="Новый файл"
-            onClick={() => {
-              if (selectedFolder) {
-                createNewFile(selectedFolder);
-              }
-            }}
-          >
+          <button className="file-icons" title="Новый файл">
             <FilePlus width={18} height={18} />
           </button>
-          <button 
-            className="file-icons" 
-            title="Новая папка"
-            onClick={() => {
-              if (selectedFolder) {
-                createNewDirectory(selectedFolder);
-              }
-            }}
-          >
+          <button className="file-icons" title="Новая папка">
             <FolderPlusIcon width={20} height={20} />
           </button>
-          <button 
-            className="file-icons" 
-            title="Обновить"
-            onClick={() => {
-              if (selectedFolder) {
-                loadTree();
-              }
-            }}
-          >
+          <button className="file-icons" title="Обновить">
             <RefreshCcw width={18} height={18} />
           </button>
         </div>
@@ -652,19 +451,13 @@ const FileManager: React.FC<FileManagerProps> = ({
               onClose={() => setContextMenu(null)}
               onCreateFolder={createNewDirectory}
               onCreateFile={createNewFile}
-              onRename={handleRename}
-              onDelete={(path) => deleteItem(path, true)}
             />
           ) : (
             <FileContextMenu
               x={contextMenu.x}
               y={contextMenu.y}
               path={contextMenu.path}
-              fileName={contextMenu.path.split('/').pop() || ''}
               onClose={() => setContextMenu(null)}
-              onOpen={(path) => handleFileClick(path, false)}
-              onRename={handleRename}
-              onDelete={(path) => deleteItem(path, false)}
             />
           )}
         </>

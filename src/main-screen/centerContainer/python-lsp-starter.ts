@@ -178,8 +178,8 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
     
     // Проверка, является ли файл Python-файлом
     const isPythonFile = filepath.endsWith('.py') || filepath.endsWith('.pyw') || 
-                       filepath.endsWith('.pyi') || 
-                       lspDocumentManager.getDocument(filepath)?.languageId === 'python';
+                         filepath.endsWith('.pyi') || 
+                         lspDocumentManager.getDocument(filepath)?.languageId === 'python';
     
     if (!isPythonFile) {
       console.warn(`Файл ${filepath} не является Python файлом`);
@@ -189,8 +189,9 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
     // Получаем документ из менеджера LSP
     let doc = lspDocumentManager.getDocument(filepath);
     
-    // Если документ не найден, попробуем найти его по совпадающему URI
+    // Если документ не найден, пытаемся найти его по другому URI или создать
     if (!doc) {
+      // Попытка найти документ по другому URI
       const allUris = lspDocumentManager.getAllDocumentUris();
       const matchingUri = allUris.find(uri => 
         uri.includes(filepath) || filepath.includes(uri.replace('file://', ''))
@@ -200,12 +201,80 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         doc = lspDocumentManager.getDocument(matchingUri);
         console.log(`Найден документ по URI: ${matchingUri}`);
       }
+      
+      // Если документ всё равно не найден, пытаемся создать его
+      if (!doc) {
+        try {
+          console.log(`Документ не найден, создаем новый: ${filepath}`);
+          
+          // Получаем содержимое файла через API
+          let content = '';
+          try {
+            const response = await fetch(`/api/file?path=${encodeURIComponent(filepath)}`);
+            if (response.ok) {
+              content = await response.text();
+              console.log(`Получено содержимое файла (${content.length} байт)`);
+            } else {
+              console.error(`Ошибка при получении содержимого файла: ${response.statusText}`);
+              return false;
+            }
+          } catch (err) {
+            console.error(`Ошибка при запросе файла через API:`, err);
+            
+            // Пробуем получить модель напрямую через Monaco
+            try {
+              if (window.monaco) {
+                const fileUri = window.monaco.Uri.file(filepath);
+                const model = window.monaco.editor.getModel(fileUri);
+                
+                if (model) {
+                  content = model.getValue();
+                  console.log(`Получено содержимое из модели Monaco (${content.length} байт)`);
+                } else {
+                  console.warn(`Модель Monaco для ${filepath} не найдена`);
+                }
+              }
+            } catch (monacoErr) {
+              console.error(`Ошибка при доступе к модели Monaco:`, monacoErr);
+            }
+            
+            if (!content) {
+              return false;
+            }
+          }
+          
+          // Нормализуем путь файла для создания URI
+          let fileUri = filepath;
+          if (!fileUri.startsWith('file://')) {
+            fileUri = `file://${fileUri.replace(/\\/g, '/')}`;
+          }
+          
+          // Добавляем документ в менеджер
+          lspDocumentManager.addDocument(fileUri, 'python', content);
+          console.log(`Документ добавлен в LSP: ${fileUri}`);
+          
+          // Получаем созданный документ
+          doc = lspDocumentManager.getDocument(fileUri);
+          
+          // Если документ не найден даже после создания, пытаемся получить его по оригинальному пути
+          if (!doc) {
+            doc = lspDocumentManager.getDocument(filepath);
+          }
+          
+          if (!doc) {
+            console.error(`Не удалось добавить документ: ${filepath}`);
+            return false;
+          }
+        } catch (err) {
+          console.error(`Ошибка при создании документа: ${filepath}`, err);
+          return false;
+        }
+      }
     }
     
-    // Если документ всё еще не найден, выходим
-    if (!doc) {
-      console.warn(`Документ для ${filepath} не найден, диагностика невозможна`);
-      return false;
+    // Проверяем наличие хранилища диагностики
+    if (!(window as any).pythonDiagnosticsStore) {
+      console.warn('Хранилище диагностики Python недоступно');
     }
     
     // Получаем содержимое документа для отправки на сервер
@@ -220,18 +289,36 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         content = (doc as any).content;
       }
       
-      // Если не удалось получить контент из документа, попробуем получить из модели
-      if (!content && window.monaco) {
-        try {
-          const fileUri = window.monaco.Uri.file(filepath);
-          const model = window.monaco.editor.getModel(fileUri);
-          
-          if (model) {
-            content = model.getValue();
-            console.log(`Получено содержимое из модели Monaco (${content.length} байт)`);
+      // Если не удалось получить контент из документа, пробуем другие способы
+      if (!content) {
+        // Проверяем, есть ли модель Monaco для этого файла
+        if (window.monaco) {
+          try {
+            const fileUri = window.monaco.Uri.file(filepath);
+            const model = window.monaco.editor.getModel(fileUri);
+            
+            if (model) {
+              content = model.getValue();
+              console.log(`Получено содержимое из модели Monaco (${content.length} байт)`);
+            }
+          } catch (monacoErr) {
+            console.warn(`Ошибка при доступе к модели Monaco:`, monacoErr);
           }
-        } catch (monacoErr) {
-          console.warn(`Не удалось получить содержимое из модели Monaco`, monacoErr);
+        }
+        
+        // Если всё еще нет содержимого, запрашиваем файл через API
+        if (!content) {
+          try {
+            const response = await fetch(`/api/file?path=${encodeURIComponent(filepath)}`);
+            if (response.ok) {
+              content = await response.text();
+              console.log(`Получено содержимое файла через API (${content.length} байт)`);
+            } else {
+              console.error(`Ошибка при получении содержимого через API: ${response.statusText}`);
+            }
+          } catch (apiErr) {
+            console.error(`Ошибка при запросе файла через API:`, apiErr);
+          }
         }
       }
     } catch (contentErr) {
@@ -243,9 +330,32 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
       return false;
     }
     
+    // Обновляем содержимое документа в LSP
+    try {
+      // Обновляем документ в LSP Document Manager через открытые методы
+      // Поскольку updateDocument - приватный метод, воспользуемся стандартным путем:
+      // сначала удалим документ, затем создадим с новым содержимым
+      lspDocumentManager.removeDocument(doc.uri);
+      lspDocumentManager.addDocument(doc.uri, 'python', content);
+      console.log(`Документ обновлен в LSP Manager: ${doc.uri}`);
+    } catch (updateErr) {
+      console.warn(`Не удалось обновить документ в LSP Manager: ${updateErr}`);
+    }
+    
     // Отправляем запросы на сервер
     try {
-      // Отправляем минимально необходимые уведомления
+      // Сначала уведомляем об открытии, если документ новый
+      languageServerManager.sendNotification('python', 'textDocument/didOpen', {
+        textDocument: {
+          uri: doc.uri,
+          languageId: 'python',
+          version: version,
+          text: content
+        }
+      });
+      console.log(`Отправлено уведомление didOpen для: ${doc.uri}`);
+      
+      // Затем уведомляем об изменении
       languageServerManager.sendNotification('python', 'textDocument/didChange', {
         textDocument: {
           uri: doc.uri,
@@ -253,18 +363,15 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         },
         contentChanges: [{ text: content }]
       });
+      console.log(`Отправлено уведомление didChange для: ${doc.uri}`);
       
-      // Запрашиваем диагностику с таймаутом
-      const diagRequest = await Promise.race([
-        languageServerManager.sendRequest('python', 'textDocument/diagnostic', {
-          textDocument: { uri: doc.uri }
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout')), 3000)
-        )
-      ]);
+      // Запрашиваем диагностику
+      console.log(`Запрос диагностики для: ${doc.uri}`);
+      const diagRequest = await languageServerManager.sendRequest('python', 'textDocument/diagnostic', {
+        textDocument: { uri: doc.uri }
+      });
       
-      console.log(`Получен ответ диагностики`);
+      console.log(`Получен ответ диагностики:`, diagRequest);
       
       // Если есть ответ с диагностикой, обновляем маркеры в Monaco
       if (diagRequest && diagRequest.diagnostics) {
@@ -277,27 +384,34 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
           try {
             monacoUri = window.monaco.Uri.parse(doc.uri);
           } catch (uriErr) {
-            // При ошибке пробуем создать файловый URI
-            monacoUri = window.monaco.Uri.file(filepath);
+            // Если произошла ошибка при разборе URI, пробуем создать файловый URI
+            try {
+              monacoUri = window.monaco.Uri.file(filepath);
+            } catch (fileUriErr) {
+              console.error(`Не удалось создать URI для: ${filepath}`, fileUriErr);
+              return false;
+            }
           }
           
           // Преобразуем диагностику LSP в маркеры Monaco
-          const markers = diagnostics.map((diag: any) => ({
-            severity: convertSeverity(diag.severity || 1),
-            message: diag.message || 'Неизвестная ошибка',
-            startLineNumber: ((diag.range?.start?.line || 0) + 1),
-            startColumn: ((diag.range?.start?.character || 0) + 1),
-            endLineNumber: ((diag.range?.end?.line || 0) + 1),
-            endColumn: ((diag.range?.end?.character || 0) + 1),
-            source: diag.source || 'python-lsp',
-            code: diag.code
-          }));
-          
-          // Устанавливаем маркеры в хранилище
-          (window as any).pythonDiagnosticsStore.setMarkers(monacoUri.toString(), markers);
-          console.log(`Обновлено ${markers.length} маркеров для: ${filepath}`);
-          
-          return true;
+          try {
+            const markers = diagnostics.map((diag: any) => ({
+              severity: convertSeverity(diag.severity || 1),
+              message: diag.message || 'Неизвестная ошибка',
+              startLineNumber: ((diag.range?.start?.line || 0) + 1),
+              startColumn: ((diag.range?.start?.character || 0) + 1),
+              endLineNumber: ((diag.range?.end?.line || 0) + 1),
+              endColumn: ((diag.range?.end?.character || 0) + 1),
+              source: diag.source || 'python-lsp',
+              code: diag.code
+            }));
+            
+            // Устанавливаем маркеры в хранилище
+            (window as any).pythonDiagnosticsStore.setMarkers(monacoUri.toString(), markers);
+            console.log(`Обновлено ${markers.length} маркеров для: ${filepath}`);
+          } catch (markersErr) {
+            console.error(`Ошибка при преобразовании диагностики в маркеры:`, markersErr);
+          }
         } else {
           console.warn('Не удалось обновить диагностику: хранилище диагностики Python недоступно');
         }
@@ -305,26 +419,45 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         // Если диагностик нет, очищаем маркеры
         if ((window as any).pythonDiagnosticsStore) {
           try {
-            let monacoUri = window.monaco.Uri.file(filepath);
+            let monacoUri;
+            try {
+              monacoUri = window.monaco.Uri.parse(doc.uri);
+            } catch (e) {
+              monacoUri = window.monaco.Uri.file(filepath);
+            }
             (window as any).pythonDiagnosticsStore.clearMarkers(monacoUri.toString());
             console.log(`Очищены маркеры для: ${filepath}`);
           } catch (clearErr) {
             console.error(`Ошибка при очистке маркеров:`, clearErr);
           }
         }
-        
-        return true;
       }
-    } catch (error: any) {
-      if (error.message === 'Timeout') {
-        console.warn(`Таймаут при запросе диагностики для: ${filepath}`);
-      } else {
-        console.error(`Ошибка при запросе диагностики: ${filepath}`, error);
+      
+      // Дополнительно запрашиваем обновление редактора
+      try {
+        if (window.monaco) {
+          const models = window.monaco.editor.getModels();
+          for (const model of models) {
+            if (model.uri.toString().includes(filepath) || filepath.includes(model.uri.path)) {
+              // Уведомляем о необходимости перерисовки
+              const viewStates = window.monaco.editor.getViewStates(model);
+              if (viewStates) {
+                window.monaco.editor.setViewStates(model, viewStates);
+              }
+              console.log(`Обновлен вид модели для: ${filepath}`);
+              break;
+            }
+          }
+        }
+      } catch (updateErr) {
+        console.warn(`Ошибка при обновлении редактора:`, updateErr);
       }
+      
+      return true;
+    } catch (error) {
+      console.error(`Ошибка при запросе диагностики: ${filepath}`, error);
       return false;
     }
-    
-    return false;
   } catch (error) {
     console.error(`Неожиданная ошибка при обновлении Python диагностики: ${filepath}`, error);
     return false;
@@ -340,61 +473,69 @@ export async function forcePythonDiagnosticsUpdate(filepath: string): Promise<bo
   try {
     console.log(`Принудительное обновление диагностики для: ${filepath}`);
     
-    // Быстрая проверка на существование файла и тип файла
-    if (!filepath.endsWith('.py') && !filepath.endsWith('.pyw') && !filepath.endsWith('.pyi')) {
-      console.warn(`Файл ${filepath} не является Python файлом, пропускаем диагностику`);
-      return false;
-    }
-    
-    // Проверяем доступность LSP и инициализируем при необходимости
-    if (!isPythonLSPConnected()) {
-      console.log('Python LSP не подключен, инициализация...');
-      
-      // Пытаемся инициализировать сервер с ограничением по времени
-      const initPromise = initializePythonLSP();
-      const timeoutPromise = new Promise<boolean>((resolve) => {
-        setTimeout(() => resolve(false), 2000);
-      });
-      
-      const initialized = await Promise.race([initPromise, timeoutPromise]);
-      
-      if (!initialized) {
-        console.error('Не удалось инициализировать Python LSP (таймаут)');
-        return false;
+    // Проверяем наличие хранилища диагностики
+    if (!(window as any).pythonDiagnosticsStore) {
+      console.warn('Хранилище диагностики Python не инициализировано');
+      // Пробуем загрузить module register-python, если он еще не был загружен
+      try {
+        const registerPythonModule = await import('../../monaco-config/register-python');
+        if (typeof registerPythonModule.registerPython === 'function') {
+          const result = registerPythonModule.registerPython();
+          console.log(`Регистрация Python для диагностики: ${result ? 'успешно' : 'неудачно'}`);
+        }
+      } catch (importError) {
+        console.error('Не удалось импортировать модуль register-python:', importError);
       }
     }
     
-    // Проверяем наличие модели для файла в Monaco
+    // Проверяем наличие LSP и инициализируем при необходимости
+    const lspConnected = isPythonLSPConnected();
+    if (!lspConnected) {
+      console.warn('Python LSP не подключен, пробуем инициализировать...');
+      const initialized = await initializePythonLSP();
+      if (!initialized) {
+        console.error('Не удалось инициализировать Python LSP');
+        return false;
+      }
+      console.log('Python LSP сервер успешно инициализирован');
+    }
+    
+    // Проверяем доступность Monaco и модели для этого файла
     if (window.monaco) {
       try {
+        // Проверяем, существует ли модель для этого файла
         const fileUri = window.monaco.Uri.file(filepath);
         let model = window.monaco.editor.getModel(fileUri);
         
-        // Если модель существует, устанавливаем для нее язык Python
-        if (model && model.getLanguageId() !== 'python') {
-          window.monaco.editor.setModelLanguage(model, 'python');
-          console.log(`Установлен язык Python для модели ${filepath}`);
+        // Если модель не существует, пробуем найти модель с похожим путем
+        if (!model) {
+          const models = window.monaco.editor.getModels();
+          for (const m of models) {
+            try {
+              if (m.uri.toString().includes(filepath) || 
+                  filepath.includes(m.uri.path.replace(/^\//,'')) || 
+                  filepath.includes(m.uri.toString().replace('file:///',''))) {
+                model = m;
+                break;
+              }
+            } catch (e) {
+              // Игнорируем ошибки при проверке моделей
+            }
+          }
         }
-      } catch (e) {
-        // Игнорируем ошибки при работе с моделью
+        
+        // Если нашли модель, проверяем её язык
+        if (model && model.getLanguageId() !== 'python') {
+          console.log(`Установка языка Python для модели ${filepath}`);
+          window.monaco.editor.setModelLanguage(model, 'python');
+        }
+      } catch (monacoErr) {
+        console.warn('Ошибка при проверке моделей Monaco:', monacoErr);
       }
     }
     
-    // Запускаем обновление диагностики с таймаутом
-    try {
-      const updatePromise = updatePythonDiagnosticsForFile(filepath);
-      const timeoutPromise = new Promise<boolean>((resolve) => {
-        setTimeout(() => {
-          console.warn(`Таймаут обновления диагностики для ${filepath}`);
-          resolve(false);
-        }, 3000);
-      });
-      
-      return await Promise.race([updatePromise, timeoutPromise]);
-    } catch (error) {
-      console.error('Ошибка при обновлении диагностики:', error);
-      return false;
-    }
+    // Обновляем диагностику документа
+    return await updatePythonDiagnosticsForFile(filepath);
   } catch (error) {
     console.error('Ошибка при принудительном обновлении диагностики:', error);
     return false;

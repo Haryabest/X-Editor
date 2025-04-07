@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { applyLanguageConfiguration, getFileExtension, isJavaScriptFile, isJSXFile, isScriptFile, isTypeScriptFile } from '../utils/fileExtensions';
 import { configureTypeScript } from './typescript-config'; // Импортируем нашу функцию конфигурации TypeScript
 import { safeSetModelMarkers } from './fixMarker';
+import { configureHover } from './hover-config'; // Импортируем конфигурацию hover-подсказок
+import { registerImportCompletionProvider } from './import-completion'; // Импортируем провайдер автодополнения импортов
 
 // Игнорирование ошибок импорта для интеграционного модуля
 // @ts-ignore
@@ -384,6 +386,12 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
 
     // Сначала настраиваем TypeScript для корректной работы с React и TSX
     configureTypeScript(monaco);
+    
+    // Настраиваем hover-подсказки
+    configureHover(monaco);
+    
+    // Регистрируем провайдер автодополнения импортов
+    registerImportCompletionProvider(monaco);
     
     // Настраиваем диагностику
     setupDiagnosticsConfiguration();
@@ -1378,7 +1386,11 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
               useCallback: 'Возвращает мемоизированную версию колбэк-функции, которая изменяется только при изменении зависимостей.',
               useMemo: 'Возвращает мемоизированное значение, которое пересчитывается только при изменении зависимостей.',
               useRef: 'Возвращает изменяемый ref-объект, .current свойство которого инициализируется переданным аргументом.',
-              useLayoutEffect: 'Версия useEffect, которая запускается синхронно после всех DOM-изменений, но до отрисовки экрана браузером.'
+              useLayoutEffect: 'Версия useEffect, которая запускается синхронно после всех DOM-изменений, но до отрисовки экрана браузером.',
+              useImperativeHandle: 'Позволяет кастомизировать экземпляр, который предоставляется родительскому компоненту при использовании ref.',
+              useDebugValue: 'Используется для отображения метки для пользовательских хуков в React DevTools.',
+              useTransition: 'Позволяет помечать некоторые обновления состояния как некритичные, чтобы они могли быть прерваны более важными обновлениями.',
+              useDeferredValue: 'Принимает значение и возвращает новую копию этого значения, которая может "отставать" от оригинала.',
             };
             
             return {
@@ -2237,30 +2249,43 @@ export async function setupModulePaths() {
  * @returns Полный путь к файлу
  */
 export async function resolveModulePath(modulePath: string): Promise<string> {
+  console.log(`[resolveModulePath] Запрос на разрешение пути модуля: ${modulePath}`);
+  
   if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__?.invoke) {
     try {
       // Получаем корень проекта
-      const projectRoot = await window.__TAURI__.invoke('get_project_root', { 
+      console.log(`[resolveModulePath] Получение корня проекта через fs_get_project_root...`);
+      const projectRoot = await invoke<string>('fs_get_project_root', { 
         currentFilePath: window.location.pathname 
       });
       
+      console.log(`[resolveModulePath] Получен корень проекта: ${projectRoot}`);
+      
       if (!projectRoot) {
-        console.warn('Не удалось определить корень проекта');
+        console.warn('[resolveModulePath] Не удалось определить корень проекта');
         return modulePath;
       }
       
       // Разрешаем путь модуля
-      const resolvedPath = await window.__TAURI__.invoke('resolve_module_path', { 
+      console.log(`[resolveModulePath] Вызов fs_resolve_module_path для '${modulePath}'...`);
+      const resolvedPath = await invoke<string | null>('fs_resolve_module_path', { 
         projectRoot, 
         moduleName: modulePath 
       });
       
-      console.log(`Модуль "${modulePath}" разрешен как: ${resolvedPath}`);
+      if (!resolvedPath) {
+        console.warn(`[resolveModulePath] Путь не был разрешен для '${modulePath}'`);
+        return modulePath;
+      }
+      
+      console.log(`[resolveModulePath] Модуль "${modulePath}" разрешен как: ${resolvedPath}`);
       return resolvedPath;
     } catch (error) {
-      console.error('Ошибка при разрешении пути модуля:', error);
+      console.error('[resolveModulePath] Ошибка при разрешении пути модуля:', error);
       return modulePath;
     }
+  } else {
+    console.warn('[resolveModulePath] Tauri API недоступен');
   }
   
   return modulePath;

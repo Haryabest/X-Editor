@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>X-Editor</title>
+    <!-- Патч для защиты моделей Monaco -->
+    <script>
+      // Глобальная защита файлов от закрытия
+      (function() {
+        console.log('[FileProtection] Инициализация глобальной защиты файлов...');
+        
+        // Хранилище защищенных моделей
+        window.__protectedModels = new Map();
+        
+        // Хранилище открытых файлов
+        window.__openedFiles = new Set();
+        
+        // Хранилище для отслеживания моделей с возможностью восстановления
+        window.__trackedModels = new Map();
+        
+        // Состояние для хранения предыдущего активного файла
+        window.__previousFile = null;
+
+        // Хранилище для хранения всех открытых в UI файлов
+        window.__ui_openedFiles = [];
+        
+        // Функция для защиты файла от закрытия
+        window.__protectFile = function(filePath) {
+          if (!filePath) return;
+          
+          console.log('[FileProtection] Защита файла от закрытия: ' + filePath);
+          window.__openedFiles.add(filePath);
+          
+          // Сохраняем файл в UI-списке открытых файлов
+          if (!window.__ui_openedFiles.some(file => file.path === filePath)) {
+            const fileName = filePath.split(/[/\\]/).pop() || '';
+            window.__ui_openedFiles.push({
+              name: fileName,
+              path: filePath,
+              isFolder: false,
+              icon: 'file'
+            });
+            console.log('[FileProtection] Файл добавлен в UI-список:', filePath);
+          }
+          
+          // Пытаемся найти и защитить модель, если Monaco доступен
+          if (window.monaco) {
+            try {
+              // Ищем модель различными способами
+              const uriFile = window.monaco.Uri.file(filePath);
+              let model = window.monaco.editor.getModel(uriFile);
+              
+              // Если не нашли, пробуем по inmemory URI
+              if (!model) {
+                const normalizedPath = filePath.replace(/\\/g, '/');
+                const uriInMemory = window.monaco.Uri.parse('inmemory:/' + normalizedPath);
+                model = window.monaco.editor.getModel(uriInMemory);
+              }
+              
+              // Если все еще не нашли, ищем по всем моделям
+              if (!model) {
+                const allModels = window.monaco.editor.getModels();
+                model = allModels.find(m => {
+                  const uri = m.uri.toString();
+                  return uri.includes(filePath);
+                });
+              }
+              
+              if (model) {
+                // Защита модели
+                protectModel(model, filePath);
+                trackModel(model, filePath);
+              }
+            } catch (error) {
+              console.error('[FileProtection] Ошибка при поиске модели:', error);
+            }
+          }
+        };
+        
+        // Функция защиты модели
+        function protectModel(model, filePath) {
+          if (!model) return;
+          
+          const uriString = model.uri.toString();
+          console.log('[FileProtection] Защита модели: ' + uriString);
+          
+          // Добавляем isDisposed если его нет
+          if (typeof model.isDisposed !== 'function') {
+            model.isDisposed = function() { return false; };
+          }
+          
+          // Если модель уже защищена, не делаем ничего
+          if (model.__isProtected) return;
+          
+          // Переопределяем dispose
+          const originalDispose = model.dispose.bind(model);
+          model.dispose = function() {
+            console.log('[FileProtection] Предотвращено закрытие модели: ' + uriString);
+            
+            // Даже если пытаются закрыть, отмечаем только в хранилище
+            window.__protectedModels.set(uriString, {
+              model,
+              filePath,
+              protectedAt: Date.now(),
+              content: model.getValue(),
+              disposeAttempt: true
+            });
+            
+            return false; // Не закрываем модель
+          };
+          
+          // Отмечаем модель как защищенную
+          model.__isProtected = true;
+          model.__protectionTime = Date.now();
+          
+          // Сохраняем в хранилище
+          window.__protectedModels.set(uriString, {
+            model,
+            filePath,
+            protectedAt: Date.now()
+          });
+        }
+        
+        // Функция для отслеживания модели
+        function trackModel(model, filePath) {
+          if (!model || !model.uri) return;
+          
+          const uriString = model.uri.toString();
+          
+          try {
+            // Сохраняем данные модели для возможного восстановления
+            window.__trackedModels.set(uriString, {
+              modelUri: uriString,
+              filePath: filePath,
+              model: model,
+              content: model.getValue(),
+              language: model.getLanguageId ? model.getLanguageId() : 'plaintext',
+              createdAt: Date.now()
+            });
+            
+            // Слушаем изменения содержимого
+            if (model.onDidChangeContent) {
+              const disposable = model.onDidChangeContent(() => {
+                const trackedData = window.__trackedModels.get(uriString);
+                if (trackedData) {
+                  trackedData.content = model.getValue();
+                  window.__trackedModels.set(uriString, trackedData);
+                }
+              });
+              
+              model.__trackingDisposable = disposable;
+            }
+            
+            console.log('[FileProtection] Модель ' + uriString + ' успешно отслеживается');
+          } catch (err) {
+            console.error('[FileProtection] Ошибка при отслеживании модели:', err);
+          }
+        }
+        
+        // Функция для восстановления модели
+        window.recoverModel = function(uriString) {
+          if (!window.__trackedModels.has(uriString)) {
+            console.log('[FileProtection] Нет данных для восстановления модели: ' + uriString);
+            return null;
+          }
+          
+          if (!window.monaco) {
+            console.log('[FileProtection] Monaco еще не доступен, невозможно восстановить модель');
+            return null;
+          }
+          
+          const trackedData = window.__trackedModels.get(uriString);
+          console.log('[FileProtection] Восстановление модели: ' + uriString);
+          
+          try {
+            // Проверяем, существует ли уже модель с таким URI
+            let model = window.monaco.editor.getModel(window.monaco.Uri.parse(uriString));
+            
+            // Если модель не существует, создаем новую на основе сохраненных данных
+            if (!model) {
+              const uri = window.monaco.Uri.parse(trackedData.modelUri);
+              model = window.monaco.editor.createModel(
+                trackedData.content || '', 
+                trackedData.language || 'plaintext', 
+                uri
+              );
+              
+              // Защищаем восстановленную модель
+              protectModel(model, trackedData.filePath);
+              
+              console.log('[FileProtection] Модель успешно восстановлена: ' + uriString);
+            } else {
+              console.log('[FileProtection] Модель уже существует: ' + uriString);
+            }
+            
+            return model;
+          } catch (error) {
+            console.error('[FileProtection] Ошибка при восстановлении модели:', error);
+            return null;
+          }
+        };
+        
+        // Переопределяем Array.prototype.filter для защиты массива openedFiles
+        const originalFilter = Array.prototype.filter;
+        Array.prototype.filter = function(...args) {
+          // Проверяем, является ли это вызовом для openedFiles
+          if (this.some(item => item && item.path && window.__openedFiles.has(item.path))) {
+            console.log('[FileProtection] Перехвачена операция filter на массиве openedFiles');
+            
+            // Если функция фильтрации удаляет защищенные файлы, блокируем
+            const filterFn = args[0];
+            if (typeof filterFn === 'function') {
+              const testItem = this.find(item => item && item.path && window.__openedFiles.has(item.path));
+              if (testItem && !filterFn(testItem, 0, this)) {
+                console.log('[FileProtection] Предотвращено удаление файла через filter: ' + testItem.path);
+                
+                // Возвращаем исходный массив без фильтрации
+                return this.slice();
+              }
+              
+              // Если попытка удалить файлы из openedFiles, проверяем, что закрываемый файл не защищен
+              const resultArray = originalFilter.apply(this, args);
+              const removedItems = this.filter(item => !resultArray.some(r => r.path === item.path));
+              
+              for (const item of removedItems) {
+                if (item && item.path && window.__openedFiles.has(item.path)) {
+                  console.log('[FileProtection] Предотвращено удаление защищенного файла: ' + item.path);
+                  // Добавляем этот элемент обратно в результат
+                  resultArray.push(item);
+                }
+              }
+              
+              // Возвращаем обновленный результат, сохранив защищенные файлы
+              return resultArray;
+            }
+          }
+          
+          // Иначе используем оригинальный filter
+          return originalFilter.apply(this, args);
+        };
+        
+        // Перехватываем операции setState для предотвращения удаления из openedFiles
+        const originalReactSetState = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(React.Component.prototype), 
+          'setState'
+        );
+        
+        if (originalReactSetState && originalReactSetState.value) {
+          const originalSetState = originalReactSetState.value;
+          
+          Object.defineProperty(React.Component.prototype, 'setState', {
+            value: function(updater, callback) {
+              // Если updater - функция, перехватываем её
+              if (typeof updater === 'function') {
+                const protectedUpdater = function(prevState) {
+                  // Вызываем оригинальный updater
+                  const nextState = updater(prevState);
+                  
+                  // Проверяем, есть ли в состоянии openedFiles
+                  if (nextState && nextState.openedFiles) {
+                    // Если в текущем состоянии есть openedFiles, проверяем, что защищенные файлы сохранены
+                    if (prevState && prevState.openedFiles) {
+                      // Находим удаленные файлы
+                      const removedFiles = prevState.openedFiles.filter(
+                        prevFile => !nextState.openedFiles.some(nextFile => nextFile.path === prevFile.path)
+                      );
+                      
+                      // Проверяем, есть ли среди удаленных защищенные файлы
+                      const removedProtectedFiles = removedFiles.filter(
+                        file => window.__openedFiles.has(file.path)
+                      );
+                      
+                      // Если среди удаленных есть защищенные, возвращаем их обратно
+                      if (removedProtectedFiles.length > 0) {
+                        console.log('[FileProtection] Предотвращено удаление защищенных файлов через setState:', 
+                          removedProtectedFiles.map(f => f.path).join(', '));
+                        
+                        // Возвращаем защищенные файлы обратно в массив
+                        nextState.openedFiles = [...nextState.openedFiles, ...removedProtectedFiles];
+                      }
+                    }
+                    
+                    // Сохраняем текущий список UI файлов
+                    window.__ui_openedFiles = nextState.openedFiles;
+                  }
+                  
+                  return nextState;
+                };
+                
+                // Вызываем setState с нашим защищенным updater
+                return originalSetState.call(this, protectedUpdater, callback);
+              }
+              
+              // Для обычных обновлений без функции тоже проверяем на удаление файлов
+              if (updater && updater.openedFiles && this.state && this.state.openedFiles) {
+                // Находим удаленные файлы
+                const removedFiles = this.state.openedFiles.filter(
+                  prevFile => !updater.openedFiles.some(nextFile => nextFile.path === prevFile.path)
+                );
+                
+                // Проверяем, есть ли среди удаленных защищенные файлы
+                const removedProtectedFiles = removedFiles.filter(
+                  file => window.__openedFiles.has(file.path)
+                );
+                
+                // Если среди удаленных есть защищенные, возвращаем их обратно
+                if (removedProtectedFiles.length > 0) {
+                  console.log('[FileProtection] Предотвращено удаление защищенных файлов через прямой setState:', 
+                    removedProtectedFiles.map(f => f.path).join(', '));
+                  
+                  // Обновляем updater, чтобы сохранить защищенные файлы
+                  updater.openedFiles = [...updater.openedFiles, ...removedProtectedFiles];
+                }
+                
+                // Сохраняем текущий список UI файлов
+                window.__ui_openedFiles = updater.openedFiles;
+              }
+              
+              // Вызываем оригинальный setState
+              return originalSetState.call(this, updater, callback);
+            },
+            configurable: true,
+            writable: true
+          });
+          
+          console.log('[FileProtection] Перехват React.setState успешно установлен');
+        }
+        
+        // Перехват закрытия через методы Monaco
+        function monitorMonaco() {
+          if (!window.monaco) {
+            setTimeout(monitorMonaco, 500);
+            return;
+          }
+          
+          console.log('[FileProtection] Monaco обнаружен, устанавливаем защиту...');
+          
+          try {
+            // Перехватываем создание модели
+            const originalCreateModel = window.monaco.editor.createModel;
+            window.monaco.editor.createModel = function(...args) {
+              const model = originalCreateModel.apply(window.monaco.editor, args);
+              
+              if (model) {
+                const uri = model.uri.toString();
+                
+                // Определяем путь файла из URI если возможно
+                let filePath = '';
+                if (uri.includes('file://')) {
+                  filePath = uri.replace('file://', '');
+                } else if (args.length > 2 && args[2] && args[2].path) {
+                  filePath = args[2].path;
+                }
+                
+                // Защищаем модель
+                protectModel(model, filePath);
+                trackModel(model, filePath);
+              }
+              
+              return model;
+            };
+            
+            // Перехватываем onWillDisposeModel
+            const originalOnWillDispose = window.monaco.editor.onWillDisposeModel;
+            window.monaco.editor.onWillDisposeModel = function(listener) {
+              const wrappedListener = function(model) {
+                if (!model || !model.uri) return listener(model);
+                
+                const uri = model.uri.toString();
+                
+                // Проверяем, должна ли модель быть защищена
+                if (uri.includes('file://') || 
+                    uri.includes('inmemory://') || 
+                    uri.includes('.ts') || 
+                    uri.includes('.js') || 
+                    uri.includes('.html') || 
+                    uri.includes('.css')) {
+                  
+                  console.log('[FileProtection] Перехвачена попытка закрытия модели: ' + uri);
+                  
+                  // Пытаемся защитить модель, если она ещё не защищена
+                  if (!model.__isProtected) {
+                    protectModel(model, '');
+                    trackModel(model, '');
+                  }
+                  
+                  // Не вызываем оригинальный слушатель
+                  return;
+                }
+                
+                // Для не защищаемых моделей вызываем исходный слушатель
+                return listener(model);
+              };
+              
+              return originalOnWillDispose.call(window.monaco.editor, wrappedListener);
+            };
+            
+            // Автоматически проверяем и восстанавливаем модели каждую секунду
+            setInterval(function() {
+              try {
+                if (!window.__trackedModels) return;
+                
+                const allTrackedUris = Array.from(window.__trackedModels.keys());
+                
+                for (const uriString of allTrackedUris) {
+                  // Проверяем существование модели
+                  const exists = window.monaco.editor.getModels().some(m => m.uri.toString() === uriString);
+                  
+                  if (!exists) {
+                    console.log('[FileProtection] Обнаружена закрытая модель, восстанавливаем: ' + uriString);
+                    window.recoverModel(uriString);
+                  }
+                }
+              } catch (error) {
+                console.warn('[FileProtection] Ошибка при проверке моделей:', error);
+              }
+            }, 1000);
+            
+            // Интегрируемся с React компонентами
+            document.addEventListener('DOMContentLoaded', function() {
+              setTimeout(function() {
+                try {
+                  // Находим важные компоненты редактора
+                  const editorContainer = document.querySelector('.editor-panel-container');
+                  
+                  if (editorContainer) {
+                    console.log('[FileProtection] Найден контейнер редактора, устанавливаем наблюдение...');
+                    
+                    // Наблюдаем за изменениями в редакторе
+                    const observer = new MutationObserver(function(mutations) {
+                      mutations.forEach(function(mutation) {
+                        if (mutation.type === 'childList' || mutation.type === 'attributes') {
+                          // Находим вкладки файлов
+                          const tabs = document.querySelectorAll('.tab');
+                          
+                          // Защищаем каждый файл из вкладок
+                          tabs.forEach(function(tab) {
+                            const filePath = tab.getAttribute('data-path');
+                            if (filePath) {
+                              window.__protectFile(filePath);
+                            }
+                          });
+                        }
+                      });
+                    });
+                    
+                    // Начинаем наблюдение за контейнером редактора
+                    observer.observe(editorContainer, { 
+                      childList: true, 
+                      subtree: true, 
+                      attributes: true 
+                    });
+                  }
+                } catch (error) {
+                  console.error('[FileProtection] Ошибка при интеграции с React:', error);
+                }
+              }, 2000); // Даем время для рендеринга React компонентов
+            });
+            
+            // Мониторим открытие файлов через React-компоненты
+            window.__original_setSelectedFile = null;
+            
+            // Функция для перехвата метода setSelectedFile
+            function hookSetSelectedFile() {
+              setTimeout(function() {
+                const appComponent = document.querySelector('#root')?.__reactFiber$;
+                if (appComponent) {
+                  let component = appComponent;
+                  while (component && !component.memoizedProps?.setSelectedFile) {
+                    component = component.child;
+                  }
+                  
+                  if (component && component.memoizedProps?.setSelectedFile) {
+                    const original = component.memoizedProps.setSelectedFile;
+                    if (!window.__original_setSelectedFile) {
+                      window.__original_setSelectedFile = original;
+                      
+                      component.memoizedProps.setSelectedFile = function(filePath) {
+                        console.log('[FileProtection] Перехвачен вызов setSelectedFile:', filePath);
+                        
+                        // Запоминаем предыдущий файл перед переключением
+                        window.__previousFile = component.memoizedProps.activeFile;
+                        
+                        // Защищаем текущий файл перед переключением
+                        if (window.__previousFile) {
+                          window.__protectFile(window.__previousFile);
+                        }
+                        
+                        // Защищаем новый файл
+                        if (filePath) {
+                          window.__protectFile(filePath);
+                        }
+                        
+                        // Вызываем оригинальный метод
+                        return window.__original_setSelectedFile(filePath);
+                      };
+                      
+                      console.log('[FileProtection] Успешно перехвачен метод setSelectedFile');
+                    }
+                  }
+                } else {
+                  setTimeout(hookSetSelectedFile, 500);
+                }
+              }, 1000);
+            }
+            
+            // Вызываем функцию перехвата
+            hookSetSelectedFile();
+            
+            console.log('[FileProtection] Защита Monaco успешно установлена');
+          } catch (error) {
+            console.error('[FileProtection] Ошибка при установке защиты Monaco:', error);
+          }
+        }
+        
+        // Запускаем мониторинг Monaco
+        monitorMonaco();
+        
+        console.log('[FileProtection] Глобальная защита файлов установлена');
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html> 

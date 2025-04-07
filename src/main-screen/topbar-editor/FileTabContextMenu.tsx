@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { Pin, PinOff, Copy, FolderOpen } from 'lucide-react';
 
 interface FileTabContextMenuProps {
   x: number;
@@ -30,6 +31,8 @@ const FileTabContextMenu: React.FC<FileTabContextMenuProps> = ({
   onCloseLeft,
   onCloseAll,
   onCloseSaved,
+  filePath,
+  relativePath,
   onPin,
   onCopyPath,
   onCopyRelativePath,

@@ -82,7 +82,7 @@ const EditorPanelContainer: React.FC<EditorPanelContainerProps> = ({
     }
   };
 
-  // Обработчик для кнопки разделения
+  // Улучшенный обработчик для кнопки разделения
   const handleSplitEditor = (filePath: string) => {
     console.log(`EditorPanelContainer: Запрос на разделение с файлом ${filePath}`);
     
@@ -102,32 +102,38 @@ const EditorPanelContainer: React.FC<EditorPanelContainerProps> = ({
       const fileName = filePath.split(/[/\\]/).pop() || '';
       console.log(`Добавляем файл ${fileName} в список открытых файлов`);
       
-      // Добавляем файл в список открытых
-      setOpenedFiles(prev => [...prev, { 
-        name: fileName, 
-        path: filePath,
-        isFolder: false,
-        icon: 'file',
-      }]);
+      // Добавляем файл в список открытых с защитой от дублирования
+      setOpenedFiles(prev => {
+        // Проверяем, что файл ещё не добавлен (дополнительная защита)
+        if (prev.some(file => file.path === filePath)) {
+          console.log(`Файл ${filePath} уже существует в списке открытых файлов`);
+          return prev;
+        }
+        
+        return [...prev, { 
+          name: fileName, 
+          path: filePath,
+          isFolder: false,
+          icon: 'file',
+        }];
+      });
     }
     
     // Устанавливаем вторичный редактор как активный после разделения
     setActiveEditor('secondary');
   };
-
-  // Функция для обработки выбора файла во втором редакторе
-  const handleSecondaryFileSelect = (filePath: string | null) => {
-    console.log(`Выбран файл во втором редакторе: ${filePath}`);
+  
+  // Обработчик для выбора файла в основном редакторе с дополнительной защитой
+  const handlePrimaryFileSelect = (filePath: string | null) => {
+    console.log(`EditorPanelContainer: Выбор файла ${filePath} в основном редакторе`);
     
-    // Обновляем только secondaryFile, не трогая основной selectedFile
-    setSecondaryFile(filePath);
-    setActiveEditor('secondary');
-    
-    // Если файл не открыт, добавляем его в список открытых файлов
+    // Если путь валиден и файл не существует в списке, добавляем его
     if (filePath && !openedFiles.some(file => file.path === filePath)) {
+      // Получаем имя файла из пути
       const fileName = filePath.split(/[/\\]/).pop() || '';
-      console.log(`Добавляем файл ${fileName} в список открытых файлов через вторичный редактор`);
+      console.log(`Автоматически добавляем файл ${fileName} в список открытых файлов`);
       
+      // Безопасно добавляем файл в список открытых
       setOpenedFiles(prev => [...prev, { 
         name: fileName, 
         path: filePath,
@@ -135,12 +141,38 @@ const EditorPanelContainer: React.FC<EditorPanelContainerProps> = ({
         icon: 'file',
       }]);
     }
+    
+    // Вызываем внешний обработчик выбора файла
+    setSelectedFile(filePath);
+    
+    // Убеждаемся, что активный редактор - первичный
+    setActiveEditor('primary');
   };
   
-  // Обработчик для выбора файла в основном редакторе (с установкой активности)
-  const handlePrimaryFileSelect = (filePath: string | null) => {
-    setSelectedFile(filePath);
-    setActiveEditor('primary');
+  // Обработчик для выбора файла во вторичном редакторе с дополнительной защитой
+  const handleSecondaryFileSelect = (filePath: string | null) => {
+    console.log(`EditorPanelContainer: Выбор файла ${filePath} во вторичном редакторе`);
+    
+    // Обновляем внутреннее состояние
+    setSecondaryFile(filePath);
+    
+    // Если путь валиден и файл не существует в списке, добавляем его
+    if (filePath && !openedFiles.some(file => file.path === filePath)) {
+      // Получаем имя файла из пути
+      const fileName = filePath.split(/[/\\]/).pop() || '';
+      console.log(`Автоматически добавляем файл ${fileName} в список открытых файлов`);
+      
+      // Безопасно добавляем файл в список открытых
+      setOpenedFiles(prev => [...prev, { 
+        name: fileName, 
+        path: filePath,
+        isFolder: false,
+        icon: 'file',
+      }]);
+    }
+    
+    // Убеждаемся, что активный редактор - вторичный
+    setActiveEditor('secondary');
   };
 
   // Обработчики для изменения размера панелей
