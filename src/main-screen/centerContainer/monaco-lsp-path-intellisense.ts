@@ -40,12 +40,15 @@ export class MonacoLSPPathIntellisense {
       }
       
       // Условия срабатывания автодополнений путей
-      const triggerCharacters = ["'", '"', "/", "./", "../"];
+      const triggerCharacters = ["'", '"', "/", "./", "../", "."];
       
-      // Создаем провайдер автодополнений
+      // Создаем провайдер автодополнений с высоким приоритетом
       const provider = this.monaco.languages.registerCompletionItemProvider(languageId, {
         triggerCharacters,
-        provideCompletionItems: this.providePathCompletionItems.bind(this)
+        provideCompletionItems: this.providePathCompletionItems.bind(this),
+        // Устанавливаем высокий приоритет для провайдера путей
+        // чтобы он имел преимущество перед другими провайдерами
+        triggerCharactersWithSortingProvider: triggerCharacters
       });
       
       // Сохраняем ссылку на провайдер
@@ -70,22 +73,77 @@ export class MonacoLSPPathIntellisense {
       const lineContent = model.getLineContent(position.lineNumber);
       if (!lineContent) return null;
       
-      // Проверяем, находимся ли мы в импорте
-      const importMatch = lineContent.match(/import\s+.*?from\s+['"](.*?)['"]|import\s+['"](.*?)['"]|require\s*\(\s*['"](.*?)['"]/);
-      const includeMatch = lineContent.match(/<include\s+.*?src=['"](.*?)['"]|<script\s+.*?src=['"](.*?)['"]|<link\s+.*?href=['"](.*?)['"]/);
+      // Получаем текст до текущей позиции курсора
+      const textUntilPosition = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column
+      });
       
-      if (importMatch || includeMatch) {
-        const match = importMatch || includeMatch;
-        const pathPart = match[1] || match[2] || match[3] || '';
+      // Специальный случай: если строка содержит import и последний символ - точка
+      if (textUntilPosition.includes('import') && textUntilPosition.trim().endsWith('.')) {
+        console.log('Обнаружен символ точки в контексте импорта.');
+        return {
+          isImport: true,
+          path: '.'
+        };
+      }
+      
+      // Проверяем, находимся ли мы в импорте
+      const importRegex = /import\s+(?:.*\s+from\s+)?['"]([^'"]*)/;
+      const importMatch = textUntilPosition.match(importRegex);
+      
+      if (importMatch) {
+        // Получаем текущий префикс пути
+        const pathPrefix = importMatch[1] || '';
         
-        // Проверяем, находится ли курсор внутри пути
-        const startIndex = lineContent.indexOf(pathPart);
-        const endIndex = startIndex + pathPart.length;
+        console.log('Обнаружен контекст импорта с префиксом пути:', pathPrefix);
         
-        if (position.column > startIndex && position.column <= endIndex + 1) {
+        return {
+          isImport: true,
+          path: pathPrefix
+        };
+      }
+      
+      // Проверяем include/script/link для HTML
+      const includeRegex = /<(?:include|script|link)\s+.*?(?:src|href)=['"]([^'"]*)/;
+      const includeMatch = textUntilPosition.match(includeRegex);
+      
+      if (includeMatch) {
+        const pathPrefix = includeMatch[1] || '';
+        
+        console.log('Обнаружен контекст включения с префиксом пути:', pathPrefix);
+        
+        return {
+          isImport: true,
+          path: pathPrefix
+        };
+      }
+      
+      // Проверяем require
+      const requireRegex = /require\s*\(\s*['"]([^'"]*)/;
+      const requireMatch = textUntilPosition.match(requireRegex);
+      
+      if (requireMatch) {
+        const pathPrefix = requireMatch[1] || '';
+        
+        console.log('Обнаружен контекст require с префиксом пути:', pathPrefix);
+        
+        return {
+          isImport: true,
+          path: pathPrefix
+        };
+      }
+      
+      // Проверка для одиночной точки или начала пути с точки вне явных паттернов импорта
+      if (textUntilPosition.includes('import') || textUntilPosition.includes('require')) {
+        const dotMatch = /['"](\.+)$/.exec(textUntilPosition);
+        if (dotMatch) {
+          console.log('Обнаружена точка в импорте:', dotMatch[1]);
           return {
             isImport: true,
-            path: pathPart
+            path: dotMatch[1]
           };
         }
       }
@@ -106,6 +164,54 @@ export class MonacoLSPPathIntellisense {
     try {
       const uri = model.uri.toString();
       const languageId = model.getLanguageId();
+      
+      // Специальная обработка для символа "."
+      if (context && context.triggerCharacter === '.') {
+        // Получаем текст до текущей позиции курсора
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        });
+
+        // Проверяем, находимся ли мы в контексте импорта и последний символ - точка
+        if (textUntilPosition.includes('import') && textUntilPosition.trim().endsWith('.')) {
+          console.log('Специальная обработка для точки в импорте');
+          
+          // Возвращаем предложения с высоким приоритетом
+          return {
+            suggestions: [
+              {
+                label: './',
+                kind: this.monaco.languages.CompletionItemKind.Folder,
+                detail: 'Текущая директория',
+                insertText: './',
+                sortText: '0001', // Высокий приоритет
+                range: {
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column
+                }
+              },
+              {
+                label: '../',
+                kind: this.monaco.languages.CompletionItemKind.Folder,
+                detail: 'Родительская директория',
+                insertText: '../',
+                sortText: '0002', // Высокий приоритет
+                range: {
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column
+                }
+              }
+            ]
+          };
+        }
+      }
       
       // Проверяем, находимся ли мы в контексте импорта
       const importContext = this.detectImportContext(model, position);
@@ -247,45 +353,321 @@ export class MonacoLSPPathIntellisense {
       const importMatch = lineContent.match(/import\s+.*?from\s+['"](.*?)['"]|import\s+['"](.*?)['"]|require\s*\(\s*['"](.*?)['"]/);
       if (!importMatch) return null;
       
+      // Получаем текущий префикс импорта, если есть
+      const importPath = importMatch[1] || importMatch[2] || importMatch[3] || '';
+      
       // Предоставляем базовые пути в качестве подсказок
-      const baseSuggestions = [
-        {
-          label: './components/',
+      let baseSuggestions = [];
+      
+      // Проверяем, находимся ли мы на уровне начала ввода или внутри пути
+      const hasDirectoryPrefix = importPath.includes('/');
+      const isSimpleDot = importPath === '.';
+      const isSimpleDotDot = importPath === '..';
+      
+      // Если это простой случай с . или ..
+      if (isSimpleDot || isSimpleDotDot) {
+        // Для одной точки предлагаем ./ и ../
+        if (isSimpleDot) {
+          baseSuggestions.push({
+            label: './',
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: 'Текущая директория',
+            insertText: './',
+            sortText: '0000', // Самый высокий приоритет
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+          
+          baseSuggestions.push({
+            label: '../',
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: 'Родительская директория',
+            insertText: '../',
+            sortText: '0001', // Высокий приоритет, но ниже ./
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+        } else {
+          // Для .. предлагаем только ../
+          baseSuggestions.push({
+            label: '../',
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: 'Родительская директория',
+            insertText: '../',
+            sortText: '0000', // Самый высокий приоритет
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+        }
+        
+        return { suggestions: baseSuggestions };
+      }
+      
+      // Улучшенный алгоритм обнаружения и обработки многоуровневых путей
+      // Проверка паттернов вида: ./../, ../../, ./../../, ../../../
+      const isMultilevelPath = this.isMultilevelPath(importPath);
+      
+      // Если у нас многоуровневый путь
+      if (isMultilevelPath) {
+        // Анализируем структуру многоуровневого пути
+        const pathInfo = this.parseMultilevelPath(importPath);
+        
+        // Определяем, нужно ли предлагать очередной уровень вверх
+        if (pathInfo.endsWithParentDir) {
+          // Добавляем еще один уровень вверх
+          const nextLevel = importPath + (importPath.endsWith('/') ? '../' : '/../');
+          
+          baseSuggestions.push({
+            label: nextLevel,
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: `На ${pathInfo.parentLevels + 1} уровней вверх`,
+            insertText: nextLevel,
+            sortText: '0000', // Высокий приоритет
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column - importPath.length,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+        }
+        
+        // Добавляем текущий путь с / на конце, если он еще не имеет / в конце
+        if (!importPath.endsWith('/')) {
+          baseSuggestions.push({
+            label: importPath + '/',
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: 'Исследовать эту директорию',
+            insertText: importPath + '/',
+            sortText: '0001', // Высокий приоритет
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column - importPath.length,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+        }
+        
+        // Если путь заканчивается косой чертой, предлагаем ".." как вариант навигации вверх
+        // Этот подход работает внутри уже открытого пути
+        if (importPath.endsWith('/')) {
+          baseSuggestions.push({
+            label: importPath + '..',
+            kind: this.monaco.languages.CompletionItemKind.Folder,
+            detail: 'Подняться на уровень выше',
+            insertText: importPath + '..',
+            sortText: '0002', // Высокий приоритет
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column - importPath.length,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            },
+            command: {
+              id: 'editor.action.triggerSuggest',
+              title: 'Показать подсказки',
+              arguments: []
+            }
+          });
+        }
+        
+        return { suggestions: baseSuggestions };
+      }
+      
+      // Базовые подсказки для начала пути
+      if (!hasDirectoryPrefix) {
+        baseSuggestions.push({
+          label: './',
           kind: this.monaco.languages.CompletionItemKind.Folder,
-          detail: 'Папка компонентов',
-          insertText: './components/',
+          detail: 'Текущая директория',
+          insertText: './',
+          sortText: '0000', // Самый высокий приоритет
           range: {
             startLineNumber: position.lineNumber,
             startColumn: position.column,
             endLineNumber: position.lineNumber,
             endColumn: position.column
+          },
+          command: {
+            id: 'editor.action.triggerSuggest',
+            title: 'Показать подсказки',
+            arguments: []
           }
-        },
-        {
-          label: './utils/',
-          kind: this.monaco.languages.CompletionItemKind.Folder,
-          detail: 'Папка утилит',
-          insertText: './utils/',
-          range: {
-            startLineNumber: position.lineNumber,
-            startColumn: position.column,
-            endLineNumber: position.lineNumber,
-            endColumn: position.column
-          }
-        },
-        {
+        });
+        
+        baseSuggestions.push({
           label: '../',
           kind: this.monaco.languages.CompletionItemKind.Folder,
           detail: 'Родительская директория',
           insertText: '../',
+          sortText: '0001', // Высокий приоритет, но ниже ./
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column
+          },
+          command: {
+            id: 'editor.action.triggerSuggest',
+            title: 'Показать подсказки',
+            arguments: []
+          }
+        });
+      }
+      
+      // Если префикс содержит точку, добавляем только подходящие предложения
+      if (importPath) {
+        if (importPath.startsWith('.')) {
+          if (!importPath.startsWith('./') && !importPath.startsWith('../')) {
+            // Это просто точка, предлагаем ./ и ../
+            baseSuggestions = baseSuggestions.filter(s => s.label === './' || s.label === '../');
+          } else if (importPath.startsWith('./')) {
+            // Для начала пути с ./ стимулируем немедленное открытие подсказок для содержимого
+            baseSuggestions = [{
+              label: './',
+              kind: this.monaco.languages.CompletionItemKind.Folder,
+              detail: 'Текущая директория',
+              insertText: './',
+              sortText: '0000',
+              range: {
+                startLineNumber: position.lineNumber,
+                startColumn: position.column - (importPath.length - 2), // Корректируем позицию
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+              },
+              command: {
+                id: 'editor.action.triggerSuggest',
+                title: 'Показать подсказки',
+                arguments: []
+              }
+            }];
+            
+            // Добавляем возможность перейти на уровень выше
+            baseSuggestions.push({
+              label: './../',
+              kind: this.monaco.languages.CompletionItemKind.Folder,
+              detail: 'Родительская директория относительно текущей',
+              insertText: './../',
+              sortText: '0001',
+              range: {
+                startLineNumber: position.lineNumber,
+                startColumn: position.column - (importPath.length - 2),
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+              },
+              command: {
+                id: 'editor.action.triggerSuggest',
+                title: 'Показать подсказки',
+                arguments: []
+              }
+            });
+          } else if (importPath.startsWith('../')) {
+            // Оставляем только ../ из предложений, если префикс уже начинается с ../
+            baseSuggestions = baseSuggestions.filter(s => s.label === '../');
+            
+            // Добавляем многоуровневые подсказки для ../ и ./../ паттернов
+            // Определяем, сколько уровней уже есть в пути
+            const levels = (importPath.match(/\.\.\//g) || []).length;
+            const remainingPath = importPath.replace(/^(\.\.\/)+/, '');
+            
+            // Добавляем ещё один уровень вверх, если мы уже на уровне ../
+            if (levels >= 1 && !remainingPath) {
+              let nextLevelPath = '';
+              for (let i = 0; i < levels + 1; i++) {
+                nextLevelPath += '../';
+              }
+              
+              baseSuggestions.push({
+                label: nextLevelPath,
+                kind: this.monaco.languages.CompletionItemKind.Folder,
+                detail: `На ${levels + 1} уровней вверх`,
+                insertText: nextLevelPath,
+                sortText: '0000',
+                range: {
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column - importPath.length,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column
+                },
+                command: {
+                  id: 'editor.action.triggerSuggest',
+                  title: 'Показать подсказки',
+                  arguments: []
+                }
+              });
+            }
+          }
+        }
+      }
+      
+      // Добавляем некоторые общие директории, если это подходит
+      if (!importPath || importPath === './' || importPath === '.') {
+        baseSuggestions.push({
+          label: './components/',
+          kind: this.monaco.languages.CompletionItemKind.Folder,
+          detail: 'Папка компонентов',
+          insertText: './components/',
+          sortText: '0003',
           range: {
             startLineNumber: position.lineNumber,
             startColumn: position.column,
             endLineNumber: position.lineNumber,
             endColumn: position.column
           }
-        }
-      ];
+        });
+        
+        baseSuggestions.push({
+          label: './utils/',
+          kind: this.monaco.languages.CompletionItemKind.Folder,
+          detail: 'Папка утилит',
+          insertText: './utils/',
+          sortText: '0004',
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: position.column,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column
+          }
+        });
+      }
       
       return {
         suggestions: baseSuggestions
@@ -294,6 +676,72 @@ export class MonacoLSPPathIntellisense {
       console.error('Ошибка при предоставлении запасных автодополнений:', error);
       return null;
     }
+  }
+  
+  /**
+   * Проверяет, является ли путь многоуровневым
+   * Поддерживает паттерны вида: ./../, ../../, ./../../, ../../../ и т.д.
+   */
+  private isMultilevelPath(path: string): boolean {
+    if (!path) return false;
+    
+    // Паттерны для обнаружения многоуровневых путей
+    const patterns = [
+      /^\.\.\//, // начинается с ../
+      /^\.\/\.\.\//, // начинается с ./../
+      /^(\.\.\/)(\.\.\/)/, // начинается с ../../
+      /^(\.\/){1,}(\.\.\/)/, // начинается с ./ и содержит ../
+      /^(\.\.\/)+(\.\/)*/, // несколько ../ с возможными ./
+      /\.\.\/.*\/\.\./ // содержит ../ в середине или конце пути
+    ];
+    
+    return patterns.some(pattern => pattern.test(path));
+  }
+  
+  /**
+   * Анализирует структуру многоуровневого пути
+   * @param path Многоуровневый путь для анализа
+   * @returns Информация о структуре пути
+   */
+  private parseMultilevelPath(path: string): {
+    parentLevels: number,
+    hasCurrentDir: boolean,
+    endsWithParentDir: boolean,
+    segments: string[]
+  } {
+    if (!path) {
+      return {
+        parentLevels: 0,
+        hasCurrentDir: false,
+        endsWithParentDir: false,
+        segments: []
+      };
+    }
+    
+    // Разбиваем путь на сегменты
+    const segments = path.split('/').filter(s => s.length > 0);
+    
+    // Подсчитываем количество переходов на уровень выше
+    let parentLevels = 0;
+    let hasCurrentDir = false;
+    
+    for (const segment of segments) {
+      if (segment === '..') {
+        parentLevels++;
+      } else if (segment === '.') {
+        hasCurrentDir = true;
+      }
+    }
+    
+    // Определяем, заканчивается ли путь на ..
+    const endsWithParentDir = path.endsWith('..') || path.endsWith('../');
+    
+    return {
+      parentLevels,
+      hasCurrentDir,
+      endsWithParentDir,
+      segments
+    };
   }
   
   /**

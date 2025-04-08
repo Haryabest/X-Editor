@@ -5,6 +5,11 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import * as monacoEditor from 'monaco-editor';
+import * as monaco from 'monaco-editor';
+import { getPath, getDefaultRules, getAbsolutePathFromImport, trimLines, getModuleIdCompletions } from './import-utils';
+import { getTypeDefs } from '../main-screen/centerContainer/monaco-lsp-path-intellisense';
+import path from 'path';
+import fuzzysort from 'fuzzysort';
 type Monaco = typeof monacoEditor;
 type Position = monacoEditor.Position;
 type ITextModel = monacoEditor.editor.ITextModel;
@@ -19,6 +24,28 @@ type CompletionItemKind = monacoEditor.languages.CompletionItemKind;
 interface DirEntry {
   path: string;
   isDir: boolean;
+}
+
+/**
+ * Интерфейс для описания информации о разборе относительного пути
+ */
+interface RelativePathInfo {
+  /** Исходный путь */
+  original: string;
+  /** Является ли путь относительным */
+  isRelative: boolean;
+  /** Включает ли путь переходы на уровень выше (через ..) */
+  goesUp: boolean;
+  /** Количество переходов на уровень выше */
+  upLevels: number;
+  /** Количество переходов на уровень выше (альтернативное имя) */
+  parentLevels: number;
+  /** Базовая часть пути (до последнего слеша) */
+  basePath: string;
+  /** Текст поиска (часть после последнего слеша) */
+  searchText: string;
+  /** Оставшаяся часть пути */
+  remainingPath?: string;
 }
 
 // Объявляем тип __TAURI__ для TypeScript
@@ -157,6 +184,209 @@ async function scanDirectory(directory: string): Promise<void> {
 }
 
 /**
+ * Разбирает относительный путь на компоненты
+ * @param relativePath Относительный путь для анализа
+ * @returns Структура пути
+ */
+function parseRelativePath(relativePath: string): RelativePathInfo {
+  console.log(`[Автодополнение импортов] Разбор относительного пути: ${relativePath}`);
+
+  const result: RelativePathInfo = {
+    original: relativePath,
+    isRelative: false,
+    goesUp: false,
+    upLevels: 0,
+    parentLevels: 0,
+    basePath: '',
+    searchText: ''
+  };
+
+  // Проверяем, является ли путь относительным
+  if (relativePath.startsWith('./') || relativePath.startsWith('../') || relativePath === '.' || relativePath === '..') {
+    result.isRelative = true;
+    
+    // Подсчитываем количество переходов вверх
+    const upLevelPatterns = relativePath.match(/\.\.\//g);
+    result.upLevels = upLevelPatterns ? upLevelPatterns.length : 0;
+    
+    // Устанавливаем parentLevels как синоним для upLevels
+    result.parentLevels = result.upLevels;
+    
+    // Проверяем, есть ли отдельно стоящее .. в конце пути или это сам путь
+    if (relativePath === '..') {
+      result.upLevels = 1;
+      result.parentLevels = 1;
+      result.goesUp = true;
+    } else if (relativePath.endsWith('/..')) {
+      result.upLevels += 1;
+      result.parentLevels = result.upLevels;
+      result.goesUp = true;
+    } else if (relativePath.includes('..')) {
+      result.goesUp = true;
+    }
+    
+    // Определяем базовую часть пути (до последнего слеша)
+    const lastSlashIndex = relativePath.lastIndexOf('/');
+    if (lastSlashIndex !== -1) {
+      result.basePath = relativePath.substring(0, lastSlashIndex + 1);
+      result.searchText = relativePath.substring(lastSlashIndex + 1);
+    } else {
+      result.basePath = relativePath;
+      result.searchText = '';
+    }
+    
+    // Добавляем оставшуюся часть пути
+    // Извлекаем часть пути после всех переходов вверх
+    let remainingPath = '';
+    if (result.upLevels > 0) {
+      // Находим последнее вхождение "../" и берем всё, что после него
+      const lastUpPatternIndex = relativePath.lastIndexOf('../');
+      if (lastUpPatternIndex !== -1 && lastUpPatternIndex + 3 < relativePath.length) {
+        remainingPath = relativePath.substring(lastUpPatternIndex + 3);
+      }
+    } else if (relativePath.startsWith('./') && relativePath.length > 2) {
+      // Для ./path/to берем path/to
+      remainingPath = relativePath.substring(2);
+    }
+    
+    result.remainingPath = remainingPath;
+    
+    console.log('[Автодополнение импортов] Результат разбора относительного пути:', 
+      {
+        isRelative: result.isRelative, 
+        goesUp: result.goesUp, 
+        upLevels: result.upLevels,
+        parentLevels: result.parentLevels,
+        basePath: result.basePath, 
+        searchText: result.searchText,
+        remainingPath: result.remainingPath
+      }
+    );
+  }
+  
+  return result;
+}
+
+/**
+ * Получает содержимое директории с учетом многоуровневых путей
+ * @param basePath Базовый путь начала поиска
+ * @param relativePath Относительный путь для разрешения
+ */
+async function getDirectoryContents(basePath: string, relativePath: string): Promise<DirEntry[]> {
+  try {
+    console.log(`[Автодополнение импортов] Получаем содержимое директории для пути: ${basePath}, относительный путь: ${relativePath}`);
+    
+    // Разбираем структуру относительного пути с улучшенным алгоритмом
+    const pathInfo = parseRelativePath(relativePath);
+    
+    if (!pathInfo.isRelative) {
+      console.warn(`[Автодополнение импортов] Путь ${relativePath} не является относительным`);
+      return [];
+    }
+    
+    // Получаем абсолютный путь директории для поиска
+    let targetPath = basePath;
+    
+    // Проверяем, является ли базовый путь файлом, а не директорией
+    let isBasePathDirectory = true;
+    try {
+      isBasePathDirectory = await invoke<boolean>('fs_is_directory', { path: basePath });
+    } catch (error) {
+      // Пробуем альтернативную функцию для проверки
+      try {
+        const fileInfo = await invoke<any>('fs_get_file_info', { path: basePath });
+        isBasePathDirectory = fileInfo.isDir;
+      } catch (innerError) {
+        console.warn(`[Автодополнение импортов] Ошибка при проверке базового пути: ${error}, ${innerError}`);
+      }
+    }
+    
+    // Если базовый путь - файл, переходим к его директории
+    if (!isBasePathDirectory) {
+      const lastSlashIndex = basePath.lastIndexOf('/');
+      const lastBackslashIndex = basePath.lastIndexOf('\\');
+      const lastDelimIndex = Math.max(lastSlashIndex, lastBackslashIndex);
+      
+      if (lastDelimIndex !== -1) {
+        targetPath = basePath.substring(0, lastDelimIndex);
+        console.log(`[Автодополнение импортов] Базовый путь - файл, используем его директорию: ${targetPath}`);
+      }
+    }
+    
+    // Нормализуем разделители
+    targetPath = targetPath.replace(/\\/g, '/');
+    
+    // Логируем начальное состояние
+    console.log(`[Автодополнение импортов] Начальный целевой путь: ${targetPath}, необходимо подняться на ${pathInfo.parentLevels} уровней вверх`);
+    
+    // Применяем переходы к родительским директориям, если необходимо
+    for (let i = 0; i < pathInfo.parentLevels; i++) {
+      const lastSlashIndex = targetPath.lastIndexOf('/');
+      if (lastSlashIndex !== -1) {
+        targetPath = targetPath.substring(0, lastSlashIndex);
+        console.log(`[Автодополнение импортов] Переход на уровень выше #${i+1}: ${targetPath}`);
+      } else {
+        console.warn(`[Автодополнение импортов] Достигнут корень файловой системы при переходе на уровень выше после ${i} переходов`);
+        break;
+      }
+    }
+    
+    // Если есть оставшаяся часть пути, применяем её
+    if (pathInfo.remainingPath) {
+      // Убеждаемся, что путь не начинается со слеша
+      const remainingPathNormalized = pathInfo.remainingPath.startsWith('/') 
+                                    ? pathInfo.remainingPath.substring(1) 
+                                    : pathInfo.remainingPath;
+      
+      if (remainingPathNormalized) {
+        targetPath = `${targetPath}/${remainingPathNormalized}`;
+        console.log(`[Автодополнение импортов] Добавлена оставшаяся часть пути: ${targetPath}`);
+      }
+    }
+    
+    // Получаем содержимое целевой директории
+    console.log(`[Автодополнение импортов] Запрашиваем содержимое директории: ${targetPath}`);
+    let entries: DirEntry[] = [];
+    
+    try {
+      // Пробуем основную функцию
+      entries = await invoke<DirEntry[]>('fs_list_dir', { path: targetPath });
+    } catch (error) {
+      try {
+        // Пробуем альтернативную функцию
+        entries = await invoke<DirEntry[]>('list_dir', { path: targetPath });
+      } catch (alternativeError) {
+        // Пробуем третью функцию
+        try {
+          entries = await invoke<DirEntry[]>('scan_directory', { path: targetPath, recursive: false });
+        } catch (thirdError) {
+          console.error(`[Автодополнение импортов] Ошибки при получении содержимого директории ${targetPath}:`, 
+                        { primaryError: error, alternativeError: alternativeError, thirdError: thirdError });
+          return [];
+        }
+      }
+    }
+    
+    console.log(`[Автодополнение импортов] Получено ${entries.length} элементов в директории ${targetPath}`);
+    
+    // Добавляем возможность подняться на один уровень выше, если мы не в корне
+    if (targetPath.includes('/')) {
+      const parentPath = '..';
+      entries.unshift({
+        path: parentPath,
+        isDir: true
+      });
+      console.log(`[Автодополнение импортов] Добавлен переход на уровень выше в результаты`);
+    }
+    
+    return entries;
+  } catch (error) {
+    console.error(`[Автодополнение импортов] Ошибка при получении содержимого директории: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Получает список файлов для автодополнения
  * @param basePath Базовый путь для относительного импорта (текущая директория файла)
  * @param prefix Префикс пути (начальная часть пути, которую ввел пользователь)
@@ -204,6 +434,156 @@ async function getImportPathCompletions(basePath: string, prefix: string): Promi
       }
     } else {
       console.log('[Автодополнение импортов] Используем существующий кэш файловой структуры');
+    }
+    
+    // Если это относительный путь, обрабатываем специальным образом
+    if (prefixToUse.startsWith('./') || prefixToUse.startsWith('../') || prefixToUse === '.' || prefixToUse === '..') {
+      try {
+        console.log(`[Автодополнение импортов] Специальная обработка для относительного пути: ${prefixToUse}`);
+        
+        // Получаем путь к текущей директории файла
+        let currentDir = basePath;
+        if (!currentDir) {
+          console.warn('[Автодополнение импортов] Путь к текущей директории не найден, используем последний известный путь');
+          currentDir = currentDirPath || './';
+        }
+        
+        // Получаем информацию о структуре относительного пути
+        const pathInfo = parseRelativePath(prefixToUse);
+        
+        // Если это простой случай "./" или "../", обрабатываем быстро
+        if (prefixToUse === './' || prefixToUse === '../' || prefixToUse === '.' || prefixToUse === '..') {
+          // Базовые варианты для начала ввода
+          if (prefixToUse === '.' || prefixToUse === '..') {
+            return prefixToUse === '.' ? ['./', '../'] : ['../'];
+          }
+          
+          // Получаем содержимое директории
+          const entries = await getDirectoryContents(currentDir, prefixToUse);
+          
+          // Формируем список автодополнений
+          const completions: string[] = [];
+          
+          // Добавляем в список автодополнений только директорию и её содержимое
+          entries.forEach(entry => {
+            const itemName = entry.path.split('/').pop()?.split('\\').pop() || '';
+            let completion = prefixToUse + itemName + (entry.isDir ? '/' : '');
+            completions.push(completion);
+          });
+          
+          console.log(`[Автодополнение импортов] Сформировано ${completions.length} вариантов автодополнения для ${prefixToUse}`, completions);
+          return completions;
+        }
+        
+        // Многоуровневый относительный путь
+        // Получаем содержимое директории с учётом множественных уровней
+        const entries = await getDirectoryContents(currentDir, prefixToUse);
+        
+        // Определяем, какую часть префикса нужно сохранить
+        let prefixBase = prefixToUse;
+        const lastSlashIndex = prefixToUse.lastIndexOf('/');
+        if (lastSlashIndex !== -1) {
+          prefixBase = prefixToUse.substring(0, lastSlashIndex + 1);
+        }
+        
+        // Фильтруем по последней части пути, если есть
+        const searchSuffix = lastSlashIndex !== -1 ? 
+                            prefixToUse.substring(lastSlashIndex + 1).toLowerCase() : 
+                            '';
+        
+        // Формируем список автодополнений
+        const completions: string[] = [];
+        
+        // Улучшенная обработка многоуровневых путей
+        // Определяем, завершается ли путь на ".." или "../"
+        const endsWithDotDot = prefixToUse.endsWith('..'); 
+        const endsWithDotDotSlash = prefixToUse.endsWith('../');
+        const endsWithSlash = prefixToUse.endsWith('/');
+        
+        // Если путь заканчивается на '..' (без слеша), предлагаем добавить слеш
+        if (endsWithDotDot) {
+          completions.push(prefixToUse + '/');
+          console.log(`[Автодополнение импортов] Добавлен вариант со слешем: ${prefixToUse}/`);
+        }
+        
+        // Добавляем специальную обработку для переходов на уровень выше
+        if ((endsWithDotDotSlash || endsWithDotDot)) {
+          // Если путь заканчивается на ../ или .., добавляем еще один уровень вверх
+          let nextLevelUp;
+          if (endsWithDotDotSlash) {
+            nextLevelUp = prefixToUse + '../';
+          } else {
+            nextLevelUp = prefixToUse + '/../';
+          }
+          completions.push(nextLevelUp);
+          console.log(`[Автодополнение импортов] Добавлен дополнительный переход вверх: ${nextLevelUp}`);
+          
+          // Для случаев с ../ предлагаем также вернуться к предыдущему состоянию с ..
+          if (endsWithDotDotSlash && prefixToUse !== '../') {
+            const parentPath = prefixToUse.replace(/\/+$/, ''); // Удаляем все завершающие слеши
+            completions.push(parentPath);
+            console.log(`[Автодополнение импортов] Добавлен вариант без слеша: ${parentPath}`);
+          }
+        }
+        
+        // Добавляем в список автодополнений только подходящие по префиксу элементы
+        entries.forEach(entry => {
+          const itemName = entry.path.split('/').pop()?.split('\\').pop() || '';
+          
+          // Проверяем, соответствует ли имя файла/директории поисковому суффиксу
+          if (!searchSuffix || itemName.toLowerCase().startsWith(searchSuffix)) {
+            if (itemName === '..' && prefixToUse.endsWith('../')) {
+              // Если это родительская директория и путь уже заканчивается на "../", добавляем еще один "../"
+              const oneMoreLevel = prefixToUse + '../';
+              completions.push(oneMoreLevel);
+              console.log(`[Автодополнение импортов] Добавлен еще один уровень вверх: ${oneMoreLevel}`);
+            } else {
+              // Обычное завершение
+              let completion = prefixBase + itemName + (entry.isDir ? '/' : '');
+              
+              // Не добавляем дубликаты в список автодополнений
+              if (!completions.includes(completion)) {
+                completions.push(completion);
+                console.log(`[Автодополнение импортов] Добавлено автодополнение: ${completion}`);
+              }
+            }
+          }
+        });
+        
+        // Для внутренних путей многоуровневой навигации всегда добавляем возможность перейти на уровень выше
+        if (endsWithSlash && !endsWithDotDotSlash) {
+          // Проверяем, есть ли уже .. в результатах
+          const hasParentOption = completions.some(c => c.endsWith('../') || c === prefixToUse + '..');
+          
+          if (!hasParentOption) {
+            completions.push(prefixToUse + '..');
+            console.log(`[Автодополнение импортов] Добавлена возможность перехода на уровень выше: ${prefixToUse}..`);
+          }
+        }
+        
+        console.log(`[Автодополнение импортов] Сформировано ${completions.length} вариантов автодополнения для многоуровневого пути ${prefixToUse}`, completions);
+        
+        // Если не нашли ни одного варианта и это относительный путь с родительскими директориями
+        if (completions.length === 0 && (prefixToUse.includes('../') || prefixToUse.includes('/..'))) {
+          // Добавляем возможность подняться еще на уровень выше
+          let oneLevelUp = '';
+          
+          if (prefixToUse.endsWith('/')) {
+            oneLevelUp = prefixToUse + '../';
+          } else if (prefixToUse.endsWith('..')) {
+            oneLevelUp = prefixToUse + '/';
+          } else {
+            oneLevelUp = prefixToUse + '/../';
+          }
+          
+          completions.push(oneLevelUp);
+          console.log(`[Автодополнение импортов] Добавлен запасной переход на уровень выше: ${oneLevelUp}`);
+        }
+        
+        return completions;
+      } catch (error) {
+        console.error(`[Автодополнение импортов] Ошибка при обработке относительного пути ${prefixToUse}:`, error);
+      }
     }
     
     if (!fileCache) {
@@ -915,6 +1295,65 @@ export function registerImportCompletionProvider(monaco: Monaco) {
         
         async provideCompletionItems(model: ITextModel, position: Position, context: CompletionContext, token: CancellationToken): Promise<CompletionList | undefined> {
           try {
+            // Проверяем, является ли триггер-символом точка
+            const isTriggerDot = context?.triggerCharacter === '.';
+            
+            // Если символ-триггер - точка, проверяем, находимся ли мы в импорте
+            if (isTriggerDot) {
+              console.log('[Автодополнение импортов] Триггер - точка');
+              
+              // Получаем текст до позиции курсора
+              const textUntilPosition = model.getValueInRange({
+                startLineNumber: position.lineNumber,
+                startColumn: 1,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+              });
+              
+              // Проверяем, содержит ли строка импорт и заканчивается ли на точку
+              if (textUntilPosition.includes('import') && textUntilPosition.trim().endsWith('.')) {
+                console.log('[Автодополнение импортов] Обнаружена точка в импорте');
+                
+                // Предлагаем варианты для точки с высоким приоритетом для текущей директории
+                const suggestions = [{
+                  label: './',
+                  kind: monaco.languages.CompletionItemKind.Folder,
+                  detail: 'Текущая директория',
+                  insertText: './',
+                  sortText: '0', // Наивысший приоритет
+                  range: {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: position.column,
+                    endColumn: position.column
+                  },
+                  command: { // Добавляем команду для немедленного показа следующих подсказок
+                    id: 'editor.action.triggerSuggest',
+                    title: 'Показать подсказки'
+                  }
+                }, 
+                {
+                  label: '../',
+                  kind: monaco.languages.CompletionItemKind.Folder,
+                  detail: 'Родительская директория',
+                  insertText: '../',
+                  sortText: '1', // Высокий приоритет, но ниже ./
+                  range: {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: position.column,
+                    endColumn: position.column
+                  },
+                  command: { // Добавляем команду для немедленного показа следующих подсказок
+                    id: 'editor.action.triggerSuggest',
+                    title: 'Показать подсказки'
+                  }
+                }];
+                
+                return { suggestions };
+              }
+            }
+            
             // Инициализируем кэш файлов при первом вызове
             await initializeFileCache();
             
@@ -981,6 +1420,55 @@ export function registerImportCompletionProvider(monaco: Monaco) {
             // Проверяем, похоже ли это на импорт
             const importMatch = textUntilPosition.match(/import\s+(?:.*\s+from\s+)?['"]([^'"]*)/);
             if (!importMatch) {
+              // Пробуем альтернативный шаблон для поддержки случая, когда пользователь набирает '.'
+              const dotPattern = /import\s+(?:.*\s+from\s+)?['"](.*?)\./;
+              const dotMatch = textUntilPosition.match(dotPattern);
+              
+              if (dotMatch) {
+                const prefix = dotMatch[1] + '.';
+                console.log(`[Автодополнение импортов] Обнаружен префикс импорта с точкой: "${prefix}"`);
+                
+                // Проверяем, не является ли это просто точкой
+                if (prefix === '.') {
+                  const suggestions = [{
+                    label: './',
+                    kind: monaco.languages.CompletionItemKind.Folder,
+                    detail: 'Текущая директория',
+                    insertText: './',
+                    sortText: '0', // Наивысший приоритет
+                    range: {
+                      startLineNumber: position.lineNumber,
+                      endLineNumber: position.lineNumber,
+                      startColumn: position.column - 1,
+                      endColumn: position.column
+                    },
+                    command: { // Добавляем команду для немедленного показа следующих подсказок
+                      id: 'editor.action.triggerSuggest',
+                      title: 'Показать подсказки'
+                    }
+                  }, 
+                  {
+                    label: '../',
+                    kind: monaco.languages.CompletionItemKind.Folder,
+                    detail: 'Родительская директория',
+                    insertText: '../',
+                    sortText: '1', // Высокий приоритет, но ниже ./
+                    range: {
+                      startLineNumber: position.lineNumber,
+                      endLineNumber: position.lineNumber,
+                      startColumn: position.column - 1,
+                      endColumn: position.column
+                    },
+                    command: { // Добавляем команду для немедленного показа следующих подсказок
+                      id: 'editor.action.triggerSuggest',
+                      title: 'Показать подсказки'
+                    }
+                  }];
+                  
+                  return { suggestions };
+                }
+              }
+              
               console.log('[Автодополнение импортов] Не обнаружен шаблон импорта');
               return { suggestions: [] };
             }
@@ -1044,10 +1532,10 @@ export function registerImportCompletionProvider(monaco: Monaco) {
             console.log(`[Автодополнение импортов] Найдено ${completions.length} вариантов автодополнения`);
 
             // Если нет предложений, но это относительный путь, добавляем базовые директории
-            if (completions.length === 0 && (prefix === '../' || prefix === './')) {
+            if (completions.length === 0 && (prefix === '../' || prefix === './' || prefix === '.')) {
               console.log(`[Автодополнение импортов] Добавляем базовые директории для префикса: ${prefix}`);
               
-              if (prefix === './') {
+              if (prefix === './' || prefix === '.') {
                 completions.push('./');
                 completions.push('../');
               } else if (prefix === '../') {
@@ -1055,10 +1543,29 @@ export function registerImportCompletionProvider(monaco: Monaco) {
               }
             }
 
-            // Преобразуем в CompletionItem
+            // Добавляем автодополнение для пустого префикса или начала импорта
+            if (completions.length === 0 && (prefix === '' || prefix === '"' || prefix === "'")) {
+              console.log(`[Автодополнение импортов] Добавляем базовые пути для пустого префикса`);
+              completions.push('./');
+              completions.push('../');
+            }
+
+            // Преобразуем в CompletionItem с высоким приоритетом для ./
             const suggestions = completions.map((completion) => {
               const isDirectory = completion.endsWith('/');
               const label = completion;
+              
+              // Определяем приоритет автодополнения в зависимости от типа пути
+              let sortText = '';
+              if (completion === './') {
+                sortText = '0'; // Наивысший приоритет для ./
+              } else if (completion === '../') {
+                sortText = '1'; // Второй приоритет для ../
+              } else if (isDirectory) {
+                sortText = '2' + label; // Третий приоритет для других директорий
+              } else {
+                sortText = '3' + label; // Последний приоритет для файлов
+              }
               
               return {
                 label,
@@ -1067,13 +1574,18 @@ export function registerImportCompletionProvider(monaco: Monaco) {
                   : monaco.languages.CompletionItemKind.File,
                 insertText: completion,
                 detail: isDirectory ? 'Директория' : 'Файл',
-                sortText: isDirectory ? '0' + label : '1' + label, // Директории выше файлов
+                sortText: sortText,
                 range: {
                   startLineNumber: position.lineNumber,
                   endLineNumber: position.lineNumber,
                   startColumn: position.column - prefix.length,
                   endColumn: position.column
-                }
+                },
+                // Добавляем команду автодополнения для директорий
+                command: isDirectory ? {
+                  id: 'editor.action.triggerSuggest',
+                  title: 'Показать подсказки'
+                } : undefined
               };
             });
 

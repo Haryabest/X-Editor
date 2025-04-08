@@ -12,6 +12,7 @@ import { registerTypeScriptSupport } from './monaco-config/register-typescript';
 import { fixTypeScriptErrors } from './monaco-config/ts-error-fix';
 import { setupTypeScriptDirect } from './monaco-config/ts-config-override';
 import { registerImportCompletionProvider } from './monaco-config/import-completion'; // Импортируем провайдер автодополнения
+import * as monaco from 'monaco-editor';
 
 declare global {
   interface Window {
@@ -24,6 +25,148 @@ declare global {
     logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
     updatePythonDiagnostics?: () => string;
     lastActiveFilePath?: string; // Путь к последнему активному файлу
+  }
+}
+
+// Конфигурация для улучшения автодополнения путей
+// Настраиваем типы точек (.) для автодополнения путей
+function configurePathsAutocomplete() {
+  if (!monaco || !monaco.languages || !monaco.languages.typescript) {
+    console.warn('Monaco не инициализирован полностью, невозможно настроить автодополнение путей');
+    return;
+  }
+
+  try {
+    // Добавляем настройки для TypeScript
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      // Добавляем настройку для улучшения работы с путями
+      pathsSupport: {
+        allowSingleCharacterLiterals: true,
+        allowImportingFromDotAsRelativePath: true
+      }
+    });
+
+    // Настраиваем параметры компилятора для TS/JS
+    const languagesToEnhance = ['typescript', 'javascript', 'typescriptreact', 'javascriptreact'];
+    languagesToEnhance.forEach(language => {
+      // Получаем настройки для языка
+      const defaults = language.startsWith('typescript') 
+        ? monaco.languages.typescript.typescriptDefaults 
+        : monaco.languages.typescript.javascriptDefaults;
+      
+      // Настраиваем компиляцию для улучшенной работы с импортами
+      defaults.setCompilerOptions({
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.ESNext,
+        allowSyntheticDefaultImports: true,
+        resolveJsonModule: true,
+        baseUrl: '.',
+        paths: {
+          "*": ["*", "./src/*", "./app/*", "./*"]
+        }
+      });
+    });
+
+    // Добавляем свой хук для улучшения подсказок с './'
+    if (window.monaco) {
+      // Проверяем наличие функции completionItemProvider
+      if (window.monaco.languages && window.monaco.languages.registerCompletionItemProvider) {
+        console.log('Добавляем дополнительную поддержку для автодополнения путей');
+        
+        // Улучшаем приоритет для автодополнения путей
+        window.monaco.languages.registerCompletionItemProvider('typescript', {
+          triggerCharacters: ['.', '/'],
+          provideCompletionItems: (model: any, position: any) => {
+            const textUntilPosition = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            });
+            
+            // Проверяем, что мы в контексте импортов и есть точка
+            if (textUntilPosition.includes('import') && textUntilPosition.includes('.')) {
+              const dotMatch = textUntilPosition.match(/import.*['"]\.(.*)/);
+              if (dotMatch) {
+                // Предоставляем подсказки для "."
+                return {
+                  suggestions: [
+                    {
+                      label: './',
+                      kind: window.monaco.languages.CompletionItemKind.Folder,
+                      detail: 'Текущая директория',
+                      insertText: './',
+                      sortText: '0', // Самый высокий приоритет
+                      range: {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: position.column - 1,
+                        endColumn: position.column
+                      },
+                      command: {
+                        id: 'editor.action.triggerSuggest',
+                        title: 'Показать подсказки'
+                      }
+                    }
+                  ]
+                };
+              }
+            }
+            
+            return { suggestions: [] };
+          }
+        });
+        
+        window.monaco.languages.registerCompletionItemProvider('typescriptreact', {
+          triggerCharacters: ['.', '/'],
+          provideCompletionItems: (model: any, position: any) => {
+            const textUntilPosition = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column
+            });
+            
+            // Проверяем, что мы в контексте импортов и есть точка
+            if (textUntilPosition.includes('import') && textUntilPosition.includes('.')) {
+              const dotMatch = textUntilPosition.match(/import.*['"]\.(.*)/);
+              if (dotMatch) {
+                // Предоставляем подсказки для "."
+                return {
+                  suggestions: [
+                    {
+                      label: './',
+                      kind: window.monaco.languages.CompletionItemKind.Folder,
+                      detail: 'Текущая директория',
+                      insertText: './',
+                      sortText: '0', // Самый высокий приоритет
+                      range: {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: position.column - 1,
+                        endColumn: position.column
+                      },
+                      command: {
+                        id: 'editor.action.triggerSuggest',
+                        title: 'Показать подсказки'
+                      }
+                    }
+                  ]
+                };
+              }
+            }
+            
+            return { suggestions: [] };
+          }
+        });
+      }
+    }
+
+    console.log('Настройки автодополнения путей успешно применены');
+  } catch (error) {
+    console.error('Ошибка при настройке автодополнения путей:', error);
   }
 }
 
@@ -51,6 +194,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupTypeScriptDirect();
         fixTypeScriptErrors();
         
+        // Применяем настройки для автодополнения путей
+        configurePathsAutocomplete();
+        
         // Регистрируем автодополнение импортов
         try {
           console.log('Регистрация провайдера автодополнения импортов...');
@@ -72,6 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               registerTypeScriptSupport();
               setupTypeScriptDirect();
               fixTypeScriptErrors();
+              configurePathsAutocomplete(); // Повторно применяем настройки путей
               
               // Проверка успешности регистрации
               if (result) {
