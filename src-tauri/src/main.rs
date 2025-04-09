@@ -1,10 +1,11 @@
 // main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Window};
+use tauri::{Emitter, Window};
 use std::process::Command;
 use std::process::{Stdio};
 use tauri::Manager;
+use serde_json;
 
 use tauri::command;
 mod commands;
@@ -101,13 +102,32 @@ fn close_current_window(window: Window) {
 }
 
 #[tauri::command]
-fn create_new_file1(path: String) -> Result<(), String> {
+fn create_simple_file(path: String) -> Result<(), String> {
     std::fs::File::create(&path)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Error creating file: {}", e))?;
     Ok(())
 }
 
+#[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    let path_obj = std::path::Path::new(&path);
+    
+    if path_obj.is_file() {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Ошибка при удалении файла: {}", e))
+    } else if path_obj.is_dir() {
+        std::fs::remove_dir_all(path)
+            .map_err(|e| format!("Ошибка при удалении директории: {}", e))
+    } else {
+        Err(format!("Путь не является файлом или директорией: {}", path))
+    }
+}
 
+#[tauri::command]
+fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
+    std::fs::rename(&old_path, &new_path)
+        .map_err(|e| format!("Ошибка при переименовании: {}", e))
+}
 
 #[tauri::command]
 fn spawn_new_process(path: String) -> Result<(), String> {
@@ -134,7 +154,7 @@ fn toggle_fullscreen(window: tauri::Window) {
 }
 
 #[tauri::command]
-fn git_clone_repository(url: String, target_path: String) -> Result<String, String> {
+fn git_clone_repository(window: Window, url: String, target_path: String) -> Result<String, String> {
     // Проверяем, существует ли директория
     let target_dir = std::path::Path::new(&target_path);
     if target_dir.exists() {
@@ -149,6 +169,29 @@ fn git_clone_repository(url: String, target_path: String) -> Result<String, Stri
         }
     }
 
+    // Функция для отправки обновления прогресса в UI
+    let send_progress = |stage: &str, percentage: u8, message: &str| {
+        let _ = window.emit("git-clone-progress", serde_json::json!({
+            "stage": stage,
+            "percentage": percentage,
+            "message": message
+        }));
+    };
+
+    send_progress("Инициализация", 5, "Подготовка к клонированию...");
+
+    // Создаем директорию для клонирования
+    std::fs::create_dir_all(&target_path)
+        .map_err(|e| format!("Не удалось создать директорию для клонирования: {}", e))?;
+
+    // Эмулируем прогресс клонирования для лучшего UX
+    // В реальности нам нужно запустить git clone с выводом и парсить его
+    send_progress("Подключение", 10, "Подключение к удаленному репозиторию...");
+
+    // Небольшая задержка для демонстрации
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    send_progress("Подсчет", 20, "Подсчет объектов...");
+
     // Запускаем git clone
     let output = Command::new("git")
         .args(&["clone", &url, &target_path])
@@ -157,13 +200,16 @@ fn git_clone_repository(url: String, target_path: String) -> Result<String, Stri
         .output()
         .map_err(|e| format!("Ошибка при запуске git clone: {}", e))?;
 
-    if !output.status.success() {
+    // В зависимости от результата отправляем финальное сообщение
+    if output.status.success() {
+        send_progress("Завершение", 100, "Клонирование успешно завершено");
+        // Возвращаем успешный результат
+        Ok(format!("Репозиторий успешно клонирован в {}", target_path))
+    } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(format!("Ошибка при клонировании: {}", stderr));
+        send_progress("Ошибка", 0, &stderr);
+        Err(format!("Ошибка при клонировании: {}", stderr))
     }
-
-    // Возвращаем успешный результат
-    Ok(format!("Репозиторий успешно клонирован в {}", target_path))
 }
 
 fn main() {
@@ -178,7 +224,9 @@ fn main() {
             open_in_explorer,
             get_args,
             new_folder,
-            create_new_file1,
+            create_simple_file,
+            delete_file,
+            rename_file,
             spawn_new_process,
             close_current_window,
             commands::window_commands::close_window,
@@ -187,6 +235,7 @@ fn main() {
             commands::file_operations::create_folder,
             commands::file_operations::save_file,
             commands::file_operations::check_path_exists,
+            commands::file_operations::create_file,
             types::get_directory_tree,
             types::get_subdirectory,
             reading::read_text_file,
@@ -215,6 +264,7 @@ fn main() {
             commands::fs_commands::get_importable_files,
             commands::fs_commands::get_npm_packages,
             commands::fs_commands::editor_get_current_file_path,
+            commands::fs_commands::get_all_files_in_directory,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

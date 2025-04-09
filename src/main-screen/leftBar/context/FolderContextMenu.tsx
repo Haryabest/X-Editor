@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
+import { invoke } from '@tauri-apps/api/core';
 
 import "./style.css";
 
@@ -7,67 +9,232 @@ interface FolderContextMenuProps {
   y: number;
   path: string;
   onClose: () => void;
-  onCreateFolder: (path: string) => Promise<void>;
-  onCreateFile: (path: string) => Promise<void>;
+  onCreateFile?: (path: string) => void;
+  onCreateDirectory?: (path: string) => void;
+  onRename?: (path: string) => void;
+  onDelete?: (path: string) => void;
+  workspaceRoot?: string;
+  onSetTerminalPath?: (path: string) => void;
 }
 
-const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
-  x,
-  y,
-  path,
+const FolderContextMenu: React.FC<FolderContextMenuProps> = ({ 
+  x, 
+  y, 
+  path, 
   onClose,
-  onCreateFolder,
   onCreateFile,
+  onCreateDirectory,
+  onRename,
+  onDelete,
+  workspaceRoot = "",
+  onSetTerminalPath
 }) => {
-  return (
-    <div
-      className="context-menu-left"
-      style={{ top: y, left: x, position: 'fixed', zIndex: 1000 }}
-      onClick={onClose}
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Добавляем слушатель событий при монтировании
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    // Добавляем обработчик клавиатурных событий
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Предотвращаем стандартное поведение для нужных сочетаний
+      switch (event.key) {
+        case 'Escape':
+          event.preventDefault();
+          onClose();
+          break;
+        case 'e':
+        case 'E':
+          if (event.ctrlKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            handleOpenInExplorer(event);
+          }
+          break;
+        case 't':
+        case 'T':
+          if (event.ctrlKey && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            handleOpenInTerminal(event);
+          }
+          break;
+        case 'n':
+        case 'N':
+          if ((event.ctrlKey && !event.shiftKey && !event.altKey) || 
+              (event.altKey && !event.ctrlKey && !event.shiftKey)) {
+            // Для Ctrl+N или Alt+N (но не для обоих одновременно)
+            event.preventDefault();
+            handleCreateFile(event);
+          } else if ((event.ctrlKey && event.shiftKey && !event.altKey) || 
+                    (event.altKey && !event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'd')) {
+            // Для Ctrl+Shift+N или Alt+D
+            event.preventDefault();
+            handleCreateDirectory(event);
+          }
+          break;
+        case 'c':
+        case 'C':
+          if (event.ctrlKey && event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            handleCopyPath(event);
+          } else if (event.ctrlKey && !event.shiftKey && event.altKey) {
+            event.preventDefault();
+            handleCopyRelativePath(event);
+          }
+          break;
+        case 'F2':
+          event.preventDefault();
+          handleRename(event);
+          break;
+        case 'Delete':
+          event.preventDefault();
+          handleDelete(event);
+          break;
+        case 'd':
+        case 'D':
+          if (event.altKey && !event.ctrlKey && !event.shiftKey) {
+            event.preventDefault();
+            handleCreateDirectory(event);
+          }
+          break;
+        default:
+          break;
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Устанавливаем фокус на элемент меню
+    if (menuRef.current) {
+      menuRef.current.focus();
+    }
+    
+    // Очищаем слушатели при размонтировании
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  // Функция для копирования текста в буфер обмена
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy text to clipboard', err);
+    }
+  };
+
+  // Обработчики действий
+  const handleOpenInExplorer = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    invoke("open_in_explorer", { path });
+    onClose();
+  };
+
+  const handleOpenInTerminal = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    if (onSetTerminalPath) {
+      onSetTerminalPath(path);
+    }
+    onClose();
+  };
+
+  const handleCreateFile = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    if (onCreateFile) {
+      onCreateFile(path);
+    }
+    onClose();
+  };
+
+  const handleCreateDirectory = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    if (onCreateDirectory) {
+      onCreateDirectory(path);
+    }
+    onClose();
+  };
+
+  const handleCopyPath = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    navigator.clipboard.writeText(path);
+    onClose();
+  };
+
+  const handleCopyRelativePath = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    const relativePath = path.replace(workspaceRoot, "").replace(/\\/g, "/");
+    navigator.clipboard.writeText(relativePath.startsWith("/") ? relativePath.slice(1) : relativePath);
+    onClose();
+  };
+
+  const handleRename = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    if (onRename) {
+      onRename(path);
+    }
+    onClose();
+  };
+
+  const handleDelete = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
+    event.stopPropagation();
+    if (onDelete) {
+      onDelete(path);
+    }
+    onClose();
+  };
+
+  // Создаем контент меню
+  const menuContent = (
+    <div 
+      ref={menuRef}
+      className="context-menu-left2"
+      style={{ 
+        top: y, 
+        left: x, 
+        position: 'fixed', 
+        zIndex: 2147483647 // Максимально возможный z-index
+      }}
+      tabIndex={0} // Добавлено для возможности получать фокус
     >
-      <button onClick={(e) => { e.stopPropagation(); onCreateFolder(path); }}>
-        Новая папка <span className="shortcut">Ctrl+Shift+N</span>
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Новый файл <span className="shortcut">Ctrl+N</span>
-      </button>
-      <div className="seperator"></div>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+      <button onClick={handleOpenInExplorer}>
         Открыть в проводнике <span className="shortcut">Ctrl+E</span>
       </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+      <button onClick={handleOpenInTerminal}>
         Открыть в терминале <span className="shortcut">Ctrl+T</span>
       </button>
       <div className="seperator"></div>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Найти в папке <span className="shortcut">Ctrl+F</span>
+      <button onClick={handleCreateFile}>
+        Новый файл <span className="shortcut">Ctrl+N / Alt+N</span>
+      </button>
+      <button onClick={handleCreateDirectory}>
+        Новая папка <span className="shortcut">Ctrl+Shift+N / Alt+D</span>
       </button>
       <div className="seperator"></div>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Вырезать <span className="shortcut">Ctrl+X</span>
+      <button onClick={handleCopyPath}>
+        Копировать путь <span className="shortcut">Ctrl+Shift+C</span>
       </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Копировать <span className="shortcut">Ctrl+C</span>
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Вставить <span className="shortcut">Ctrl+V</span>
+      <button onClick={handleCopyRelativePath}>
+        Копировать относительный путь <span className="shortcut">Ctrl+Alt+C</span>
       </button>
       <div className="seperator"></div>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Скопировать путь <span className="shortcut">Ctrl+Shift+C</span>
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
-        Скопировать относительный путь <span className="shortcut">Ctrl+Alt+C</span>
-      </button>
-      <div className="seperator"></div>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+      <button onClick={handleRename}>
         Переименовать <span className="shortcut">F2</span>
       </button>
-      <button onClick={(e) => { e.stopPropagation(); onCreateFile(path); }}>
+      <button onClick={handleDelete}>
         Удалить <span className="shortcut">Del</span>
       </button>
     </div>
   );
+
+  // Используем портал для рендеринга меню в конец body
+  return ReactDOM.createPortal(menuContent, document.body as Element);
 };
 
 export default FolderContextMenu;

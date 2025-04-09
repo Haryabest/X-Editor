@@ -82,6 +82,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Индикатор несохраненных изменений */
+.tab-modified-indicator {
+  color: #0078d4;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+.tab.modified .tab-name {
+  font-style: italic;
 }
 
 .close-tab {
@@ -96,7 +112,7 @@
   cursor: pointer;
   border-radius: 3px;
   padding: 0;
-  opacity: 0;
+  margin-right: 2px;
   transition: opacity 0.2s;
 }
 
@@ -141,6 +157,45 @@
 
 .pin-button:hover svg {
   color: #3794ff;
+}
+
+/* Кнопка предпросмотра */
+.preview-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+}
+
+.preview-button:hover {
+  color: #000;
+}
+
+/* Standalone preview button outside of tabs */
+.preview-button-standalone {
+  position: absolute;
+  right: 10px;
+  top: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #22c55e;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  z-index: 10;
+}
+
+.preview-button-standalone:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #4ade80;
 }
 
 /* Строка статуса */

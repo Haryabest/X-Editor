@@ -539,4 +539,54 @@ pub fn editor_get_current_file_path() -> serde_json::Value {
         "exists": std::path::Path::new(&current_dir_str).exists(),
         "isDirectory": true
     })
+}
+
+/// Получает все файлы в указанной директории (рекурсивно)
+#[command]
+pub fn get_all_files_in_directory(directory: &str) -> Vec<String> {
+    println!("Сканирование директории для получения всех файлов: {}", directory);
+    
+    let mut files = Vec::new();
+    let path_obj = Path::new(directory);
+    
+    if !path_obj.exists() || !path_obj.is_dir() {
+        println!("Путь не существует или не является директорией: {}", directory);
+        return files;
+    }
+    
+    // Игнорируем определенные директории
+    let ignore_dirs = ["node_modules", ".git", "dist", "build", ".next", "out", 
+                      ".cache", ".idea", ".vscode", ".github", "coverage", ".DS_Store"];
+    
+    for entry in WalkDir::new(directory)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| {
+            let path = e.path();
+            
+            // Проверяем, является ли путь директорией
+            if path.is_dir() {
+                // Игнорируем определенные директории
+                let dir_name = path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("");
+                
+                !ignore_dirs.iter().any(|&ignore| dir_name == ignore)
+            } else {
+                true
+            }
+        })
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        
+        // Исключаем директории, добавляем только файлы
+        if !path.is_dir() {
+            let path_str = path.to_string_lossy().to_string().replace("\\", "/");
+            files.push(path_str);
+        }
+    }
+    
+    println!("Найдено {} файлов в директории {}", files.len(), directory);
+    files
 } 

@@ -353,14 +353,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: #858585;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-right: 10px;
+  color: #aaa;
 }
 
+.file-icon svg, 
 .file-icon img {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .file-info {
@@ -466,4 +470,116 @@
     margin-right: 4px;
     padding-right: 4px;
   }
+}
+
+/* Стиль для индикатора прогресса сканирования */
+.search-progress {
+  width: 100%;
+  margin: 10px 0;
+  padding: 0 10px;
+}
+
+.search-progress-bar {
+  height: 4px;
+  width: 100%;
+  background-color: #444;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.search-progress-fill {
+  height: 100%;
+  background-color: #0078d7;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.search-progress-text {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 4px;
+  text-align: center;
+}
+
+/* Стиль для "Загрузить еще" */
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: 5px 0;
+  background-color: #383838;
+  color: #bbb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 13px;
+}
+
+.load-more:hover {
+  background-color: #444;
+  color: #fff;
+}
+
+/* Стиль для состояния загрузки */
+.search-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #aaa;
+}
+
+.search-loading p {
+  margin: 5px 0;
+}
+
+.small-text {
+  font-size: 12px;
+  color: #888;
+}
+
+/* Статистика поиска */
+.search-stats {
+  font-size: 12px;
+  color: #888;
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #aaa;
+  gap: 10px;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.search-placeholder {
+  padding: 10px;
+  color: #888;
+  text-align: center;
+}
+
+.no-results {
+  padding: 15px;
+  color: #888;
+  text-align: center;
 }

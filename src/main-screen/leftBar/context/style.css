@@ -1,17 +1,20 @@
-.context-menu-left, .context-menu-left2 {
+.context-menu-left, .context-menu-left2, .context-menu-left3 {
   position: fixed;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   padding: 5px 0;
   min-width: 300px; /* Увеличиваем ширину, чтобы уместить текст и горячие клавиши */
-  z-index: 1000;
+  z-index: 2147483647; /* Максимально возможный z-index */
   background: #353535;
   border: 1px solid #666666;
   gap: 5px;
   border-radius: 10px;
   padding: 10px;
+  pointer-events: auto; /* Гарантирует, что меню будет реагировать на события мыши */
+  transform: translateZ(0); /* Включаем аппаратное ускорение */
+  will-change: transform; /* Оптимизируем рендеринг */
 }
 
-.context-menu-left button, .context-menu-left2 button {
+.context-menu-left button, .context-menu-left2 button, .context-menu-left3 button {
   display: flex; /* Меняем на flex, чтобы выровнять текст и горячие клавиши */
   justify-content: space-between; /* Текст слева, горячие клавиши справа */
   align-items: center;
@@ -28,7 +31,7 @@
   cursor: pointer;
 }
 
-.context-menu-left button:hover, .context-menu-left2 button:hover {
+.context-menu-left button:hover, .context-menu-left2 button:hover, .context-menu-left3 button:hover {
   background: #575757;
 }
 

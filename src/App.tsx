@@ -546,10 +546,12 @@ function App() {
                 <div className="editor-container">
                   {openedFiles.length > 0 && (
                     <TopbarEditor
-                      openedFiles={openedFiles.map(file => ({...file, icon: file.isFolder ? 'folder' : 'file'}))}
+                      openedFiles={openedFiles}
                       activeFile={selectedFile}
                       setSelectedFile={handleSetSelectedFile}
                       closeFile={handleCloseFile}
+                      modifiedFiles={editorRef.current?.getModifiedFiles ? new Set(editorRef.current.getModifiedFiles()) : new Set()}
+                      onPreviewHtml={editorRef.current?.openHtmlPreview}
                     />
                   )}
                   <CenterContainer

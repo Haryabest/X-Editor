@@ -11,15 +11,13 @@ pub fn read_text_file(path: String) -> Result<String, String> {
         return Err(format!("Файл '{}' не существует", path.display()));
     }
     
-    // Читаем файл
-    let mut file = File::open(path)
+    // Читаем файл с явным указанием UTF-8 кодировки
+    let content = std::fs::read(path)
         .map_err(|err| format!("Не удалось открыть файл: {}", err))?;
     
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .map_err(|err| format!("Не удалось прочитать файл: {}", err))?;
-    
-    Ok(contents)
+    // Декодируем содержимое как UTF-8
+    String::from_utf8(content)
+        .map_err(|err| format!("Файл содержит некорректные UTF-8 символы: {}", err))
 }
 
 #[tauri::command]

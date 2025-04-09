@@ -1,8 +1,11 @@
 .center-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
   position: relative;
   height: 100%;
   width: 100%;
-  overflow: hidden;
   background-color: #1e1e1e;
   color: #d4d4d4;
 }
@@ -13,14 +16,14 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  color: #888;
   text-align: center;
-  padding: 20px;
 }
 
 .welcome-message h2 {
   font-size: 2rem;
   margin-bottom: 1rem;
-  color: #f0f0f0;
+  color: #555;
 }
 
 .welcome-message p {
@@ -31,51 +34,85 @@
 
 .welcome-buttons {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
   justify-content: center;
+  gap: 15px;
+  margin-top: 30px;
+  max-width: 600px;
 }
 
-.welcome-message button {
-  background-color: #0e639c;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
+.welcome-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 180px;
+  height: 120px;
+  background: rgba(0, 120, 212, 0.05);
+  border: 1px solid rgba(0, 120, 212, 0.2);
+  border-radius: 8px;
   cursor: pointer;
+  transition: background 0.3s;
+  padding: 15px;
+}
+
+.welcome-button:hover {
+  background: rgba(0, 120, 212, 0.1);
+}
+
+.welcome-button-text {
   font-size: 14px;
-  transition: background-color 0.2s;
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: #444;
 }
 
-.welcome-message button:hover {
-  background-color: #1177bb;
-}
-
-.welcome-message button:active {
-  background-color: #0b5086;
-}
-
-.welcome-message button:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-  opacity: 0.6;
+.shortcut-label {
+  font-size: 12px;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  color: #666;
 }
 
 .file-error-message {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   height: 100%;
-  font-size: 16px;
-  color: #e74c3c;
-  text-align: center;
-  padding: 20px;
+  font-size: 14px;
+  color: #888;
 }
 
-/* Стили для редактора */
+.module-tooltip {
+  position: absolute;
+  background: #303030;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 12px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Стили для редактора с предпросмотром */
 .editor-container {
-  height: 100%;
-  width: 100%;
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-container.with-preview {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.editor-container.with-preview > div:first-child {
+  flex: 1;
+  min-width: 50%;
 }
 
 /* Стили для предпросмотра изображений */
@@ -225,7 +262,7 @@ img {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 1000;
+  z-index: 100;
   display: flex;
   gap: 5px;
   background-color: rgba(30, 30, 30, 0.8);
@@ -247,23 +284,6 @@ img {
   background-color: #444;
 }
 
-.module-tooltip {
-  background-color: #2d2d2d;
-  color: #d4d4d4;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  border: 1px solid #3d3d3d;
-  max-width: 400px;
-  word-break: break-all;
-  white-space: pre-wrap;
-  pointer-events: none;
-  z-index: 1000;
-  font-family: 'Consolas', 'Monaco', monospace;
-  line-height: 1.4;
-}
-
 .module-tooltip::before {
   content: '';
   position: absolute;
@@ -275,5 +295,55 @@ img {
   transform: rotate(45deg);
   border-left: 1px solid #3d3d3d;
   border-top: 1px solid #3d3d3d;
+}
+
+/* Стили для контейнера редактора с предпросмотром */
+.editor-container.with-preview {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.monaco-editor-wrapper {
+  flex: 1;
+  height: 100%;
+  min-width: 40%;
+}
+
+.html-preview-wrapper {
+  flex: 1;
+  height: 100%;
+  min-width: 40%;
+  max-width: 60%;
+  border-left: 1px solid #444;
+  overflow: hidden;
+}
+
+/* Ensure the iframe takes full height */
+.html-preview-iframe {
+  width: 100%;
+  height: calc(100% - 80px); /* Account for header and browser controls */
+  border: none;
+  background: #fff;
+}
+
+/* Responsive layout for smaller screens */
+@media (max-width: 1200px) {
+  .editor-container.with-preview {
+    flex-direction: column;
+  }
+  
+  .monaco-editor-wrapper,
+  .html-preview-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
+    height: 50%;
+  }
+  
+  .html-preview-wrapper {
+    border-left: none;
+    border-top: 1px solid #444;
+  }
 }
   

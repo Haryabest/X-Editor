@@ -205,8 +205,30 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+
+    // Обработчик для клавиатурных событий 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+P для поиска файлов (как в VS Code)
+      if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault(); // Предотвращаем стандартное действие (открытие диалога печати)
+        setShowSearchDropdown(true);
+      }
+      
+      // Escape для закрытия поиска
+      if (e.key === 'Escape' && showSearchDropdown) {
+        setShowSearchDropdown(false);
+      }
+    };
+
+    // Добавляем слушатели событий
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Очистка при размонтировании
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showSearchDropdown]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -529,19 +551,30 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
               windowWidth < 1000 ? '200px' : 
               windowWidth < 1200 ? '300px' : '400px'
             }
-            onClick={() => setShowSearchDropdown(true)}
+            onClick={() => {
+              // Если поисковый компонент уже открыт, закрываем его перед открытием
+              if (showSearchDropdown) {
+                setShowSearchDropdown(false);
+                setTimeout(() => setShowSearchDropdown(true), 10);
+              } else {
+                setShowSearchDropdown(true);
+              }
+            }}
             selectedFolder={selectedFolder}
+            isSearchActive={showSearchDropdown}
           />
           
           {showSearchDropdown && (
             <SearchDropdown
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              files={currentFiles.filter(file =>
-                file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                file.path.toLowerCase().includes(searchQuery.toLowerCase())
-              )}
-              onFileSelect={setSelectedFile}
+              files={currentFiles.filter(file => file.is_directory === false)}
+              onFileSelect={(path) => {
+                setSelectedFile(path);
+                setShowSearchDropdown(false);
+              }}
+              selectedFolder={selectedFolder || null}
+              onClose={() => setShowSearchDropdown(false)}
             />
           )}
         </div>

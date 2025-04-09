@@ -5,38 +5,36 @@ interface InlineRenameInputProps {
   onSubmit: (value: string) => void;
   onCancel: () => void;
   isNewItem?: boolean;
+  onChange?: (value: string) => void;
 }
 
 const InlineRenameInput: React.FC<InlineRenameInputProps> = ({
   initialValue,
   onSubmit,
   onCancel,
-  isNewItem = false
+  isNewItem = false,
+  onChange
 }) => {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
   
-  // При отображении компонента автоматически устанавливаем фокус на поле ввода
+  // Focus input on mount
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
       
-      // Если создаем новый элемент, то выбираем все, иначе устанавливаем курсор 
-      // перед расширением файла
       if (isNewItem) {
         inputRef.current.select();
       } else {
         const lastDotIndex = initialValue.lastIndexOf('.');
         if (lastDotIndex > 0) {
-          // Файл с расширением - выделяем только имя файла без расширения
           inputRef.current.setSelectionRange(0, lastDotIndex);
         } else {
-          // Папка или файл без расширения - выделяем все
           inputRef.current.select();
         }
       }
     }
-  }, [initialValue, isNewItem]);
+  }, []);
   
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -53,11 +51,19 @@ const InlineRenameInput: React.FC<InlineRenameInputProps> = ({
   };
   
   const handleBlur = () => {
-    // При потере фокуса применяем изменения, если значение не пустое
     if (value.trim()) {
       onSubmit(value);
     } else {
       onCancel();
+    }
+  };
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setValue(newValue);
+    
+    if (onChange) {
+      onChange(newValue);
     }
   };
   
@@ -67,9 +73,10 @@ const InlineRenameInput: React.FC<InlineRenameInputProps> = ({
       type="text"
       className="inline-rename-input"
       value={value}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={handleChange}
       onKeyDown={handleKeyDown}
       onBlur={handleBlur}
+      autoFocus
     />
   );
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getFileIcon } from '../leftBar/fileIcons';
 import FileTabContextMenu from './FileTabContextMenu';
 import { invoke } from '@tauri-apps/api/core';
-import { Pin, PinOff } from 'lucide-react';
+import { Pin, PinOff, Play } from 'lucide-react';
 
 import './TopbarEditor.css';
 
@@ -13,6 +13,7 @@ interface FileItem {
   icon: string;
   isFolder?: boolean;
   isPinned?: boolean;
+  isModified?: boolean;
 }
 
 interface TopbarEditorProps {
@@ -20,13 +21,17 @@ interface TopbarEditorProps {
   activeFile: string | null;
   setSelectedFile: (filePath: string | null) => void;
   closeFile: (filePath: string) => void;
+  modifiedFiles?: Set<string>;
+  onPreviewHtml?: (filePath: string) => void;
 }
 
 const TopbarEditor: React.FC<TopbarEditorProps> = ({
   openedFiles,
   activeFile,
   setSelectedFile,
-  closeFile
+  closeFile,
+  modifiedFiles = new Set(),
+  onPreviewHtml
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -37,11 +42,19 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
   const [orderedFiles, setOrderedFiles] = useState<FileItem[]>([]);
   const [pinnedFiles, setPinnedFiles] = useState<Set<string>>(new Set());
   
-  // Обновляем orderedFiles когда меняется openedFiles
+  // Проверяем, является ли файл HTML
+  const isHtmlFile = (filePath: string) => {
+    return filePath.toLowerCase().endsWith('.html') || filePath.toLowerCase().endsWith('.htm');
+  };
+  
+  // Обновляем orderedFiles когда меняется openedFiles или modifiedFiles
   useEffect(() => {
     if (orderedFiles.length === 0) {
       // Initial load
-      setOrderedFiles([...openedFiles]);
+      setOrderedFiles([...openedFiles].map(file => ({
+        ...file,
+        isModified: modifiedFiles.has(file.path)
+      })));
     } else {
       // Update while preserving order
       const existingPaths = new Set(orderedFiles.map(file => file.path));
@@ -49,10 +62,21 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
       
       // Remove files that no longer exist in openedFiles
       const currentPaths = new Set(openedFiles.map(file => file.path));
-      const updatedOrderedFiles = orderedFiles.filter(file => currentPaths.has(file.path));
+      const updatedOrderedFiles = orderedFiles
+        .filter(file => currentPaths.has(file.path))
+        .map(file => ({
+          ...file,
+          isModified: modifiedFiles.has(file.path)
+        }));
+      
+      // Добавляем новые файлы и помечаем модифицированные
+      const newFilesWithModified = newFiles.map(file => ({
+        ...file,
+        isModified: modifiedFiles.has(file.path)
+      }));
       
       // Сортируем так, чтобы закрепленные файлы были в начале
-      const sortedFiles = [...updatedOrderedFiles, ...newFiles].sort((a, b) => {
+      const sortedFiles = [...updatedOrderedFiles, ...newFilesWithModified].sort((a, b) => {
         const isPinnedA = pinnedFiles.has(a.path);
         const isPinnedB = pinnedFiles.has(b.path);
         
@@ -63,7 +87,7 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
       
       setOrderedFiles(sortedFiles);
     }
-  }, [openedFiles, pinnedFiles]);
+  }, [openedFiles, pinnedFiles, modifiedFiles]);
 
   const activeFilePath = openedFiles.find(file => file.path === activeFile)?.path || '';
   
@@ -78,6 +102,14 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
       }
       return newPinnedFiles;
     });
+  };
+  
+  // Функция для открытия HTML предпросмотра
+  const handlePreviewHtml = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>, filePath: string) => {
+    e.stopPropagation();
+    if (onPreviewHtml) {
+      onPreviewHtml(filePath);
+    }
   };
   
   // Функции для контекстного меню
@@ -212,10 +244,13 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
       <div className="tabs-container">
         {orderedFiles.map((file) => {
           const isPinned = pinnedFiles.has(file.path);
+          const isModified = file.isModified || modifiedFiles.has(file.path);
+          const showPreviewButton = isHtmlFile(file.path) && onPreviewHtml;
+          
           return (
             <div
               key={file.path}
-              className={`tab ${activeFile === file.path ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
+              className={`tab ${activeFile === file.path ? 'active' : ''} ${isPinned ? 'pinned' : ''} ${isModified ? 'modified' : ''}`}
               onClick={() => setSelectedFile(file.path)}
               onContextMenu={(e) => handleContextMenu(e, file.path)}
               data-path={file.path}
@@ -235,7 +270,10 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
                   <Pin size={14} strokeWidth={2} />
                 </button>
               )}
-              <span className="tab-name">{file.name}</span>
+              <span className="tab-name">
+                {file.name}
+                {isModified && <span className="tab-modified-indicator">●</span>}
+              </span>
               
               <button
                 className="close-tab"
@@ -250,6 +288,17 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
           );
         })}
       </div>
+
+      {/* Preview button placed outside of tabs */}
+      {activeFile && isHtmlFile(activeFile) && onPreviewHtml && (
+        <button
+          className="preview-button-standalone"
+          onClick={(e) => onPreviewHtml(activeFile)}
+          title="Предпросмотр HTML"
+        >
+          <Play size={16} strokeWidth={2} />
+        </button>
+      )}
       
       {/* Строка статуса */}
       <div className="status-bar">

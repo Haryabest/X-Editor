@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { open, save, saveAs } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import ReactPlayer from 'react-player';
 import { FileItem } from '../../types';
@@ -16,6 +16,9 @@ import { initializeMonacoEditor, correctLanguageFromExtension } from './monaco-a
 import { monacoLSPService } from './monaco-lsp-wrapper';
 import { initializeMonacoLSP, getMonacoLSPInstance } from './monaco-lsp-integration';
 import { debounce } from 'lodash';
+import CloneRepositoryModal from './CloneRepositoryModal';
+import HtmlPreview from '../preview/HtmlPreview';
+import { writeBinaryFile } from '@tauri-apps/plugin-fs';
 
 import "./style.css";
 
@@ -39,6 +42,12 @@ interface MarkerData {
 export interface CenterContainerHandle {
   selectAll: () => void;
   deselect: () => void;
+  saveCurrentFile: () => void;
+  saveFileAs: () => void;
+  getModifiedFiles: () => string[];
+  openHtmlPreview: (filePath: string) => void;
+  closeHtmlPreview: () => void;
+  isFileModified: (path: string) => boolean;
 }
 
 interface IssueInfo {
@@ -79,7 +88,7 @@ interface CenterContainerProps {
   handleFileSelect?: (filePath: string | null) => void;
   onSelectAll?: () => void;
   onDeselect?: () => void;
-  editorRef?: React.RefObject<any>;
+  editorRef?: React.RefObject<CenterContainerHandle>;
 }
 
 // Вспомогательные функции для обработки путей
@@ -128,11 +137,20 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     initialized: false,
     connectedServers: []
   });
+  const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const lspRef = useRef<any>(null);
   const internalEditorRef = useRef<any>(null);
   const internalMonacoRef = useRef<any>(null);
   const [tooltipContent, setTooltipContent] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Новые состояния для отслеживания изменений и предпросмотра HTML
+  const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
+  const [isHtmlPreviewVisible, setIsHtmlPreviewVisible] = useState<boolean>(false);
+  const [originalFileContents, setOriginalFileContents] = useState<Map<string, string>>(new Map());
+  
+  // Добавим отслеживание предыдущего файла для сохранения при переключении
+  const previousFileRef = useRef<string | null>(null);
   
   // Конфигурируем Monaco сразу при загрузке компонента
   useEffect(() => {
@@ -170,50 +188,52 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   }, [fontSize, editorInstance]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'a') {
-        e.preventDefault();
-        if (editorInstance) {
-          const model = editorInstance.getModel();
-          if (model) {
-            const fullRange = model.getFullModelRange();
-            editorInstance.setSelection(fullRange);
-            editorInstance.focus();
-          }
-        }
-      } else if (e.key === 'Escape') {
-        if (editorInstance) {
-          editorInstance.setSelection({
-            startLineNumber: 0,
-            startColumn: 0,
-            endLineNumber: 0,
-            endColumn: 0
-          });
-          editorInstance.focus();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editorInstance]);
-
-  useEffect(() => {
     const loadFileContent = async () => {
       if (selectedFile) {
         const ext = selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase();
-
+        
         try {
-          if (supportedTextExtensions.includes(ext)) {
-            const content: string = await invoke('read_text_file', { path: selectedFile });
-            setFileContent(content);
-            setCode(content);
-            setImageSrc(null);
-            setVideoSrc(null);
+          if (supportedTextExtensions.includes(ext) || selectedFile.startsWith('untitled-')) {
+            // First try to load from localStorage cache for modified files
+            const cachedContent = localStorage.getItem(`file_cache_${selectedFile}`);
             
-            // Уведомляем LSP об открытии файла только если инициализация LSP выполнена
+            if (cachedContent) {
+              console.log(`Загружен кэшированный контент для модифицированного файла ${selectedFile}`);
+              setFileContent(cachedContent);
+              setCode(cachedContent);
+              setImageSrc(null);
+              setVideoSrc(null);
+              
+              // Ensure this file is marked as modified
+              if (!modifiedFiles.has(selectedFile)) {
+                setModifiedFiles(prev => {
+                  const newSet = new Set(prev);
+                  newSet.add(selectedFile);
+                  return newSet;
+                });
+              }
+            } else {
+              // Load content from disk since there's no cached version
+              console.log(`Загрузка файла с диска: ${selectedFile}`);
+              const content = await invoke('read_text_file', { path: selectedFile });
+              setFileContent(content);
+              setCode(content);
+              setImageSrc(null);
+              setVideoSrc(null);
+              
+              // Store this as the original version of the file for comparing changes
+              if (!originalFileContents.has(selectedFile)) {
+                setOriginalFileContents(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(selectedFile, content);
+                  return newMap;
+                });
+              }
+            }
+            
+            // Notify LSP about file open
             if (monacoInstance && editorInstance && lspStatus.initialized) {
-              monacoLSPService.handleFileOpen(selectedFile, content);
+              monacoLSPService.handleFileOpen(selectedFile, fileContent || code);
               
               // Устанавливаем правильный язык для текущей модели
               const model = editorInstance.getModel();
@@ -237,6 +257,13 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             setCode('');
             setImageSrc(null);
             setVideoSrc(null);
+            
+            // Сохраняем пустое содержимое для нового файла
+            setOriginalFileContents(prev => {
+              const newMap = new Map(prev);
+              newMap.set(selectedFile, '');
+              return newMap;
+            });
           } else {
             setFileContent(null);
             setImageSrc(null);
@@ -255,7 +282,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
     };
     loadFileContent();
-  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions, lspStatus.initialized, monacoInstance, editorInstance]);
+  }, [selectedFile, supportedTextExtensions, supportedImageExtensions, supportedVideoExtensions, lspStatus.initialized, monacoInstance, editorInstance, code, modifiedFiles]);
 
   // Добавляем функцию для открытия папки
   const handleOpenFolder = async () => {
@@ -276,14 +303,14 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   };
 
   // Добавляем функцию для сохранения файла
-  const handleSaveFile = async () => {
+  const handleSaveFile = async (saveAs = false) => {
     try {
-      if (!selectedFile || !code) return;
+      if (!selectedFile || code === undefined) return;
       
       let targetPath: string | null = null;
       
-      if (selectedFile.startsWith('untitled-')) {
-        // Если это новый файл, предлагаем выбрать имя
+      if (saveAs || selectedFile.startsWith('untitled-')) {
+        // Если это новый файл или Сохранить как, предлагаем выбрать имя
         const result = await save({
           title: 'Сохранить файл',
           defaultPath: selectedFolder || undefined,
@@ -296,12 +323,46 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       }
 
       if (targetPath) {
+        // Сохраняем файл на диск
         await invoke('save_file', {
           path: targetPath,
           content: code
         });
         
         console.log(`Файл сохранён: ${targetPath}`);
+        
+        // Обновляем оригинальное содержимое файла после сохранения
+        setOriginalFileContents(prev => {
+          const newMap = new Map(prev);
+          newMap.set(targetPath as string, code);
+          return newMap;
+        });
+        
+        // Удаляем файл из списка модифицированных
+        setModifiedFiles(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(targetPath as string);
+          return newSet;
+        });
+        
+        // Если это был новый файл, обновляем его путь
+        if (selectedFile.startsWith('untitled-') && targetPath !== selectedFile) {
+          const fileName = pathUtils.basename(targetPath);
+          
+          // Обновляем список открытых файлов
+          setOpenedFiles(prev => 
+            prev.map(file => 
+              file.path === selectedFile 
+                ? { ...file, path: targetPath as string, name: fileName }
+                : file
+            )
+          );
+          
+          // Устанавливаем новый файл как текущий
+          if (handleFileSelect) {
+            handleFileSelect(targetPath);
+          }
+        }
       }
     } catch (error) {
       console.error('Ошибка сохранения:', error);
@@ -488,6 +549,46 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
   const handleCodeChange = (newValue: string) => {
     setCode(newValue);
+    
+    // Проверяем, изменился ли файл
+    if (selectedFile) {
+      // Get the original file content (the content when the file was first loaded)
+      const originalContent = originalFileContents.get(selectedFile);
+      
+      if (originalContent !== undefined) {
+        // Check if the current content differs from the original (not from the cached)
+        const isModified = originalContent !== newValue;
+        
+        // Update the modified files set based on modification status
+        if (isModified) {
+          if (!modifiedFiles.has(selectedFile)) {
+            console.log(`Файл ${selectedFile} помечен как модифицированный`);
+            setModifiedFiles(prev => {
+              const newSet = new Set(prev);
+              newSet.add(selectedFile);
+              return newSet;
+            });
+          }
+          
+          // Store the CURRENT content as the cached version
+          localStorage.setItem(`file_cache_${selectedFile}`, newValue);
+        } else {
+          // File content matches original - no longer modified
+          if (modifiedFiles.has(selectedFile)) {
+            console.log(`Файл ${selectedFile} больше не модифицирован`);
+            setModifiedFiles(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(selectedFile);
+              return newSet;
+            });
+            
+            // Clear the cache for this file
+            localStorage.removeItem(`file_cache_${selectedFile}`);
+          }
+        }
+      }
+    }
+    
     // Notify LSP of code changes
     if (selectedFile && lspStatus.initialized) {
       monacoLSPService.handleFileChange(selectedFile, newValue);
@@ -700,96 +801,73 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   }, [openedFiles]);
 
-  // Добавляем новую функцию для регистрации TS/TSX файлов в Monaco
-  const registerTypeScriptModels = (monaco: any, editor: any, filePath: string) => {
-    if (!monaco || !editor) return;
-    
-    try {
-      const fileExt = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
-      const model = editor.getModel();
-      
-      // Только для TypeScript файлов
-      if (fileExt === '.ts' || fileExt === '.tsx' || fileExt === '.js' || fileExt === '.jsx') {
-        // Если модель существует
-        if (model) {
-          // Устанавливаем правильный язык для модели
-          if (fileExt === '.ts') {
-            monaco.editor.setModelLanguage(model, 'typescript');
-          } else if (fileExt === '.tsx') {
-            monaco.editor.setModelLanguage(model, 'typescriptreact');
-          } else if (fileExt === '.js') {
-            monaco.editor.setModelLanguage(model, 'javascript');
-          } else if (fileExt === '.jsx') {
-            monaco.editor.setModelLanguage(model, 'javascriptreact');
-          }
-          
-          // Регистрируем модель в TypeScript сервисе
-          if (monaco.languages.typescript) {
-            try {
-              // Создаем URI для файла
-              const uri = model.uri.toString();
-              const tsLanguage = 
-                fileExt === '.ts' || fileExt === '.tsx' 
-                  ? monaco.languages.typescript.typescriptDefaults 
-                  : monaco.languages.typescript.javascriptDefaults;
-              
-              // Устанавливаем параметры компилятора для поддержки JSX и последних возможностей
-              tsLanguage.setCompilerOptions({
-                target: monaco.languages.typescript.ScriptTarget.Latest,
-                allowNonTsExtensions: true,
-                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                module: monaco.languages.typescript.ModuleKind.CommonJS,
-                noEmit: true,
-                jsx: monaco.languages.typescript.JsxEmit.React,
-                reactNamespace: 'React',
-                allowJs: true,
-                esModuleInterop: true,
-                allowSyntheticDefaultImports: true,
-                skipLibCheck: true
-              });
-              
-              // Явно добавляем модель к языковому сервису
-              const modelValue = model.getValue();
-              
-              // Удаляем старую модель если она существует
-              try {
-                tsLanguage.getModel(model.uri)?.dispose();
-              } catch (e) {
-                // Игнорируем ошибки при удалении несуществующей модели
-              }
-              
-              // Создаем новую модель в языковом сервисе TypeScript
-              tsLanguage.addExtraLib(modelValue, uri);
-              
-              console.log(`Файл ${filePath} успешно зарегистрирован в TypeScript сервисе`);
-            } catch (e) {
-              console.error(`Ошибка при регистрации модели TypeScript: ${e}`);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка при регистрации модели TypeScript:', error);
-    }
-  };
-
-  // Обновление регистрации TypeScript моделей при смене файла
+  // Add global keyboard shortcuts for file operations
   useEffect(() => {
-    if (selectedFile && editorInstance && monacoInstance) {
-      try {
-        // Зарегистрируем выбранный файл как TypeScript модель
-        registerTypeScriptModels(monacoInstance, editorInstance, selectedFile);
-        
-        // Уведомляем LSP о файле
-        if (lspStatus.initialized && monacoLSPService) {
-          const content = editorInstance.getValue();
-          monacoLSPService.handleFileOpen(selectedFile, content);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Open folder (Ctrl+O)
+      if (e.ctrlKey && !e.shiftKey && e.key === 'o') {
+        e.preventDefault();
+        handleOpenFolder();
+      }
+      // Create new file (Ctrl+N)
+      else if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
+        e.preventDefault();
+        handleCreateFile();
+      }
+      // Copy path (Ctrl+Shift+C)
+      else if (e.ctrlKey && e.shiftKey && e.key === 'c') {
+        e.preventDefault();
+        if (selectedFile) {
+          navigator.clipboard.writeText(selectedFile)
+            .then(() => console.log('Path copied to clipboard'))
+            .catch(err => console.error('Failed to copy path:', err));
         }
-      } catch (error) {
-        console.error('Ошибка при регистрации файла в TypeScript:', error);
+      }
+      // Save file (Ctrl+S)
+      else if (e.ctrlKey && !e.shiftKey && e.key === 's') {
+        e.preventDefault();
+        console.log('Сохранение файла по Ctrl+S');
+        handleSaveFile(false);
+      }
+      // Save file as (Ctrl+Shift+S)
+      else if (e.ctrlKey && e.shiftKey && e.key === 's') {
+        e.preventDefault();
+        handleSaveFile(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedFile, handleSaveFile, handleCreateFile, handleOpenFolder]);
+
+  // Добавляем эффект для обновления модифицированных файлов при изменении кода
+  useEffect(() => {
+    if (selectedFile && code !== undefined) {
+      const originalContent = originalFileContents.get(selectedFile);
+      
+      // Файл модифицирован если содержимое изменилось
+      if (originalContent !== undefined && originalContent !== code) {
+        if (!modifiedFiles.has(selectedFile)) {
+          console.log(`Файл ${selectedFile} был изменен`);
+          setModifiedFiles(prev => {
+            const newSet = new Set(prev);
+            newSet.add(selectedFile);
+            return newSet;
+          });
+        }
+      } else if (originalContent === code) {
+        // Если содержимое совпадает с оригиналом, удаляем из модифицированных
+        if (modifiedFiles.has(selectedFile)) {
+          console.log(`Файл ${selectedFile} больше не модифицирован`);
+          setModifiedFiles(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(selectedFile);
+            return newSet;
+          });
+        }
       }
     }
-  }, [selectedFile, editorInstance, monacoInstance, lspStatus.initialized]);
+  }, [selectedFile, code, originalFileContents]);
 
   // Добавляем эффект для инициализации LSP при монтировании компонента
   useEffect(() => {
@@ -960,6 +1038,292 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   }, [editorRef.current, window.monaco]);
 
+  // Добавляем функцию для открытия модального окна клонирования репозитория
+  const handleOpenCloneModal = () => {
+    setIsCloneModalOpen(true);
+  };
+
+  // Функция для закрытия модального окна
+  const handleCloseCloneModal = () => {
+    setIsCloneModalOpen(false);
+  };
+
+  // Функция для клонирования репозитория
+  const handleCloneRepository = async (repoUrl: string, targetDir: string) => {
+    try {
+      // Вызываем Rust-функцию для клонирования репозитория
+      const result = await invoke('git_clone_repository', {
+        url: repoUrl,
+        targetPath: targetDir  // Используем camelCase для Tauri
+      });
+      
+      // После успешного клонирования открываем директорию проекта
+      setSelectedFolder(targetDir);
+      console.log(`Repository ${repoUrl} successfully cloned to ${targetDir}`);
+      
+      // Закрываем модальное окно
+      setIsCloneModalOpen(false);
+      
+      return { success: true, message: result };
+    } catch (error) {
+      console.error('Error cloning repository:', error);
+      
+      // Формируем более понятное сообщение об ошибке
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Проверяем, содержит ли сообщение об ошибке информацию о существующей директории
+      if (errorMessage.includes('уже существует') || errorMessage.includes('already exists')) {
+        errorMessage = `Директория '${targetDir}' уже существует. Пожалуйста, выберите другую директорию или удалите существующую.`;
+      }
+      
+      return { 
+        success: false, 
+        message: errorMessage
+      };
+    }
+  };
+
+  // Функция для создания новой папки
+  const handleCreateFolder = async () => {
+    try {
+      // Если нет выбранной директории, предлагаем выбрать
+      if (!selectedFolder) {
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: 'Выберите директорию',
+        });
+        
+        if (selected) {
+          setSelectedFolder(selected);
+        } else {
+          return; // Пользователь отменил выбор
+        }
+      }
+      
+      // Запрашиваем имя новой папки через диалог
+      const newFolderName = prompt('Введите имя новой папки');
+      
+      if (!newFolderName || !selectedFolder) return;
+      
+      // Полный путь новой папки
+      const newFolderPath = `${selectedFolder}/${newFolderName}`;
+      
+      // Вызываем функцию создания папки
+      await invoke("create_folder", {
+        path: newFolderPath
+      });
+      
+      console.log(`Создана новая папка: ${newFolderPath}`);
+      
+      // Можно добавить обновление директории после создания
+    } catch (error) {
+      console.error('Ошибка при создании папки:', error);
+    }
+  };
+
+  // Функция для открытия предпросмотра HTML
+  const handlePreviewHtml = (filePath: string) => {
+    if (filePath && filePath.toLowerCase().endsWith('.html')) {
+      console.log(`Opening HTML preview for file: ${filePath}`);
+      setIsHtmlPreviewVisible(true);
+    }
+  };
+  
+  // Функция для закрытия предпросмотра HTML
+  const handleCloseHtmlPreview = () => {
+    setIsHtmlPreviewVisible(false);
+  };
+
+  // Экспортируем интерфейс компонента для использования из вне
+  React.useImperativeHandle(editorRef, () => ({
+    selectAll: () => {
+      if (editorInstance) {
+        editorInstance.focus();
+        const model = editorInstance.getModel();
+        if (model) {
+          const lastLine = model.getLineCount();
+          const lastColumn = model.getLineMaxColumn(lastLine);
+          editorInstance.setSelection(new monacoInstance.Range(1, 1, lastLine, lastColumn));
+        }
+      }
+    },
+    deselect: () => {
+      if (editorInstance) {
+        editorInstance.focus();
+        const position = editorInstance.getPosition();
+        if (position) {
+          editorInstance.setSelection(new monacoInstance.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ));
+        }
+      }
+    },
+    // Добавим методы для управления состоянием файлов
+    saveCurrentFile: () => handleSaveFile(false),
+    saveFileAs: () => handleSaveFile(true),
+    getModifiedFiles: () => Array.from(modifiedFiles),
+    openHtmlPreview: handlePreviewHtml,
+    closeHtmlPreview: handleCloseHtmlPreview,
+    isFileModified: (path: string) => modifiedFiles.has(path)
+  }), [editorInstance, monacoInstance, handleSaveFile, modifiedFiles, handlePreviewHtml, handleCloseHtmlPreview]);
+
+  // Добавляем новую функцию для регистрации TS/TSX файлов в Monaco
+  const registerTypeScriptModels = (monaco: any, editor: any, filePath: string) => {
+    if (!monaco || !editor) return;
+    
+    try {
+      const fileExt = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+      const model = editor.getModel();
+      
+      // Только для TypeScript файлов
+      if (fileExt === '.ts' || fileExt === '.tsx' || fileExt === '.js' || fileExt === '.jsx') {
+        // Если модель существует
+        if (model) {
+          // Устанавливаем правильный язык для модели
+          if (fileExt === '.ts') {
+            monaco.editor.setModelLanguage(model, 'typescript');
+          } else if (fileExt === '.tsx') {
+            monaco.editor.setModelLanguage(model, 'typescriptreact');
+          } else if (fileExt === '.js') {
+            monaco.editor.setModelLanguage(model, 'javascript');
+          } else if (fileExt === '.jsx') {
+            monaco.editor.setModelLanguage(model, 'javascriptreact');
+          }
+          
+          // Регистрируем модель в TypeScript сервисе
+          if (monaco.languages.typescript) {
+            try {
+              // Создаем URI для файла
+              const uri = model.uri.toString();
+              const tsLanguage = 
+                fileExt === '.ts' || fileExt === '.tsx' 
+                  ? monaco.languages.typescript.typescriptDefaults 
+                  : monaco.languages.typescript.javascriptDefaults;
+              
+              // Устанавливаем параметры компилятора для поддержки JSX и последних возможностей
+              tsLanguage.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.Latest,
+                allowNonTsExtensions: true,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                module: monaco.languages.typescript.ModuleKind.CommonJS,
+                noEmit: true,
+                jsx: monaco.languages.typescript.JsxEmit.React,
+                reactNamespace: 'React',
+                allowJs: true,
+                esModuleInterop: true,
+                allowSyntheticDefaultImports: true,
+                skipLibCheck: true
+              });
+              
+              // Явно добавляем модель к языковому сервису
+              const modelValue = model.getValue();
+              
+              // Удаляем старую модель если она существует
+              try {
+                tsLanguage.getModel(model.uri)?.dispose();
+              } catch (e) {
+                // Игнорируем ошибки при удалении несуществующей модели
+              }
+              
+              // Создаем новую модель в языковом сервисе TypeScript
+              tsLanguage.addExtraLib(modelValue, uri);
+              
+              console.log(`Файл ${filePath} успешно зарегистрирован в TypeScript сервисе`);
+            } catch (e) {
+              console.error(`Ошибка при регистрации модели TypeScript: ${e}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при регистрации модели TypeScript:', error);
+    }
+  };
+
+  // Обновление регистрации TypeScript моделей при смене файла
+  useEffect(() => {
+    if (selectedFile && editorInstance && monacoInstance) {
+      try {
+        // Зарегистрируем выбранный файл как TypeScript модель
+        registerTypeScriptModels(monacoInstance, editorInstance, selectedFile);
+        
+        // Уведомляем LSP о файле
+        if (lspStatus.initialized && monacoLSPService) {
+          const content = editorInstance.getValue();
+          monacoLSPService.handleFileOpen(selectedFile, content);
+        }
+      } catch (error) {
+        console.error('Ошибка при регистрации файла в TypeScript:', error);
+      }
+    }
+  }, [selectedFile, editorInstance, monacoInstance, lspStatus.initialized]);
+
+  // Reference to keep track of the previously selected file
+  const prevSelectedFileRef = useRef<string | null>(null);
+
+  // Save content of previous file when switching files
+  useEffect(() => {
+    // Save the content of the previous file if it was modified
+    if (prevSelectedFileRef.current && 
+        prevSelectedFileRef.current !== selectedFile && 
+        modifiedFiles.has(prevSelectedFileRef.current)) {
+      const previousFile = prevSelectedFileRef.current;
+      
+      // Get content from the cached code for the previous file
+      const contentToSave = originalFileContents.get(previousFile);
+      
+      if (contentToSave !== undefined) {
+        // Save the content of the previous file
+        console.log(`Auto-saving previous file: ${previousFile}`);
+        
+        // Save directly to disk using the previous file's path
+        invoke('save_file', {
+          path: previousFile,
+          content: contentToSave
+        })
+        .then(() => {
+          console.log(`Auto-saved previous file: ${previousFile}`);
+          
+          // Remove from modified files after saving
+          setModifiedFiles(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(previousFile);
+            return newSet;
+          });
+        })
+        .catch(error => {
+          console.error(`Error auto-saving previous file: ${previousFile}`, error);
+        });
+      }
+    }
+    
+    // Update the reference to the current file
+    prevSelectedFileRef.current = selectedFile;
+  }, [selectedFile, originalFileContents, modifiedFiles]);
+
+  // Add keyboard shortcuts for global operations
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S to save current file
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (selectedFile) {
+          console.log('Saving file with Ctrl+S:', selectedFile);
+          handleSaveFile(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedFile, handleSaveFile]);
+
   return (
     <div className="center-container" style={style}>
       {!selectedFile && (
@@ -967,20 +1331,49 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
           <h2>X-Editor</h2>
           <p>Выберите файл для редактирования или создайте новый.</p>
           <div className="welcome-buttons">
-            <button onClick={handleOpenFolder}>
-              Открыть папку
-            </button>
-            <button onClick={handleCreateFile}>
+            <button onClick={handleCreateFile} className="welcome-button">
+              <div className="welcome-button-text">
               Создать файл
+              </div>
+              <span className="shortcut-label">CTRL + N</span>
             </button>
-            <button onClick={handleSaveFile} disabled={!selectedFile || !selectedFile.startsWith('untitled-')}>
-              Сохранить как
+            
+            <button onClick={handleCreateFolder} className="welcome-button">
+              <div className="welcome-button-text">
+                Создать папку
+              </div>
+              <span className="shortcut-label">CTRL + SHIFT + A</span>
+            </button>
+            
+            <button onClick={handleOpenFolder} className="welcome-button">
+              <div className="welcome-button-text">
+                Открыть папку
+              </div>
+              <span className="shortcut-label">CTRL + O</span>
+            </button>
+            
+            <button onClick={handleOpenCloneModal} className="welcome-button">
+              <div className="welcome-button-text">
+                Клонировать репозиторий
+              </div>
+              <span className="shortcut-label">CTRL + SHIFT + C</span>
             </button>
           </div>
         </div>
       )}
       
+      {/* Модальное окно для клонирования репозитория */}
+      {isCloneModalOpen && (
+        <CloneRepositoryModal 
+          onClose={handleCloseCloneModal} 
+          onClone={handleCloneRepository} 
+        />
+      )}
+      
+      {/* Разделим контейнер на две части, если нужен предпросмотр */}
+      <div className={`editor-container ${isHtmlPreviewVisible ? 'with-preview' : ''}`}>
       {selectedFile && supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && (
+          <div className="monaco-editor-wrapper">
                 <MonacoEditor
           width="100%"
                   height="100%"
@@ -998,6 +1391,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             fontSize: fontSize
           }}
         />
+          </div>
       )}
       
       {selectedFile && imageSrc !== null && isImageFile(selectedFile) ? (
@@ -1021,6 +1415,19 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
           Файл {selectedFile.split(/[/\\]/).pop()} не поддерживается для просмотра.
             </p>
           )}
+        
+        {/* Блок предпросмотра HTML */}
+        {isHtmlPreviewVisible && selectedFile && selectedFile.toLowerCase().endsWith('.html') && (
+          <div className="html-preview-wrapper">
+            <HtmlPreview
+              htmlContent={code}
+              isVisible={isHtmlPreviewVisible}
+              filename={selectedFile}
+              onClose={handleCloseHtmlPreview}
+            />
+          </div>
+        )}
+      </div>
       
       {tooltipContent && tooltipPosition && (
         <div 
