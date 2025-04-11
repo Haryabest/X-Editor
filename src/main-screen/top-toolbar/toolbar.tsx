@@ -14,7 +14,7 @@ import {
 import { MenuItem, FileItem } from './types/types';
 import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
-import Settings from '../lefttoolbar/settings/Settings';
+import Settings from '../lefttoolbar/settings';
 import './style.css';
 
 export interface TopToolbarProps {

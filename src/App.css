@@ -88,6 +88,17 @@ body {
   height: 100%;
 }
 
+/* TopbarEditor specific styles to ensure visibility */
+.editor-container .topbar-editor {
+  display: flex;
+  flex-direction: column;
+  background: #252526;
+  min-height: 35px;
+  z-index: 100;
+  width: 100%;
+  border-bottom: 1px solid #3d3d3d;
+}
+
 .terminal-container {
   position: relative;
   background-color: #1e1e1e;

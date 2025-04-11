@@ -497,7 +497,6 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
             className={`right-item ${!visibleElements.position ? "hidden" : ""}`}
             onMouseEnter={() => handleMouseEnter("position")}
             onMouseLeave={handleMouseLeave}
-            onClick={() => handleButtonClick("position")}
           >
             Строка {editorInfo?.cursorInfo.line || 1} Столбец {editorInfo?.cursorInfo.column || 1} Всего {editorInfo?.cursorInfo.totalChars || 0}
             {visibleTooltip === "position" && (

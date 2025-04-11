@@ -125,8 +125,33 @@ fn delete_file(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
-    std::fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("Ошибка при переименовании: {}", e))
+    // Normalize paths to use the correct path separators for the current OS
+    let old_path_normalized = std::path::Path::new(&old_path);
+    let new_path_normalized = std::path::Path::new(&new_path);
+    
+    println!("Renaming file: {} -> {}", old_path_normalized.display(), new_path_normalized.display());
+    
+    // Ensure the parent directory of the new path exists
+    if let Some(parent) = new_path_normalized.parent() {
+        if !parent.exists() {
+            println!("Creating parent directory: {}", parent.display());
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+        }
+    }
+    
+    match std::fs::rename(old_path_normalized, new_path_normalized) {
+        Ok(_) => {
+            println!("Successfully renamed file");
+            Ok(())
+        },
+        Err(e) => {
+            let error_msg = format!("Ошибка при переименовании: {} (old: {}, new: {})", 
+                                     e, old_path, new_path);
+            println!("{}", error_msg);
+            Err(error_msg)
+        }
+    }
 }
 
 #[tauri::command]
@@ -265,6 +290,7 @@ fn main() {
             commands::fs_commands::get_npm_packages,
             commands::fs_commands::editor_get_current_file_path,
             commands::fs_commands::get_all_files_in_directory,
+            commands::fonts::get_system_fonts,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

@@ -13,6 +13,7 @@ import { fixTypeScriptErrors } from './monaco-config/ts-error-fix';
 import { setupTypeScriptDirect } from './monaco-config/ts-config-override';
 import { registerImportCompletionProvider } from './monaco-config/import-completion'; // Импортируем провайдер автодополнения
 import * as monaco from 'monaco-editor';
+import { registerMonacoThemes, initializeSettings } from './utils/settingsManager';
 
 declare global {
   interface Window {
@@ -338,3 +339,18 @@ if (isTestMode) {
     console.error('Корневой элемент #root не найден');
   }
 }
+
+// Initialize all application settings
+document.addEventListener('DOMContentLoaded', () => {
+  // Register Monaco themes as soon as Monaco is available
+  const checkMonaco = () => {
+    if (window.monaco && window.monaco.editor) {
+      registerMonacoThemes();
+      initializeSettings();
+    } else {
+      setTimeout(checkMonaco, 500);
+    }
+  };
+  
+  checkMonaco();
+});

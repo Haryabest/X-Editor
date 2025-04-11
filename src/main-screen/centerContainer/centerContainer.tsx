@@ -190,87 +190,119 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   useEffect(() => {
     const loadFileContent = async () => {
       if (selectedFile) {
-        const ext = selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase();
-        
         try {
-          if (supportedTextExtensions.includes(ext) || selectedFile.startsWith('untitled-')) {
-            // First try to load from localStorage cache for modified files
-            const cachedContent = localStorage.getItem(`file_cache_${selectedFile}`);
-            
-            if (cachedContent) {
-              console.log(`Загружен кэшированный контент для модифицированного файла ${selectedFile}`);
-              setFileContent(cachedContent);
-              setCode(cachedContent);
+          // Проверяем, является ли выбранный файл директорией
+          const isDirectory = await invoke('check_path_exists', { 
+            path: selectedFile, 
+            checkType: 'directory' 
+          });
+          
+          if (isDirectory) {
+            console.log(`Выбранный путь ${selectedFile} является директорией, пропускаем загрузку`);
+            setFileContent(null);
+            setImageSrc(null);
+            setVideoSrc(null);
+            return;
+          }
+          
+          const ext = selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase();
+          
+          try {
+            if (supportedTextExtensions.includes(ext) || selectedFile.startsWith('untitled-')) {
+              // First try to load from localStorage cache for modified files
+              const cachedContent = localStorage.getItem(`file_cache_${selectedFile}`);
+              
+              if (cachedContent) {
+                console.log(`Загружен кэшированный контент для модифицированного файла ${selectedFile}`);
+                setFileContent(cachedContent);
+                setCode(cachedContent);
+                setImageSrc(null);
+                setVideoSrc(null);
+                
+                // Ensure this file is marked as modified
+                if (!modifiedFiles.has(selectedFile)) {
+                  setModifiedFiles(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(selectedFile);
+                    return newSet;
+                  });
+                }
+              } else {
+                // Load content from disk since there's no cached version
+                console.log(`Загрузка файла с диска: ${selectedFile}`);
+                const content = await invoke('read_text_file', { path: selectedFile });
+                setFileContent(content);
+                setCode(content);
+                setImageSrc(null);
+                setVideoSrc(null);
+                
+                // Detect encoding (currently hardcoded to UTF-8 since actual detection happens in Rust)
+                const encoding = "UTF-8";
+                
+                // Update editor info with encoding
+                if (onEditorInfoChange) {
+                  onEditorInfoChange(prev => ({
+                    ...prev,
+                    encoding
+                  }));
+                }
+                
+                // Store this as the original version of the file for comparing changes
+                if (!originalFileContents.has(selectedFile)) {
+                  setOriginalFileContents(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(selectedFile, content);
+                    return newMap;
+                  });
+                }
+              }
+              
+              // Notify LSP about file open
+              if (monacoInstance && editorInstance && lspStatus.initialized) {
+                monacoLSPService.handleFileOpen(selectedFile, fileContent || code);
+                
+                // Устанавливаем правильный язык для текущей модели
+                const model = editorInstance.getModel();
+                if (model) {
+                  correctLanguageFromExtension(selectedFile, model);
+                }
+              }
+            } else if (supportedImageExtensions.includes(ext)) {
+              const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
+              const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
+              setImageSrc(fileUrl);
+              setFileContent(null);
+              setVideoSrc(null);
+            } else if (supportedVideoExtensions.includes(ext)) {
+              const videoUrl: string = await invoke('stream_video', { path: selectedFile });
+              setVideoSrc(videoUrl);
+              setFileContent(null);
+              setImageSrc(null);
+            } else if (selectedFile.startsWith('untitled-')) {
+              setFileContent('');
+              setCode('');
               setImageSrc(null);
               setVideoSrc(null);
               
-              // Ensure this file is marked as modified
-              if (!modifiedFiles.has(selectedFile)) {
-                setModifiedFiles(prev => {
-                  const newSet = new Set(prev);
-                  newSet.add(selectedFile);
-                  return newSet;
-                });
-              }
+              // Сохраняем пустое содержимое для нового файла
+              setOriginalFileContents(prev => {
+                const newMap = new Map(prev);
+                newMap.set(selectedFile, '');
+                return newMap;
+              });
             } else {
-              // Load content from disk since there's no cached version
-              console.log(`Загрузка файла с диска: ${selectedFile}`);
-              const content = await invoke('read_text_file', { path: selectedFile });
-              setFileContent(content);
-              setCode(content);
+              setFileContent(null);
               setImageSrc(null);
               setVideoSrc(null);
-              
-              // Store this as the original version of the file for comparing changes
-              if (!originalFileContents.has(selectedFile)) {
-                setOriginalFileContents(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(selectedFile, content);
-                  return newMap;
-                });
-              }
             }
-            
-            // Notify LSP about file open
-            if (monacoInstance && editorInstance && lspStatus.initialized) {
-              monacoLSPService.handleFileOpen(selectedFile, fileContent || code);
-              
-              // Устанавливаем правильный язык для текущей модели
-              const model = editorInstance.getModel();
-              if (model) {
-                correctLanguageFromExtension(selectedFile, model);
-              }
-            }
-          } else if (supportedImageExtensions.includes(ext)) {
-            const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
-            const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
-            setImageSrc(fileUrl);
-            setFileContent(null);
-            setVideoSrc(null);
-          } else if (supportedVideoExtensions.includes(ext)) {
-            const videoUrl: string = await invoke('stream_video', { path: selectedFile });
-            setVideoSrc(videoUrl);
-            setFileContent(null);
-            setImageSrc(null);
-          } else if (selectedFile.startsWith('untitled-')) {
-            setFileContent('');
-            setCode('');
-            setImageSrc(null);
-            setVideoSrc(null);
-            
-            // Сохраняем пустое содержимое для нового файла
-            setOriginalFileContents(prev => {
-              const newMap = new Map(prev);
-              newMap.set(selectedFile, '');
-              return newMap;
-            });
-          } else {
+          } catch (error) {
+            console.error('Error reading file:', error);
             setFileContent(null);
             setImageSrc(null);
             setVideoSrc(null);
           }
         } catch (error) {
-          console.error('Error reading file:', error);
+          console.error('Error checking path:', error);
           setFileContent(null);
           setImageSrc(null);
           setVideoSrc(null);
@@ -611,6 +643,21 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
     // Инициализация Monaco
     initializeMonacoEditor(monaco);
+    
+    // Apply current theme immediately to new editor
+    try {
+      const themeSettings = localStorage.getItem('theme-settings');
+      if (themeSettings) {
+        const { monacoTheme } = JSON.parse(themeSettings);
+        if (monacoTheme && editor && typeof editor.updateOptions === 'function') {
+          console.log(`Applying theme ${monacoTheme} to newly mounted editor`);
+          monaco.editor.setTheme(monacoTheme);
+          editor.updateOptions({ theme: monacoTheme });
+        }
+      }
+    } catch (error) {
+      console.error('Error applying theme to newly mounted editor:', error);
+    }
 
     // Регистрация TypeScript моделей
     if (selectedFile) {
@@ -1323,6 +1370,44 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedFile, handleSaveFile]);
+
+  // Listen for monaco theme changes
+  useEffect(() => {
+    const handleThemeChange = (event: CustomEvent) => {
+      const { monacoTheme } = event.detail;
+      console.log(`CenterContainer: Theme changed to ${monacoTheme}`);
+      
+      // Apply theme to all editors
+      if (window.monaco && window.monaco.editor) {
+        const allEditors = window.monaco.editor.getEditors();
+        console.log(`Applying theme ${monacoTheme} to ${allEditors.length} editors from CenterContainer`);
+        
+        // Set global theme
+        window.monaco.editor.setTheme(monacoTheme);
+        
+        // Update each editor individually for immediate effect
+        if (allEditors && allEditors.length > 0) {
+          allEditors.forEach((editor) => {
+            try {
+              if (editor && typeof editor.updateOptions === 'function') {
+                editor.updateOptions({ theme: monacoTheme });
+              }
+            } catch (error) {
+              console.error('Error applying theme to editor:', error);
+            }
+          });
+        }
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('monaco-theme-changed', handleThemeChange as EventListener);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('monaco-theme-changed', handleThemeChange as EventListener);
+    };
+  }, []);
 
   return (
     <div className="center-container" style={style}>

@@ -16,6 +16,7 @@ import { GitChanges } from './main-screen/lefttoolbar/GitChanges';
 import Repositories from './main-screen/lefttoolbar/repositories/Repositories';
 import AboutModal from './components/about/AboutModal';
 import DocumentationModal from './components/documentation/DocumentationModal';
+import { initializeSettings, getUISettings, saveUISettings } from './utils/settingsManager';
 
 import './App.css';
 
@@ -53,17 +54,26 @@ export const FontSizeContext = createContext({
 });
 
 function App() {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
-  const [terminalHeight, setTerminalHeight] = useState(200);
-  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
-  const [isTerminalVisible, setIsTerminalVisible] = useState(true);
-  const [activeLeftPanel, setActiveLeftPanel] = useState('explorer');
+  // Initialize all settings
+  useEffect(() => {
+    initializeSettings();
+  }, []);
+  
+  // Get UI settings from settings manager
+  const uiSettings = getUISettings();
+  
+  // Initialize UI state from settings
+  const [leftPanelWidth, setLeftPanelWidth] = useState(uiSettings.leftPanelWidth);
+  const [terminalHeight, setTerminalHeight] = useState(uiSettings.terminalHeight);
+  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(uiSettings.isLeftPanelVisible);
+  const [isTerminalVisible, setIsTerminalVisible] = useState(uiSettings.isTerminalVisible);
+  const [activeLeftPanel, setActiveLeftPanel] = useState(uiSettings.activeLeftPanel);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [currentFiles, setCurrentFiles] = useState<UIFileItem[]>([]);
   const [openedFiles, setOpenedFiles] = useState<UIFileItem[]>([]);
   const [monaco, setMonaco] = useState<any>(null);
-  const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(null);
+  const [lastOpenedFolder, setLastOpenedFolder] = useState<string | null>(uiSettings.lastOpenedFolder);
   const [editorFontSize, setEditorFontSize] = useState<number>(() => {
     const saved = localStorage.getItem('editor-font-size');
     return saved ? parseInt(saved, 10) : 14;
@@ -100,6 +110,42 @@ function App() {
   const MAX_LEFT_PANEL_WIDTH = 400;
   const MIN_TERMINAL_HEIGHT = 60;
   const MAX_TERMINAL_HEIGHT = 500;
+
+  // Save UI settings when they change
+  useEffect(() => {
+    saveUISettings({
+      leftPanelWidth,
+      terminalHeight,
+      isLeftPanelVisible,
+      isTerminalVisible,
+      activeLeftPanel,
+      lastOpenedFolder
+    });
+  }, [
+    leftPanelWidth,
+    terminalHeight,
+    isLeftPanelVisible,
+    isTerminalVisible,
+    activeLeftPanel,
+    lastOpenedFolder
+  ]);
+  
+  // Load last opened folder if available
+  useEffect(() => {
+    const savedFolder = uiSettings.lastOpenedFolder;
+    if (savedFolder) {
+      // Check if the folder exists
+      invoke('file_exists', { path: savedFolder })
+        .then((exists: boolean) => {
+          if (exists) {
+            setSelectedFolder(savedFolder);
+          }
+        })
+        .catch(error => {
+          console.error('Error checking folder existence:', error);
+        });
+    }
+  }, []);
 
   // Функции для изменения масштаба
   const handleZoomIn = () => {
@@ -212,23 +258,83 @@ function App() {
   }, []);
 
   const handleSetSelectedFile = (filePath: string | null) => {
-    if (filePath && !openedFiles.some(file => file.path === filePath)) {
-      const file = currentFiles.find(f => f.path === filePath);
-      if (file) {
-        console.log('Adding file to openedFiles:', file);
-        setOpenedFiles(prev => [...prev, { ...file, isFolder: false, expanded: false, loaded: true }]);
+    console.log('Setting selected file:', filePath);
+    
+    // If null, just clear selection
+    if (!filePath) {
+      setSelectedFile(null);
+      return;
+    }
+    
+    // Update selected file regardless of whether it exists in openedFiles
+    setSelectedFile(filePath);
+    
+    // Add to openedFiles if not already there
+    if (!openedFiles.some(file => file.path === filePath)) {
+      // Try to find the file in currentFiles
+      const fileFromCurrent = currentFiles.find(f => f.path === filePath);
+      
+      if (fileFromCurrent) {
+        // File is in currentFiles, add to openedFiles
+        console.log('Adding file from currentFiles to openedFiles:', fileFromCurrent);
+        setOpenedFiles(prev => [...prev, { ...fileFromCurrent, expanded: false, loaded: true }]);
       } else {
-        console.log('File not found in currentFiles:', filePath);
+        // Create a new file entry based on the path
+        const fileName = filePath.split(/[\\/]/).pop() || 'unknown';
+        console.log('Creating file object for:', filePath, 'with name:', fileName);
+        
+        // Verify file exists before adding
+        invoke('file_exists', { path: filePath })
+          .then((exists: boolean) => {
+            if (exists) {
+              console.log('File exists, adding to openedFiles');
+              const newFile = {
+                name: fileName,
+                path: filePath,
+                isFolder: false,
+                icon: '',
+                expanded: false,
+                loaded: true
+              };
+              
+              setOpenedFiles(prev => [...prev, newFile]);
+            } else {
+              console.error('File does not exist:', filePath);
+              alert(`Файл не существует: ${filePath}`);
+              setSelectedFile(null);
+            }
+          })
+          .catch(error => {
+            console.error('Error checking file existence:', error);
+          });
       }
     }
-    setSelectedFile(filePath);
   };
 
   const handleCloseFile = (filePath: string) => {
-    const updatedFiles = openedFiles.filter(file => file.path !== filePath);
-    setOpenedFiles(updatedFiles);
+    console.log('Closing file:', filePath);
+    
+    // Remove from openedFiles
+    setOpenedFiles(prev => prev.filter(file => file.path !== filePath));
+    
+    // If this was the selected file, select another one or clear selection
     if (selectedFile === filePath) {
-      setSelectedFile(updatedFiles.length > 0 ? updatedFiles[updatedFiles.length - 1].path : null);
+      // Find index of current file
+      const fileIndex = openedFiles.findIndex(file => file.path === filePath);
+      
+      if (openedFiles.length > 1) {
+        // If there are other files, select one of them
+        if (fileIndex > 0) {
+          // Select previous file if possible
+          setSelectedFile(openedFiles[fileIndex - 1].path);
+        } else {
+          // Otherwise select the next file
+          setSelectedFile(openedFiles[1].path);
+        }
+      } else {
+        // No other files, clear selection
+        setSelectedFile(null);
+      }
     }
   };
 
@@ -544,16 +650,19 @@ function App() {
             <div className="center-and-terminal">
               <div className="monaco-editor-container">
                 <div className="editor-container">
-                  {openedFiles.length > 0 && (
-                    <TopbarEditor
-                      openedFiles={openedFiles}
-                      activeFile={selectedFile}
-                      setSelectedFile={handleSetSelectedFile}
-                      closeFile={handleCloseFile}
-                      modifiedFiles={editorRef.current?.getModifiedFiles ? new Set(editorRef.current.getModifiedFiles()) : new Set()}
-                      onPreviewHtml={editorRef.current?.openHtmlPreview}
-                    />
-                  )}
+                  {console.log('Rendering TopbarEditor with:', { 
+                    openedFilesLength: openedFiles?.length,
+                    openedFiles,
+                    selectedFile
+                  })}
+                  <TopbarEditor
+                    openedFiles={openedFiles}
+                    activeFile={selectedFile}
+                    setSelectedFile={handleSetSelectedFile}
+                    closeFile={handleCloseFile}
+                    modifiedFiles={editorRef.current?.getModifiedFiles ? new Set(editorRef.current.getModifiedFiles()) : new Set()}
+                    onPreviewHtml={editorRef.current?.openHtmlPreview}
+                  />
                   <CenterContainer
                     editorRef={editorRef}
                     selectedFile={selectedFile}

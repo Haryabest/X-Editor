@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::fs;
-use std::process::Command;
 use std::env;
+use std::process::Command;
 
 #[tauri::command]
 pub fn tauri_current_dir() -> Result<String, String> {
@@ -98,15 +97,15 @@ pub fn get_import_suggestions(
     project_root: &str,
     current_file: &str,
     line_content: &str,
-    position: serde_json::Value,
+    _position: serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, String> {
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::fs;
     
     let mut suggestions = Vec::new();
     
     // Определяем текущую директорию
-    let current_dir = Path::new(current_file).parent().unwrap_or(Path::new(""));
+    let _current_dir = Path::new(current_file).parent().unwrap_or(Path::new(""));
     
     // Проверяем, является ли это строкой импорта
     if line_content.contains("import") || line_content.contains("require") {

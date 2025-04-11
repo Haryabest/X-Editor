@@ -1,7 +1,7 @@
 use std::path::Path;
+use encoding_rs;
+use tauri::command;
 use tauri::AppHandle;
-use std::io::Read;
-use std::fs::File;
 
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {

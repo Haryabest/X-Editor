@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from "xterm-addon-web-links";
@@ -9,6 +9,7 @@ import { RefreshCw, Search, ChevronRight, ChevronDown, File, AlertCircle, AlertT
 import { getFileIcon } from "../leftBar/fileIcons";
 import { AiOutlineClear } from "react-icons/ai";
 import { FaFilter } from "react-icons/fa";
+import { getTerminalSettings } from "../../utils/settingsManager";
 
 import "./style.css";
 import "xterm/css/xterm.css";
@@ -54,6 +55,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     warnings: true,
     info: true
   });
+  const [terminalSettings, setTerminalSettings] = useState(getTerminalSettings());
 
   // Очистка терминала
   const clearTerminal = () => {
@@ -140,9 +142,10 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         if (terminal.current || !terminalRef.current) return;
 
         const term = new XTerm({
-          cursorBlink: true,
-          fontSize: 14,
-          fontFamily: 'Consolas, "Courier New", monospace',
+          cursorBlink: terminalSettings.cursorBlink,
+          fontSize: terminalSettings.fontSize,
+          fontFamily: terminalSettings.fontFamily,
+          cursorStyle: terminalSettings.cursorStyle as any,
           theme: {
             background: "#1e1e1e",
             foreground: "#d4d4d4",
@@ -225,7 +228,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     if (activeTab === "terminal") {
       initTerminal().catch(console.error);
     }
-  }, [activeTab]);
+  }, [activeTab, terminalSettings]);
 
   // Эффект для обработки изменения вкладок
   useEffect(() => {
@@ -464,6 +467,72 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       })();
     }
   }, [selectedFolder, isProcessRunning]);
+
+  // Функция для обновления настроек уже открытого терминала
+  const updateTerminalSettings = useCallback(() => {
+    if (terminal.current) {
+      // Обновляем настройки существующего терминала
+      const options = {
+        fontSize: terminalSettings.fontSize,
+        fontFamily: terminalSettings.fontFamily,
+        cursorStyle: terminalSettings.cursorStyle,
+        cursorBlink: terminalSettings.cursorBlink
+      };
+      
+      // Применяем новые настройки
+      terminal.current.options.fontSize = options.fontSize;
+      terminal.current.options.fontFamily = options.fontFamily;
+      terminal.current.options.cursorBlink = options.cursorBlink;
+      terminal.current.options.cursorStyle = options.cursorStyle as any;
+      
+      // Перерисовываем терминал с новыми настройками
+      terminal.current.refresh(0, terminal.current.rows - 1);
+      
+      // Обновляем размер после изменения шрифта
+      setTimeout(() => {
+        if (fitAddon.current) {
+          fitAddon.current.fit();
+          // Информируем Rust о новом размере
+          const { rows, cols } = terminal.current!;
+          invoke("resize_pty", { rows, cols }).catch(err => {
+            console.error("Failed to resize PTY after settings change:", err);
+          });
+        }
+      }, 100);
+    }
+  }, [terminalSettings]);
+
+  // Слушаем событие изменения настроек терминала
+  useEffect(() => {
+    const handleTerminalSettingsChange = () => {
+      try {
+        const savedTerminalSettings = localStorage.getItem('terminal-settings');
+        if (savedTerminalSettings) {
+          const parsedSettings = JSON.parse(savedTerminalSettings);
+          
+          // Обновляем локальное состояние
+          setTerminalSettings(prevSettings => ({
+            ...prevSettings,
+            ...parsedSettings
+          }));
+        }
+      } catch (error) {
+        console.error('Ошибка при обновлении настроек терминала:', error);
+      }
+    };
+
+    // Событие, которое будет вызвано при сохранении настроек
+    window.addEventListener('terminal-settings-changed', handleTerminalSettingsChange);
+    
+    return () => {
+      window.removeEventListener('terminal-settings-changed', handleTerminalSettingsChange);
+    };
+  }, []);
+  
+  // Применяем настройки при их изменении
+  useEffect(() => {
+    updateTerminalSettings();
+  }, [terminalSettings, updateTerminalSettings]);
 
   return (
     <div className="terminal-container" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>

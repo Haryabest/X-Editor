@@ -44,12 +44,17 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
   
   // Проверяем, является ли файл HTML
   const isHtmlFile = (filePath: string) => {
-    return filePath.toLowerCase().endsWith('.html') || filePath.toLowerCase().endsWith('.htm');
+    return filePath?.toLowerCase().endsWith('.html') || filePath?.toLowerCase().endsWith('.htm');
   };
   
   // Обновляем orderedFiles когда меняется openedFiles или modifiedFiles
   useEffect(() => {
-    if (orderedFiles.length === 0) {
+    if (openedFiles && openedFiles.length === 0) {
+      setOrderedFiles([]);
+      return;
+    }
+    
+    if (orderedFiles.length === 0 && openedFiles && openedFiles.length > 0) {
       // Initial load
       setOrderedFiles([...openedFiles].map(file => ({
         ...file,
@@ -89,7 +94,23 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
     }
   }, [openedFiles, pinnedFiles, modifiedFiles]);
 
+  // Make sure activeFilePath is correctly calculated and doesn't cause issues
   const activeFilePath = openedFiles.find(file => file.path === activeFile)?.path || '';
+  
+  // Ensure we have some content to display in the status bar
+  const activeFileName = activeFile ? activeFile.split(/[\/\\]/).pop() : '';
+  
+  // Log for debugging
+  useEffect(() => {
+    console.log('TopbarEditor rendered with openedFiles:', openedFiles?.length);
+    console.log('ActiveFile:', activeFile);
+  }, [openedFiles, activeFile]);
+  
+  // Check if the component is visible for debugging
+  useEffect(() => {
+    const element = document.querySelector('.topbar-editor');
+    console.log('TopbarEditor element exists:', !!element);
+  }, []);
   
   // Функция для переключения статуса закрепления
   const togglePin = (filePath: string) => {
@@ -240,53 +261,57 @@ const TopbarEditor: React.FC<TopbarEditorProps> = ({
   };
 
   return (
-    <div className="topbar-editor">      
+    <div className="topbar-editor" style={{ zIndex: 1000, position: 'relative' }}>      
       <div className="tabs-container">
-        {orderedFiles.map((file) => {
-          const isPinned = pinnedFiles.has(file.path);
-          const isModified = file.isModified || modifiedFiles.has(file.path);
-          const showPreviewButton = isHtmlFile(file.path) && onPreviewHtml;
-          
-          return (
-            <div
-              key={file.path}
-              className={`tab ${activeFile === file.path ? 'active' : ''} ${isPinned ? 'pinned' : ''} ${isModified ? 'modified' : ''}`}
-              onClick={() => setSelectedFile(file.path)}
-              onContextMenu={(e) => handleContextMenu(e, file.path)}
-              data-path={file.path}
-            >
-              <span className="tab-icon">
-                {file.isFolder ? '📁' : getFileIcon(file.path)}
-              </span>
-              {isPinned && (
+        {orderedFiles.length > 0 ? (
+          orderedFiles.map((file) => {
+            const isPinned = pinnedFiles.has(file.path);
+            const isModified = file.isModified || modifiedFiles.has(file.path);
+            const showPreviewButton = isHtmlFile(file.path) && onPreviewHtml;
+            
+            return (
+              <div
+                key={file.path}
+                className={`tab ${activeFile === file.path ? 'active' : ''} ${isPinned ? 'pinned' : ''} ${isModified ? 'modified' : ''}`}
+                onClick={() => setSelectedFile(file.path)}
+                onContextMenu={(e) => handleContextMenu(e, file.path)}
+                data-path={file.path}
+              >
+                <span className="tab-icon">
+                  {file.isFolder ? '📁' : getFileIcon(file.path)}
+                </span>
+                {isPinned && (
+                  <button
+                    className="pin-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePin(file.path);
+                    }}
+                    title="Открепить"
+                  >
+                    <Pin size={14} strokeWidth={2} />
+                  </button>
+                )}
+                <span className="tab-name">
+                  {file.name}
+                  {isModified && <span className="tab-modified-indicator">●</span>}
+                </span>
+                
                 <button
-                  className="pin-button"
+                  className="close-tab"
                   onClick={(e) => {
                     e.stopPropagation();
-                    togglePin(file.path);
+                    closeFile(file.path);
                   }}
-                  title="Открепить"
                 >
-                  <Pin size={14} strokeWidth={2} />
+                  ×
                 </button>
-              )}
-              <span className="tab-name">
-                {file.name}
-                {isModified && <span className="tab-modified-indicator">●</span>}
-              </span>
-              
-              <button
-                className="close-tab"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeFile(file.path);
-                }}
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
+              </div>
+            );
+          })
+        ) : (
+          <div className="empty-tabs-message">Нет открытых файлов</div>
+        )}
       </div>
 
       {/* Preview button placed outside of tabs */}
