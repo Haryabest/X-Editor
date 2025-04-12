@@ -1,6 +1,4 @@
 use std::path::Path;
-use encoding_rs;
-use tauri::command;
 use tauri::AppHandle;
 
 #[tauri::command]

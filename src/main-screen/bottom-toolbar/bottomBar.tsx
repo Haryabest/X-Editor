@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User, GitBranch } from "lucide-react";
 import { invoke } from '@tauri-apps/api/core';
+import { FaPython } from "react-icons/fa";
 
 import LanguageDropdown from "./modals/Language/ModalsLanguage";
 import PositionDropdown from "./modals/Position/ModalsPosition";
@@ -25,6 +26,7 @@ const tooltips = {
   gitBranch: "Ветки Git",
   user: "Пользователь", // Добавляем тултип для логина
   gitCommit: "Git commit",
+  pythonLint: "Проверить Python ошибки", // Добавляем новый тултип
 };
 
 type VisibleElementKeys = keyof typeof visibleElementsInitialState;
@@ -76,6 +78,66 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [visibleElements, setVisibleElements] = useState(visibleElementsInitialState);
+
+  const [errorCount, setErrorCount] = useState(editorInfo?.errors || 0);
+  const [warningCount, setWarningCount] = useState(editorInfo?.warnings || 0);
+  
+  // Обработчик изменений в editorInfo
+  useEffect(() => {
+    setErrorCount(editorInfo?.errors || 0);
+    setWarningCount(editorInfo?.warnings || 0);
+  }, [editorInfo]);
+  
+  // Слушатель для обновлений маркеров Python
+  useEffect(() => {
+    const updatePythonDiagnostics = () => {
+      try {
+        // Получаем Python диагностику, если доступна
+        if ((window as any).getPythonDiagnostics) {
+          const pythonIssues = (window as any).getPythonDiagnostics();
+          
+          // Подсчитываем количество ошибок и предупреждений
+          let pythonErrors = 0;
+          let pythonWarnings = 0;
+          
+          if (pythonIssues && Array.isArray(pythonIssues)) {
+            pythonIssues.forEach((fileIssue: any) => {
+              fileIssue.issues?.forEach((issue: any) => {
+                if (issue.severity === 'error') {
+                  pythonErrors++;
+                } else if (issue.severity === 'warning') {
+                  pythonWarnings++;
+                }
+              });
+            });
+          }
+          
+          // Обновляем счетчики, учитывая Python диагностику и диагностику из editorInfo
+          setErrorCount(prevErrors => {
+            const baseErrors = editorInfo?.errors || 0;
+            return baseErrors + pythonErrors;
+          });
+          
+          setWarningCount(prevWarnings => {
+            const baseWarnings = editorInfo?.warnings || 0;
+            return baseWarnings + pythonWarnings;
+          });
+        }
+      } catch (e) {
+        console.error('Ошибка при получении Python диагностики для BottomToolbar:', e);
+      }
+    };
+    
+    // Обновляем счетчики при первой загрузке
+    updatePythonDiagnostics();
+    
+    // Подписываемся на обновления маркеров
+    document.addEventListener('markers-updated', updatePythonDiagnostics);
+    
+    return () => {
+      document.removeEventListener('markers-updated', updatePythonDiagnostics);
+    };
+  }, [editorInfo]);
 
   // Синхронизируем localGitInfo с gitInfo из пропсов
   useEffect(() => {
@@ -318,6 +380,48 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
     }
   };
 
+  const handleRunPythonDiagnostics = () => {
+    try {
+      console.log('Запуск ручной проверки Python кода...');
+      
+      // Используем глобальную функцию для запуска диагностики
+      if ((window as any).updatePythonDiagnostics) {
+        (window as any).updatePythonDiagnostics();
+        
+        setNotification({
+          message: 'Проверка Python кода запущена',
+          type: 'success'
+        });
+        
+        setTimeout(() => {
+          setNotification(null);
+        }, 3000);
+      } else {
+        console.warn('Функция updatePythonDiagnostics не найдена');
+        
+        setNotification({
+          message: 'Проверка Python кода недоступна',
+          type: 'error'
+        });
+        
+        setTimeout(() => {
+          setNotification(null);
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Ошибка при запуске Python диагностики:', error);
+      
+      setNotification({
+        message: 'Ошибка при проверке Python кода',
+        type: 'error'
+      });
+      
+      setTimeout(() => {
+        setNotification(null);
+      }, 3000);
+    }
+  };
+
   return (
     <>
       {/* Уведомление о смене ветки */}
@@ -412,12 +516,12 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
       <div className="bottom-toolbar" onContextMenu={handleRightClick}>
         <div className="left-info">
           <div className={`status-item ${!visibleElements.encoding ? "hidden" : ""}`}>
-            <CircleX width={14} height={14} color={editorInfo?.errors ? "#ff0000" : "#858585"} />
-            <span>{editorInfo?.errors || 0}</span>
+            <CircleX width={14} height={14} color={errorCount > 0 ? "#ff0000" : "#858585"} />
+            <span>{errorCount}</span>
           </div>
           <div className={`status-item ${!visibleElements.position ? "hidden" : ""}`}>
-            <CircleAlert width={14} height={14} color={editorInfo?.warnings ? "#FFA500" : "#858585"} />
-            <span>{editorInfo?.warnings || 0}</span>
+            <CircleAlert width={14} height={14} color={warningCount > 0 ? "#FFA500" : "#858585"} />
+            <span>{warningCount}</span>
           </div>
           {localGitInfo.status !== 'none' && (
             <div className="status-item git-branch" onClick={handleGitBranchClick} title="Нажмите, чтобы выбрать ветку">
@@ -432,6 +536,21 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
                   <span className="tooltip">{tooltips.gitBranch}</span>
                 )}
               </span>
+            </div>
+          )}
+          {/* Python диагностика */}
+          {editorInfo?.language === 'python' && (
+            <div 
+              className="status-item python-lint" 
+              onClick={handleRunPythonDiagnostics}
+              onMouseEnter={() => handleMouseEnter("pythonLint")}
+              onMouseLeave={handleMouseLeave}
+              title="Проверить Python код"
+            >
+              <FaPython size={14} color="#3776AB" />
+              {visibleTooltip === "pythonLint" && (
+                <span className="tooltip">{tooltips.pythonLint}</span>
+              )}
             </div>
           )}
         </div>

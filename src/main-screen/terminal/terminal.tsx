@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { Unicode11Addon } from "xterm-addon-unicode11";
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from "@tauri-apps/api/event";
-import { RefreshCw, Search, ChevronRight, ChevronDown, File, AlertCircle, AlertTriangle, Info , X} from "lucide-react";
+import { RefreshCw, Search, ChevronRight, ChevronDown, File, AlertCircle, AlertTriangle, Info , X, GripHorizontal, Check } from "lucide-react";
 import { getFileIcon } from "../leftBar/fileIcons";
 import { AiOutlineClear } from "react-icons/ai";
-import { FaFilter } from "react-icons/fa";
+import { FaFilter, FaPython } from "react-icons/fa";
 import { getTerminalSettings } from "../../utils/settingsManager";
 
 import "./style.css";
@@ -37,10 +37,11 @@ interface XTermTerminalProps {
   onIssueClick?: (filePath: string, line: number, column: number) => void;
   terminalCommand?: string | null;
   selectedFolder?: string | null;
+  onResize?: (newHeight: number) => void;
 }
 
 const Terminal: React.FC<XTermTerminalProps> = (props) => {
-  const { terminalHeight, issues, onIssueClick, terminalCommand, selectedFolder } = props;
+  const { terminalHeight, issues, onIssueClick, terminalCommand, selectedFolder, onResize } = props;
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<XTerm | null>(null);
@@ -56,6 +57,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     info: true
   });
   const [terminalSettings, setTerminalSettings] = useState(getTerminalSettings());
+  const [filterSeverity, setFilterSeverity] = useState<'all' | 'error' | 'warning' | 'info'>('all');
 
   // Очистка терминала
   const clearTerminal = () => {
@@ -69,6 +71,54 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     document.querySelector(".restore-button.bottom")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true })
     );
+  };
+
+  // Handle the vertical resizing of the terminal
+  const handleVerticalDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const currentHeight = terminalHeight || 200;
+    
+    const MIN_TERMINAL_HEIGHT = 60;
+    const MAX_TERMINAL_HEIGHT = window.innerHeight * 0.8; // 80% of window height
+    const COLLAPSE_THRESHOLD = 30;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      // For the terminal at the bottom, dragging up (negative delta) should increase height
+      const delta = moveEvent.clientY - startY;
+      let newHeight = currentHeight - delta; // Invert delta for intuitive behavior
+      
+      // Ensure terminal height stays within limits
+      newHeight = Math.max(Math.min(newHeight, MAX_TERMINAL_HEIGHT), MIN_TERMINAL_HEIGHT);
+      
+      // If dragged to be very small, collapse it
+      if (newHeight <= MIN_TERMINAL_HEIGHT + COLLAPSE_THRESHOLD && delta > 0) { // Changed delta condition
+        // Trigger terminal close
+        document.dispatchEvent(new Event('terminal-close'));
+        // Clean up event listeners
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        return;
+      }
+      
+      // Call the resize callback
+      if (onResize) {
+        onResize(newHeight);
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      
+      // Fit the terminal to the new size
+      setTimeout(() => {
+        resizeTerminal().catch(console.error);
+      }, 100);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
   // Функция изменения размера терминала
@@ -265,6 +315,19 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     }
   }, [terminalHeight, activeTab]);
 
+  // Add an event listener for external resize events
+  useEffect(() => {
+    const handleTerminalResize = () => {
+      resizeTerminal().catch(console.error);
+    };
+    
+    document.addEventListener('terminal-resize', handleTerminalResize);
+    
+    return () => {
+      document.removeEventListener('terminal-resize', handleTerminalResize);
+    };
+  }, []);
+
   const toggleFileExpand = (filePath: string) => {
     setExpandedFiles(prev => {
       const newSet = new Set(prev);
@@ -277,29 +340,115 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     });
   };
 
-  // Функция для фильтрации проблем
-  const getFilteredIssues = () => {
-    if (!issues) return [];
+  // Функция для получения объединенных проблем (из пропсов и Python)
+  const allIssues = useMemo(() => {
+    // Сначала берем проблемы из props
+    const allIssues = [...(props.issues || [])];
     
-    return issues
-      .map(fileIssue => ({
+    console.log("Terminal getting issues:", { fromProps: allIssues.length });
+    
+    // Затем добавляем Python проблемы, если они есть
+    if (typeof window !== "undefined" && (window as any).getPythonDiagnostics) {
+      try {
+        console.log('Получение Python диагностики для терминала...');
+        const pythonIssues = (window as any).getPythonDiagnostics();
+        console.log('Python диагностика:', pythonIssues);
+        
+        if (Array.isArray(pythonIssues) && pythonIssues.length > 0) {
+          console.log(`Найдено ${pythonIssues.length} файлов с Python диагностикой`);
+          // Добавляем только те, которые еще не в списке
+          pythonIssues.forEach((pyIssue: IssueInfo) => {
+            if (!pyIssue || !pyIssue.filePath) return;
+            
+            const existingIndex = allIssues.findIndex(issue => 
+              issue.filePath === pyIssue.filePath || 
+              issue.filePath.replace(/\\/g, '/') === pyIssue.filePath.replace(/\\/g, '/')
+            );
+            
+            if (existingIndex === -1) {
+              // Если такого файла нет в списке, добавляем полностью
+              console.log(`Добавление Python диагностики для файла: ${pyIssue.fileName}`);
+              allIssues.push(pyIssue);
+            } else {
+              console.log(`Объединение Python диагностики для файла: ${pyIssue.fileName}`);
+              // Если файл уже есть, добавляем только новые проблемы
+              pyIssue.issues.forEach((issue: Issue) => {
+                if (!issue) return;
+                
+                // Проверяем, есть ли уже такая проблема
+                const exists = allIssues[existingIndex].issues.some(
+                  (existingIssue: Issue) => 
+                    existingIssue.line === issue.line && 
+                    existingIssue.message === issue.message
+                );
+                
+                if (!exists) {
+                  console.log(`Добавление новой проблемы: ${issue.message}`);
+                  allIssues[existingIndex].issues.push(issue);
+                }
+              });
+            }
+          });
+        } else {
+          console.log('Python диагностика пуста или не является массивом');
+        }
+      } catch (e) {
+        console.error('Ошибка при получении Python диагностики:', e);
+      }
+    } else {
+      console.warn('Функция getPythonDiagnostics не найдена в window');
+    }
+    
+    // Подсчитываем общее количество проблем
+    const totalIssues = allIssues.reduce((sum, file) => sum + (file.issues?.length || 0), 0);
+    console.log('Общее количество проблем:', totalIssues);
+    
+    return allIssues;
+  }, [props.issues]);
+
+  // Обновляем getFilteredIssues для использования allIssues напрямую
+  const getFilteredIssues = () => {
+    if (!allIssues || allIssues.length === 0) {
+      return [];
+    }
+
+    console.log("Filtering issues:", { totalFiles: allIssues.length });
+
+    return allIssues
+      .map((fileIssue: IssueInfo) => ({
         ...fileIssue,
-        issues: fileIssue.issues.filter(issue => {
+        issues: (fileIssue.issues || []).filter((issue: Issue) => {
+          if (!issue) return false;
+          
           const matchesSearch = issueSearch === "" ||
-            issue.message.toLowerCase().includes(issueSearch.toLowerCase()) ||
-            fileIssue.fileName.toLowerCase().includes(issueSearch.toLowerCase());
+            (issue.message && issue.message.toLowerCase().includes(issueSearch.toLowerCase())) ||
+            (fileIssue.fileName && fileIssue.fileName.toLowerCase().includes(issueSearch.toLowerCase()));
           
           const matchesFilter = (
             (issue.severity === 'error' && filters.errors) ||
             (issue.severity === 'warning' && filters.warnings) ||
             (issue.severity === 'info' && filters.info)
           );
-
+          
           return matchesSearch && matchesFilter;
         })
       }))
-      .filter(fileIssue => fileIssue.issues.length > 0);
+      .filter((fileIssue: IssueInfo) => fileIssue.issues && fileIssue.issues.length > 0);
   };
+  
+  // Добавляем слушатель для обновлений маркеров Python
+  useEffect(() => {
+    const handleMarkersUpdated = () => {
+      // Принудительно обновляем компонент
+      setFilterSeverity(current => current);
+    };
+    
+    document.addEventListener('markers-updated', handleMarkersUpdated);
+    
+    return () => {
+      document.removeEventListener('markers-updated', handleMarkersUpdated);
+    };
+  }, []);
 
   // Функция для получения иконки по типу проблемы
   const getSeverityIcon = (severity: 'error' | 'warning' | 'info') => {
@@ -317,9 +466,22 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
   const renderIssues = () => {
     const filteredIssues = getFilteredIssues();
     
+    if (filteredIssues.length === 0) {
+      return (
+        <div className="no-issues">
+          <div className="no-issues-content">
+            <div className="icon-container">
+              <Check size={24} color="#4caf50" />
+            </div>
+            <span>Нет обнаруженных проблем</span>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="issues-list">
-        {filteredIssues.map(fileIssue => (
+        {filteredIssues.map((fileIssue: IssueInfo) => (
           <div key={fileIssue.filePath} className="file-issues">
             <div 
               className="file-header"
@@ -329,29 +491,46 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
                 <ChevronDown size={16} /> : 
                 <ChevronRight size={16} />
               }
-              {getFileIcon(fileIssue.fileName) || <File size={16} />}
-              <span className="file-name">{fileIssue.fileName}</span>
-              <span className="issues-count">
-                {fileIssue.issues.length}
-              </span>
+              <div className="file-icon">
+                {getFileIcon(fileIssue.filePath)}
+              </div>
+              <div className="file-name">
+                {fileIssue.fileName}
+                {fileIssue.issues.some((issue: Issue) => issue.source === 'python-lsp') && (
+                  <span className="python-badge">Python</span>
+                )}
+              </div>
+              <div className="issue-counts">
+                {fileIssue.issues.filter((i: Issue) => i.severity === 'error').length > 0 && (
+                  <span className="error-count">
+                    {fileIssue.issues.filter((i: Issue) => i.severity === 'error').length} <AlertCircle size={12} />
+                  </span>
+                )}
+                {fileIssue.issues.filter((i: Issue) => i.severity === 'warning').length > 0 && (
+                  <span className="warning-count">
+                    {fileIssue.issues.filter((i: Issue) => i.severity === 'warning').length} <AlertTriangle size={12} />
+                  </span>
+                )}
+              </div>
             </div>
             
             {expandedFiles.has(fileIssue.filePath) && (
-              <div className="issue-items">
-                {fileIssue.issues.map((issue, index) => (
+              <div className="issue-details">
+                {fileIssue.issues.map((issue: Issue, idx: number) => (
                   <div 
-                    key={index} 
+                    key={`${fileIssue.filePath}-${idx}`} 
                     className="issue-item"
-                    onClick={() => onIssueClick?.(fileIssue.filePath, issue.line, issue.column)}
-                    style={{ cursor: 'pointer' }}
+                    onClick={() => props.onIssueClick && props.onIssueClick(fileIssue.filePath, issue.line, issue.column)}
                   >
                     {getSeverityIcon(issue.severity)}
-                    <div className="issue-details">
-                      <div className="issue-message">{issue.message}</div>
-                      <div className="issue-location">
-                        Строка {issue.line}, Столбец {issue.column}
-                        {issue.source && <span className="issue-source"> [{issue.source}]</span>}
-                      </div>
+                    <div className="issue-message">{issue.message}</div>
+                    <div className="issue-position">
+                      строка {issue.line}, столбец {issue.column}
+                      {issue.source && (
+                        <span className="issue-source">
+                          [{issue.source === 'python-lsp' ? 'Python LSP' : issue.source}]
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -359,11 +538,6 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             )}
           </div>
         ))}
-        {filteredIssues.length === 0 && (
-          <div className="no-issues">
-            {issueSearch ? "Нет результатов поиска" : "Проблем не найдено"}
-          </div>
-        )}
       </div>
     );
   };
@@ -534,8 +708,84 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     updateTerminalSettings();
   }, [terminalSettings, updateTerminalSettings]);
 
+  // Обновляем UI компонент фильтров
+  const renderFilterControls = () => (
+    <div className="terminal-filters">
+      <input 
+        type="text" 
+        placeholder="Поиск проблем..."
+        value={issueSearch}
+        onChange={(e) => setIssueSearch(e.target.value)}
+        className="issue-search"
+      />
+      <div className="filter-buttons">
+        <button 
+          className={`filter-btn ${filters.errors ? 'active' : ''}`}
+          onClick={() => setFilters(prev => ({ ...prev, errors: !prev.errors }))}
+        >
+          <AlertCircle size={16} color={filters.errors ? "#ff5555" : "#888"} />
+          <span>Ошибки</span>
+        </button>
+        <button 
+          className={`filter-btn ${filters.warnings ? 'active' : ''}`}
+          onClick={() => setFilters(prev => ({ ...prev, warnings: !prev.warnings }))}
+        >
+          <AlertTriangle size={16} color={filters.warnings ? "#ffaa33" : "#888"} />
+          <span>Предупр.</span>
+        </button>
+        <button 
+          className={`filter-btn ${filters.info ? 'active' : ''}`}
+          onClick={() => setFilters(prev => ({ ...prev, info: !prev.info }))}
+        >
+          <Info size={16} color={filters.info ? "#33aaff" : "#888"} />
+          <span>Инфо</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // Функция обработки принудительного запуска диагностики Python
+  const handleForcePythonDiagnostics = async () => {
+    try {
+      if (window && (window as any).updatePythonDiagnostics) {
+        console.log("Принудительный запуск Python диагностики...");
+        const result = await (window as any).updatePythonDiagnostics();
+        console.log("Результат диагностики:", result);
+        
+        // Обновляем список проблем
+        setFilterSeverity(current => current);
+      } else {
+        console.error("Функция updatePythonDiagnostics недоступна");
+        
+        // Пробуем загрузить модуль register-python
+        try {
+          const registerPythonModule = await import('../../monaco-config/register-python');
+          if (typeof registerPythonModule.registerPython === 'function') {
+            console.log("Регистрация Python...");
+            registerPythonModule.registerPython();
+            
+            setTimeout(async () => {
+              if ((window as any).updatePythonDiagnostics) {
+                const result = await (window as any).updatePythonDiagnostics();
+                console.log("Результат диагностики после регистрации:", result);
+                setFilterSeverity(current => current);
+              }
+            }, 1000);
+          }
+        } catch (err) {
+          console.error("Ошибка при импорте модуля register-python:", err);
+        }
+      }
+    } catch (error) {
+      console.error("Ошибка при запуске диагностики Python:", error);
+    }
+  };
+
   return (
-    <div className="terminal-container" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
+    <div className="terminal-container" style={{height: terminalHeight ? `${terminalHeight}px` : '200px', display: 'flex', flexDirection: 'column'}}>
+      <div className="vertical-resizer" onMouseDown={handleVerticalDrag}>
+        <GripHorizontal size={16} color="#666" style={{ margin: '0 auto', display: 'block' }} />
+      </div>
       <div className="tab-buttons">
         <div className="left-tabs">
           <button
@@ -598,6 +848,13 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               </button>
               <button
                 className="action-button"
+                onClick={handleForcePythonDiagnostics}
+                title="Обновить диагностику Python"
+              >
+                <FaPython size={14} />
+              </button>
+              <button
+                className="action-button"
                 onClick={closeTerminal}
                 title="Скрыть панель"
               >
@@ -649,33 +906,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         >
           {showIssueFilters && (
             <div className="issues-filters">
-              <div className="filter-option">
-                <input 
-                  type="checkbox" 
-                  id="errors" 
-                  checked={filters.errors}
-                  onChange={(e) => setFilters(prev => ({ ...prev, errors: e.target.checked }))}
-                />
-                <label htmlFor="errors">Ошибки</label>
-              </div>
-              <div className="filter-option">
-                <input 
-                  type="checkbox" 
-                  id="warnings" 
-                  checked={filters.warnings}
-                  onChange={(e) => setFilters(prev => ({ ...prev, warnings: e.target.checked }))}
-                />
-                <label htmlFor="warnings">Предупреждения</label>
-              </div>
-              <div className="filter-option">
-                <input 
-                  type="checkbox" 
-                  id="info" 
-                  checked={filters.info}
-                  onChange={(e) => setFilters(prev => ({ ...prev, info: e.target.checked }))}
-                />
-                <label htmlFor="info">Информация</label>
-              </div>
+              {renderFilterControls()}
             </div>
           )}
           

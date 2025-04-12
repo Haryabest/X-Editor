@@ -10,6 +10,7 @@ import { MonacoLSPDiagnostics } from './monaco-lsp-diagnostics';
 
 // Глобальные переменные для отслеживания состояния
 let pythonLSPInitialized = false;
+let diagnosticHandlersInitialized = false;
 
 /**
  * Инициализация Python LSP сервера
@@ -32,12 +33,39 @@ export async function initializePythonLSP(): Promise<boolean> {
     
     // Регистрируем Python сервер, если он еще не зарегистрирован
     if (!languageServerManager.getServer('python')) {
-      languageServerManager.registerServer({
+      // Добавляем расширенную конфигурацию для Python LSP
+      const pythonConfig = {
         id: 'python',
         name: 'Python Language Server',
-        supportedLanguages: ['python']
-      });
-      console.log('Python LSP сервер зарегистрирован');
+        supportedLanguages: ['python'],
+        // Добавляем расширенные настройки для Python LSP
+        serverOptions: {
+          // Указываем настройки для сервера
+          initializationOptions: {
+            // Явно указываем, что требуется проверка синтаксиса
+            diagnostics: { enable: true, lint: { enabled: true } },
+            completion: { enabled: true },
+            hover: { enabled: true },
+            // Включаем pylint и pycodestyle для проверки
+            plugins: {
+              pycodestyle: { enabled: true }, 
+              pylint: { enabled: true },
+              jedi_completion: { enabled: true },
+              jedi_hover: { enabled: true },
+              jedi_references: { enabled: true },
+              jedi_definition: { enabled: true },
+              jedi_symbols: { enabled: true },
+              jedi_signature_help: { enabled: true },
+              pyflakes: { enabled: true },
+              mccabe: { enabled: true },
+              preload: { enabled: true }
+            }
+          }
+        }
+      };
+      
+      languageServerManager.registerServer(pythonConfig);
+      console.log('Python LSP сервер зарегистрирован с расширенной конфигурацией');
     }
     
     // Запускаем Python сервер
@@ -109,7 +137,7 @@ export function getPythonLSPStatus(): { running: boolean, message: string } {
  */
 export async function updateAllPythonDiagnostics(): Promise<boolean> {
   try {
-    console.log('Запуск обновления диагностики для всех Python файлов...');
+    console.log('🐍 Запуск обновления диагностики для всех Python файлов...');
     
     if (!isPythonLSPConnected()) {
       console.warn('Python LSP сервер не подключен, инициализация...');
@@ -138,7 +166,7 @@ export async function updateAllPythonDiagnostics(): Promise<boolean> {
       return true;
     }
     
-    console.log(`Обработка ${pythonDocuments.length} Python файлов...`);
+    console.log(`🐍 Обработка ${pythonDocuments.length} Python файлов...`);
     
     // Запрашиваем диагностику для каждого Python документа
     for (const uri of pythonDocuments) {
@@ -149,7 +177,7 @@ export async function updateAllPythonDiagnostics(): Promise<boolean> {
       }
     }
     
-    console.log(`Диагностика запрошена для ${pythonDocuments.length} Python файлов`);
+    console.log(`🐍 Диагностика запрошена для ${pythonDocuments.length} Python файлов`);
     return true;
   } catch (error) {
     console.error('Ошибка при обновлении всех Python диагностик:', error);
@@ -164,17 +192,21 @@ export async function updateAllPythonDiagnostics(): Promise<boolean> {
  */
 export async function updatePythonDiagnosticsForFile(filepath: string): Promise<boolean> {
   try {
+    console.log('🐍 Python diagnostics requested for file:', filepath);
+    console.log('Debug: Current Python LSP status:', getPythonLSPStatus());
+    
     // Проверка и инициализация LSP, если необходимо
     if (!isPythonLSPConnected()) {
       console.warn(`Python LSP сервер не подключен, инициализация...`);
       const initialized = await initializePythonLSP();
+      console.log('Debug: Python LSP initialization result:', initialized);
       if (!initialized) {
         console.error('Не удалось инициализировать Python LSP сервер');
         return false;
       }
     }
     
-    console.log(`Обновление диагностики для: ${filepath}`);
+    console.log(`🐍 Обновление диагностики для: ${filepath}`);
     
     // Проверка, является ли файл Python-файлом
     const isPythonFile = filepath.endsWith('.py') || filepath.endsWith('.pyw') || 
@@ -188,6 +220,7 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
     
     // Получаем документ из менеджера LSP
     let doc = lspDocumentManager.getDocument(filepath);
+    console.log('Debug: Found document in LSP manager:', !!doc);
     
     // Если документ не найден, пытаемся найти его по другому URI или создать
     if (!doc) {
@@ -330,21 +363,11 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
       return false;
     }
     
-    // Обновляем содержимое документа в LSP
+    // Обновляем содержимое документа в LSP и запрашиваем диагностику
     try {
-      // Обновляем документ в LSP Document Manager через открытые методы
-      // Поскольку updateDocument - приватный метод, воспользуемся стандартным путем:
-      // сначала удалим документ, затем создадим с новым содержимым
-      lspDocumentManager.removeDocument(doc.uri);
-      lspDocumentManager.addDocument(doc.uri, 'python', content);
-      console.log(`Документ обновлен в LSP Manager: ${doc.uri}`);
-    } catch (updateErr) {
-      console.warn(`Не удалось обновить документ в LSP Manager: ${updateErr}`);
-    }
-    
-    // Отправляем запросы на сервер
-    try {
-      // Сначала уведомляем об открытии, если документ новый
+      console.log(`🐍 Получение диагностики для файла ${doc.uri}...`);
+      
+      // Сначала уведомляем об открытии документа
       languageServerManager.sendNotification('python', 'textDocument/didOpen', {
         textDocument: {
           uri: doc.uri,
@@ -353,7 +376,7 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
           text: content
         }
       });
-      console.log(`Отправлено уведомление didOpen для: ${doc.uri}`);
+      console.log(`🐍 Отправлено уведомление didOpen для: ${doc.uri}`);
       
       // Затем уведомляем об изменении
       languageServerManager.sendNotification('python', 'textDocument/didChange', {
@@ -363,183 +386,150 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         },
         contentChanges: [{ text: content }]
       });
-      console.log(`Отправлено уведомление didChange для: ${doc.uri}`);
+      console.log(`🐍 Отправлено уведомление didChange для: ${doc.uri}`);
       
-      // Запрашиваем диагностику
-      console.log(`Запрос диагностики для: ${doc.uri}`);
-      const diagRequest = await languageServerManager.sendRequest('python', 'textDocument/diagnostic', {
-        textDocument: { uri: doc.uri }
-      });
+      // Ждем немного, чтобы сервер обработал изменения и опубликовал диагностику
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      console.log(`Получен ответ диагностики:`, diagRequest);
+      // Проверяем, есть ли диагностика в редакторе
+      let diagnosticsFound = false;
       
-      // Если есть ответ с диагностикой, обновляем маркеры в Monaco
-      if (diagRequest && diagRequest.diagnostics) {
-        const diagnostics = diagRequest.diagnostics;
-        
-        // Проверяем наличие хранилища диагностики
-        if ((window as any).pythonDiagnosticsStore) {
-          // Создаем Monaco URI для документа
-          let monacoUri;
-          try {
-            monacoUri = window.monaco.Uri.parse(doc.uri);
-          } catch (uriErr) {
-            // Если произошла ошибка при разборе URI, пробуем создать файловый URI
-            try {
-              monacoUri = window.monaco.Uri.file(filepath);
-            } catch (fileUriErr) {
-              console.error(`Не удалось создать URI для: ${filepath}`, fileUriErr);
-              return false;
-            }
-          }
+      if (window.monaco) {
+        try {
+          const monacoUri = window.monaco.Uri.file(filepath);
+          const markers = window.monaco.editor.getModelMarkers({ resource: monacoUri });
           
-          // Преобразуем диагностику LSP в маркеры Monaco
-          try {
-            const markers = diagnostics.map((diag: any) => ({
-              severity: convertSeverity(diag.severity || 1),
-              message: diag.message || 'Неизвестная ошибка',
-              startLineNumber: ((diag.range?.start?.line || 0) + 1),
-              startColumn: ((diag.range?.start?.character || 0) + 1),
-              endLineNumber: ((diag.range?.end?.line || 0) + 1),
-              endColumn: ((diag.range?.end?.character || 0) + 1),
-              source: diag.source || 'python-lsp',
-              code: diag.code
-            }));
+          if (markers && markers.length > 0) {
+            console.log(`🐍 Найдено ${markers.length} маркеров для файла ${filepath}`);
+            diagnosticsFound = true;
             
-            // Устанавливаем маркеры в хранилище
-            (window as any).pythonDiagnosticsStore.setMarkers(monacoUri.toString(), markers);
-            console.log(`Обновлено ${markers.length} маркеров для: ${filepath}`);
-          } catch (markersErr) {
-            console.error(`Ошибка при преобразовании диагностики в маркеры:`, markersErr);
+            // Уведомляем о обновлении маркеров
+            document.dispatchEvent(new CustomEvent('markers-updated'));
+          } else {
+            console.log(`🐍 Маркеры не найдены для файла ${filepath}`);
           }
-        } else {
-          console.warn('Не удалось обновить диагностику: хранилище диагностики Python недоступно');
-        }
-      } else {
-        // Если диагностик нет, очищаем маркеры
-        if ((window as any).pythonDiagnosticsStore) {
-          try {
-            let monacoUri;
-            try {
-              monacoUri = window.monaco.Uri.parse(doc.uri);
-            } catch (e) {
-              monacoUri = window.monaco.Uri.file(filepath);
-            }
-            (window as any).pythonDiagnosticsStore.clearMarkers(monacoUri.toString());
-            console.log(`Очищены маркеры для: ${filepath}`);
-          } catch (clearErr) {
-            console.error(`Ошибка при очистке маркеров:`, clearErr);
-          }
+        } catch (err) {
+          console.error(`Ошибка при получении маркеров: ${err}`);
         }
       }
       
-      // Дополнительно запрашиваем обновление редактора
-      try {
-        if (window.monaco) {
-          const models = window.monaco.editor.getModels();
-          for (const model of models) {
-            if (model.uri.toString().includes(filepath) || filepath.includes(model.uri.path)) {
-              // Уведомляем о необходимости перерисовки
-              const viewStates = window.monaco.editor.getViewStates(model);
-              if (viewStates) {
-                window.monaco.editor.setViewStates(model, viewStates);
-              }
-              console.log(`Обновлен вид модели для: ${filepath}`);
-              break;
-            }
+      // Если диагностика не найдена, очищаем существующие маркеры
+      if (!diagnosticsFound && (window as any).pythonDiagnosticsStore) {
+        try {
+          let monacoUri;
+          try {
+            monacoUri = window.monaco.Uri.parse(doc.uri);
+          } catch (e) {
+            monacoUri = window.monaco.Uri.file(filepath);
           }
+          
+          (window as any).pythonDiagnosticsStore.clearMarkers(monacoUri.toString());
+          console.log(`🐍 Очищены маркеры для: ${filepath}`);
+          
+          // Уведомляем об обновлении маркеров
+          document.dispatchEvent(new CustomEvent('markers-updated'));
+        } catch (clearErr) {
+          console.error(`Ошибка при очистке маркеров:`, clearErr);
         }
-      } catch (updateErr) {
-        console.warn(`Ошибка при обновлении редактора:`, updateErr);
       }
       
       return true;
     } catch (error) {
-      console.error(`Ошибка при запросе диагностики: ${filepath}`, error);
+      console.error(`🐍 Ошибка при обновлении диагностики: ${filepath}`, error);
       return false;
     }
   } catch (error) {
-    console.error(`Неожиданная ошибка при обновлении Python диагностики: ${filepath}`, error);
+    console.error(`🐍 Неожиданная ошибка при обновлении Python диагностики: ${filepath}`, error);
     return false;
   }
 }
 
 /**
- * Принудительное обновление диагностики для Python файла с повторной инициализацией
- * @param filepath Путь к Python файлу
+ * Принудительное обновление диагностики для Python файла
+ * @param filepath Путь к файлу или URI
  * @returns Promise с результатом операции
  */
-export async function forcePythonDiagnosticsUpdate(filepath: string): Promise<boolean> {
-  try {
-    console.log(`Принудительное обновление диагностики для: ${filepath}`);
+export async function forcePythonDiagnosticsUpdate(filepath: string) {
+  console.log(`🐍 Ручной запрос диагностики для: ${filepath}`);
+  
+  const result = await updatePythonDiagnosticsForFile(filepath);
+  
+  // Проверяем, были ли найдены ошибки
+  if (result && typeof window !== 'undefined' && (window as any).pythonDiagnosticsStore) {
+    // Получаем маркеры для данного файла
+    const diagnosticsStore = (window as any).pythonDiagnosticsStore;
     
-    // Проверяем наличие хранилища диагностики
-    if (!(window as any).pythonDiagnosticsStore) {
-      console.warn('Хранилище диагностики Python не инициализировано');
-      // Пробуем загрузить module register-python, если он еще не был загружен
+    try {
+      // Пытаемся найти модель URI для файла
+      let fileUri: string;
+      
+      if (filepath.startsWith('file://')) {
+        fileUri = filepath;
+      } else {
+        fileUri = `file://${filepath.replace(/\\/g, '/')}`;
+      }
+      
+      // Преобразуем в URI
+      let monacoUri: string;
       try {
-        const registerPythonModule = await import('../../monaco-config/register-python');
-        if (typeof registerPythonModule.registerPython === 'function') {
-          const result = registerPythonModule.registerPython();
-          console.log(`Регистрация Python для диагностики: ${result ? 'успешно' : 'неудачно'}`);
+        if (window.monaco) {
+          monacoUri = window.monaco.Uri.file(filepath.replace(/\\/g, '/')).toString();
+        } else {
+          monacoUri = fileUri;
         }
-      } catch (importError) {
-        console.error('Не удалось импортировать модуль register-python:', importError);
+      } catch (e) {
+        monacoUri = fileUri;
       }
-    }
-    
-    // Проверяем наличие LSP и инициализируем при необходимости
-    const lspConnected = isPythonLSPConnected();
-    if (!lspConnected) {
-      console.warn('Python LSP не подключен, пробуем инициализировать...');
-      const initialized = await initializePythonLSP();
-      if (!initialized) {
-        console.error('Не удалось инициализировать Python LSP');
-        return false;
+      
+      // Проверяем обе версии URI
+      let markers = diagnosticsStore.getMarkers(fileUri);
+      if (!markers || markers.length === 0) {
+        markers = diagnosticsStore.getMarkers(monacoUri);
       }
-      console.log('Python LSP сервер успешно инициализирован');
-    }
-    
-    // Проверяем доступность Monaco и модели для этого файла
-    if (window.monaco) {
-      try {
-        // Проверяем, существует ли модель для этого файла
-        const fileUri = window.monaco.Uri.file(filepath);
-        let model = window.monaco.editor.getModel(fileUri);
+      
+      // Если нашли маркеры, показываем уведомление
+      if (markers && markers.length > 0) {
+        console.log(`🐍 Найдено ${markers.length} проблем в файле ${filepath}`);
         
-        // Если модель не существует, пробуем найти модель с похожим путем
-        if (!model) {
-          const models = window.monaco.editor.getModels();
-          for (const m of models) {
-            try {
-              if (m.uri.toString().includes(filepath) || 
-                  filepath.includes(m.uri.path.replace(/^\//,'')) || 
-                  filepath.includes(m.uri.toString().replace('file:///',''))) {
-                model = m;
-                break;
-              }
-            } catch (e) {
-              // Игнорируем ошибки при проверке моделей
+        const errorCount = markers.filter((m: any) => 
+          m.severity === (window.monaco?.MarkerSeverity.Error || 8)
+        ).length;
+        
+        const warningCount = markers.filter((m: any) => 
+          m.severity === (window.monaco?.MarkerSeverity.Warning || 4)
+        ).length;
+        
+        // Показываем уведомление
+        const message = `Python: ${errorCount} ошибок, ${warningCount} предупреждений`;
+        
+        // Отправляем событие для отображения уведомления
+        if (errorCount > 0 || warningCount > 0) {
+          document.dispatchEvent(new CustomEvent('show-notification', {
+            detail: {
+              message,
+              type: errorCount > 0 ? 'error' : 'warning',
+              duration: 5000
             }
-          }
+          }));
         }
+      } else {
+        console.log(`🐍 Проблем в файле ${filepath} не найдено`);
         
-        // Если нашли модель, проверяем её язык
-        if (model && model.getLanguageId() !== 'python') {
-          console.log(`Установка языка Python для модели ${filepath}`);
-          window.monaco.editor.setModelLanguage(model, 'python');
-        }
-      } catch (monacoErr) {
-        console.warn('Ошибка при проверке моделей Monaco:', monacoErr);
+        // Показываем успешное уведомление
+        document.dispatchEvent(new CustomEvent('show-notification', {
+          detail: {
+            message: 'Python: Ошибок не найдено',
+            type: 'success',
+            duration: 3000
+          }
+        }));
       }
+    } catch (e) {
+      console.error('Ошибка при проверке результатов диагностики:', e);
     }
-    
-    // Обновляем диагностику документа
-    return await updatePythonDiagnosticsForFile(filepath);
-  } catch (error) {
-    console.error('Ошибка при принудительном обновлении диагностики:', error);
-    return false;
   }
+  
+  return result;
 }
 
 /**
@@ -575,4 +565,4 @@ export function clearAllPythonDiagnostics(): void {
  */
 export function isPythonDiagnosticsAvailable(): boolean {
   return !!(window as any).pythonDiagnosticsStore;
-} 
+}

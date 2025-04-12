@@ -3,6 +3,7 @@ use std::fs;
 use tauri::command;
 use walkdir::WalkDir;
 use std::collections::HashSet;
+use std::process::Command;
 
 /// Структура для результата списка файлов
 #[derive(serde::Serialize)]
@@ -130,7 +131,7 @@ pub fn fs_get_project_root(current_file_path: &str) -> String {
                 
                 // Если после серии ../ есть еще путь, добавляем его
                 if !rest_path.is_empty() {
-                    target_dir.push(rest_path.clone());
+                    target_dir.push(rest_path);
                 }
                 
                 // Проверяем получившийся путь
@@ -589,4 +590,63 @@ pub fn get_all_files_in_directory(directory: &str) -> Vec<String> {
     
     println!("Найдено {} файлов в директории {}", files.len(), directory);
     files
+}
+
+/// Получает установленные pip-пакеты из системы
+#[command]
+pub fn get_pip_packages() -> Vec<PipPackage> {
+    let mut packages = Vec::new();
+    
+    // Запускаем команду pip list --format=json
+    let output = Command::new("pip")
+        .args(&["list", "--format=json"])
+        .output()
+        .unwrap_or_else(|e| {
+            println!("Не удалось выполнить pip list: {}", e);
+            std::process::Command::new("python")
+                .args(&["-m", "pip", "list", "--format=json"])
+                .output()
+                .unwrap_or_else(|e| {
+                    println!("Не удалось выполнить python -m pip list: {}", e);
+                    // Create an Output structure with a dummy exit status
+                    let failed_output = std::process::Output {
+                        // Use process::Command to get a real ExitStatus instead of trying to create one
+                        status: Command::new("exit").status().unwrap_or_else(|_| {
+                            std::process::exit(1);
+                        }),
+                        stdout: Vec::new(),
+                        stderr: Vec::new(),
+                    };
+                    failed_output
+                })
+        });
+    
+    if output.status.success() {
+        // Преобразуем вывод в строку
+        let json_str = String::from_utf8_lossy(&output.stdout);
+        
+        // Парсим JSON
+        match serde_json::from_str::<Vec<PipPackage>>(&json_str) {
+            Ok(pip_packages) => {
+                packages = pip_packages;
+                println!("Найдено {} pip пакетов", packages.len());
+            },
+            Err(e) => {
+                println!("Ошибка парсинга pip list: {}", e);
+            }
+        }
+    } else {
+        // Вывод ошибки
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        println!("Ошибка при выполнении pip list: {}", stderr);
+    }
+    
+    packages
+}
+
+// Добавим структуру для pip пакетов
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PipPackage {
+    pub name: String,
+    pub version: String,
 } 

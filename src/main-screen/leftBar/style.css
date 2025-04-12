@@ -163,12 +163,61 @@
 }
 
 /* Issues indicators */
-.file-item.error .item-name {
-  color: #f48771;
+.file-item.error {
+  color: #ff6b6b !important;
+  font-weight: 500 !important;
 }
 
-.file-item.warning .item-name {
-  color: #cca700;
+.file-item.warning {
+  color: #ffc107 !important;
+  font-weight: 500 !important;
+}
+
+.file-item .issues-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+  background-color: rgba(40, 40, 50, 0.7);
+}
+
+/* Add red indicator for files with errors */
+.file-item.error::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ff6b6b;
+  margin-right: 5px;
+  animation: pulse 2s infinite;
+}
+
+/* Add yellow indicator for files with warnings */
+.file-item.warning::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ffc107;
+  margin-right: 5px;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* Badge indicators */

@@ -74,6 +74,129 @@ export class MonacoLSPDiagnostics {
   }
   
   /**
+   * Установка маркеров для URI
+   * Метод для совместимости со старым кодом
+   */
+  public setMarkers(uri: string, markers: any[]): void {
+    try {
+      if (!this.monaco) {
+        console.warn('Monaco не инициализирован в менеджере диагностики');
+        return;
+      }
+      
+      // Сохраняем маркеры
+      this.diagnostics[uri] = markers;
+      
+      // Получаем URI для Monaco
+      let monacoUri;
+      try {
+        monacoUri = this.monaco.Uri.parse(uri);
+      } catch (e) {
+        // Обрабатываем различные форматы URI
+        if (uri.startsWith('file://')) {
+          // Формируем нормализованный URI
+          let path = uri.substring(7);
+          
+          // Обрабатываем пути с кириллицей
+          if (path.includes('%')) {
+            try {
+              path = decodeURIComponent(path);
+            } catch (decodeErr) {
+              console.warn('Не удалось декодировать URI:', uri);
+            }
+          }
+          
+          // Нормализуем слэши для Windows
+          path = path.replace(/\\/g, '/');
+          
+          monacoUri = this.monaco.Uri.file(path);
+        } else {
+          // Если это не file://, просто используем как путь
+          monacoUri = this.monaco.Uri.file(uri.replace(/\\/g, '/'));
+        }
+      }
+      
+      // Находим модель для этого URI
+      const model = this.monaco.editor.getModel(monacoUri);
+      if (model) {
+        // Устанавливаем маркеры
+        this.monaco.editor.setModelMarkers(model, 'python-lsp', markers);
+        console.log(`Маркеры установлены для модели ${monacoUri.toString()}`);
+      } else {
+        console.warn(`Модель не найдена для URI: ${monacoUri.toString()}`);
+        
+        // Пробуем найти по имени файла
+        const models = this.monaco.editor.getModels();
+        const fileName = uri.split(/[/\\]/).pop();
+        
+        for (const m of models) {
+          const mPath = m.uri.toString();
+          if (mPath.endsWith(fileName || '')) {
+            this.monaco.editor.setModelMarkers(m, 'python-lsp', markers);
+            console.log(`Маркеры установлены для модели по имени файла: ${mPath}`);
+            break;
+          }
+        }
+      }
+      
+      // Уведомляем об обновлении маркеров
+      document.dispatchEvent(new CustomEvent('markers-updated'));
+    } catch (error) {
+      console.error('Ошибка при установке маркеров:', error);
+    }
+  }
+  
+  /**
+   * Получение маркеров для URI
+   * Метод для совместимости со старым кодом
+   */
+  public getMarkers(uri: string): any[] {
+    if (!uri) return [];
+    return this.diagnostics[uri] || [];
+  }
+  
+  /**
+   * Очистка маркеров для URI
+   * Метод для совместимости со старым кодом
+   */
+  public clearMarkers(uri: string): void {
+    try {
+      if (!this.monaco) {
+        console.warn('Monaco не инициализирован в менеджере диагностики');
+        return;
+      }
+      
+      // Удаляем маркеры из диагностики
+      delete this.diagnostics[uri];
+      
+      // Получаем URI для Monaco
+      let monacoUri;
+      try {
+        monacoUri = this.monaco.Uri.parse(uri);
+      } catch (e) {
+        if (uri.startsWith('file://')) {
+          monacoUri = this.monaco.Uri.file(uri.substring(7).replace(/\\/g, '/'));
+        } else {
+          monacoUri = this.monaco.Uri.file(uri.replace(/\\/g, '/'));
+        }
+      }
+      
+      // Находим модель для этого URI
+      const model = this.monaco.editor.getModel(monacoUri);
+      if (model) {
+        // Очищаем маркеры
+        this.monaco.editor.setModelMarkers(model, 'python-lsp', []);
+        console.log(`Маркеры очищены для модели ${monacoUri.toString()}`);
+      }
+      
+      // Уведомляем об обновлении маркеров
+      document.dispatchEvent(new CustomEvent('markers-updated'));
+    } catch (error) {
+      console.error('Ошибка при очистке маркеров:', error);
+    }
+  }
+  
+  /**
    * Очистка диагностики для указанного URI
    */
   public clearDiagnostics(uri: string): void {
@@ -309,6 +432,60 @@ export class MonacoLSPDiagnostics {
    */
   public getAllDiagnostics(): DiagnosticCollection {
     return { ...this.diagnostics };
+  }
+  
+  /**
+   * Получение всех маркеров в формате для UI
+   */
+  public getAllMarkersForUI(): any[] {
+    try {
+      const result: any[] = [];
+      
+      // Получаем маркеры для всех моделей
+      const models = window.monaco?.editor.getModels() || [];
+      
+      for (const model of models) {
+        const uri = model.uri.toString();
+        if (uri.endsWith('.py')) {
+          const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+          if (markers && markers.length > 0) {
+            // Преобразуем путь из URI в обычный путь
+            let filePath = uri;
+            try {
+              if (uri.startsWith('file:///')) {
+                filePath = decodeURIComponent(uri.replace('file:///', ''));
+              }
+            } catch (e) {
+              console.warn('Ошибка преобразования URI в путь:', e);
+            }
+            
+            const fileName = filePath.split(/[\\/]/).pop() || '';
+            
+            // Добавляем информацию о маркерах для файла
+            result.push({
+              filePath,
+              fileName,
+              issues: markers.map(marker => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message,
+                line: marker.startLineNumber,
+                column: marker.startColumn,
+                endLine: marker.endLineNumber,
+                endColumn: marker.endColumn,
+                source: marker.source || 'python-lsp',
+                code: marker.code
+              }))
+            });
+          }
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Ошибка при получении маркеров для UI:', error);
+      return [];
+    }
   }
   
   /**

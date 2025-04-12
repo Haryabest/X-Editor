@@ -288,6 +288,7 @@ fn main() {
             commands::fs_commands::fs_resolve_module_path,
             commands::fs_commands::get_importable_files,
             commands::fs_commands::get_npm_packages,
+            commands::fs_commands::get_pip_packages,
             commands::fs_commands::editor_get_current_file_path,
             commands::fs_commands::get_all_files_in_directory,
             commands::fonts::get_system_fonts,

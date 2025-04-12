@@ -80,6 +80,9 @@ const FileManager: React.FC<FileManagerProps> = ({
     parentPath: string;
     isDirectory: boolean;
   } | null>(null);
+  const [creatingDir, setCreatingDir] = useState(false);
+  const [creatingItemName, setCreatingItemName] = useState('');
+  const [creatingItemIsDir, setCreatingItemIsDir] = useState(true);
   
   // Add a ref for the creating input
   const createInputRef = useRef<HTMLInputElement>(null);
@@ -116,21 +119,6 @@ const FileManager: React.FC<FileManagerProps> = ({
     setDirectoryChangesMap(dirChangesMap);
   };
 
-  const processTree = (tree: FileItem): FileItem => {
-    const gitStatus = gitStatusMap.get(tree.path);
-    const changesCount = directoryChangesMap.get(tree.path) || 0;
-    
-    return {
-      ...tree,
-      expanded: false,
-      loaded: !!tree.children,
-      gitStatus,
-      hasChanges: !!gitStatus || changesCount > 0,
-      changesCount,
-      children: tree.children?.map(child => processTree(child))
-    };
-  };
-
   useEffect(() => {
     if (gitChanges && gitChanges.length > 0) {
       prepareGitStatusMap(gitChanges);
@@ -140,25 +128,20 @@ const FileManager: React.FC<FileManagerProps> = ({
     }
   }, [gitChanges]);
 
+  // Add debugging for file issues
   useEffect(() => {
-    if (fileTree.length > 0 && (gitStatusMap.size > 0 || directoryChangesMap.size > 0)) {
-      setFileTree(prevTree => {
-        const updatedTree = prevTree.map(item => ({
-          ...item,
-          gitStatus: gitStatusMap.get(item.path),
-          hasChanges: !!gitStatusMap.get(item.path) || (directoryChangesMap.get(item.path) || 0) > 0,
-          changesCount: directoryChangesMap.get(item.path) || 0,
-          children: item.children?.map(child => processTree(child))
-        }));
-        
-        return updatedTree;
-      });
+    if (Object.keys(fileIssues).length > 0) {
+      console.log('🔍 FileManager received file issues:', fileIssues);
     }
-  }, [gitStatusMap, directoryChangesMap]);
+  }, [fileIssues]);
 
-  // Добавим флаг для отслеживания первого рендера, чтобы избежать цикла обновлений
-  const isFirstRender = useRef(true);
-  
+  // Обновляем список видимых элементов при каждом изменении дерева файлов
+  useEffect(() => {
+    if (fileTree.length > 0) {
+      updateVisibleItems(fileTree);
+    }
+  }, [fileTree]);
+
   // Собираем видимые элементы из текущего дерева
   const collectVisibleItems = (items: FileItem[]): FileItem[] => {
     let visible: FileItem[] = [];
@@ -193,13 +176,6 @@ const FileManager: React.FC<FileManagerProps> = ({
     const items = collectVisibleItems(tree);
     setCurrentFiles(items);
   };
-
-  // Обновляем список видимых элементов при каждом изменении дерева файлов
-  useEffect(() => {
-    if (fileTree.length > 0) {
-      updateVisibleItems(fileTree);
-    }
-  }, [fileTree]);
 
   useEffect(() => {
     const loadTree = async () => {
@@ -255,63 +231,58 @@ const FileManager: React.FC<FileManagerProps> = ({
   // Create a persistent tracking of expanded paths across refreshes
   const expandedPathsRef = useRef<Set<string>>(new Set());
   
-  // Функция для нормализации путей
-  const normalizePath = (path: string, fileName: string): string => {
-    // Ensure we use backslashes for Windows
-    const separator = '\\';
-    // Make sure path doesn't end with a separator
-    const cleanPath = path.endsWith(separator) ? path.slice(0, -1) : path;
-    return `${cleanPath}${separator}${fileName}`;
+  // Normalize paths for consistent comparison
+  const normalizePath = (path: string): string => {
+    if (!path) return '';
+    
+    // 1. Remove trailing slashes
+    // 2. Convert backslashes to forward slashes
+    // 3. Lowercase for case-insensitive comparison on Windows
+    let normalized = path.replace(/[\/\\]+$/, '').replace(/\\/g, '/');
+    
+    // Lowercase Windows drive letters
+    if (/^[a-zA-Z]:/.test(normalized)) {
+      return normalized.charAt(0).toLowerCase() + normalized.slice(1);
+    }
+    
+    return normalized;
   };
   
   // Function to explicitly track expanded state across tree updates
   const updateExpandedPaths = (path: string, isExpanded: boolean) => {
-    // Normalize path for storage
-    const normalizedPath = normalizePath(path, '');
+    const normalizedPath = normalizePath(path);
     
     if (isExpanded) {
       expandedPathsRef.current.add(normalizedPath);
-      console.log(`Path added to expanded set: ${normalizedPath}`);
     } else {
       expandedPathsRef.current.delete(normalizedPath);
-      console.log(`Path removed from expanded set: ${normalizedPath}`);
     }
   };
   
   // Function to find an item in the tree by path
   const findItem = (items: FileItem[], path: string): FileItem | null => {
-    if (!items || items.length === 0) {
-      console.log('findItem: items array is empty');
-      return null;
+    if (!items || items.length === 0) return null;
+    
+    // Special case for root folder
+    if (path === selectedFolder && items.length === 1) {
+      return items[0];
     }
 
-    // Simple path normalization for comparison
-    const normalizePath = (p: string): string => {
-      // Remove trailing slashes for consistent comparison
-      return p.replace(/[\\\/]$/, '');
-    };
-    
     const searchPath = normalizePath(path);
-    console.log('findItem: searching for path:', searchPath);
-    console.log('findItem: current items:', items);
     
     for (const item of items) {
       const itemPath = normalizePath(item.path);
-      console.log('findItem: comparing with item path:', itemPath);
       
       if (itemPath === searchPath) {
-        console.log('findItem: found matching item:', item);
         return item;
       }
       
       if (item.children && item.children.length > 0) {
-        console.log('findItem: searching in children of:', itemPath);
         const found = findItem(item.children, path);
         if (found) return found;
       }
     }
     
-    console.log('findItem: no matching item found');
     return null;
   };
 
@@ -331,7 +302,7 @@ const FileManager: React.FC<FileManagerProps> = ({
           loaded: true,
           children: result.children?.map(child => ({
             ...child,
-            expanded: expandedPathsRef.current.has(child.path),
+            expanded: expandedPathsRef.current.has(normalizePath(child.path)),
             loaded: child.children !== undefined
           }))
         };
@@ -339,7 +310,6 @@ const FileManager: React.FC<FileManagerProps> = ({
         // Обновляем конкретную часть дерева
         setFileTree(prev => {
           const updatedTree = prev.map(root => updateTree([root], item.path, processedResult)[0]);
-          console.log("Directory expanded with contents:", item.path);
           return updatedTree;
         });
       } catch (error) {
@@ -349,8 +319,6 @@ const FileManager: React.FC<FileManagerProps> = ({
       // Track the expanded state change
       const newExpandedState = !item.expanded;
       updateExpandedPaths(item.path, newExpandedState);
-      
-      console.log(`Toggling directory: ${item.path} to ${newExpandedState ? 'expanded' : 'collapsed'}`);
       
       // Просто переключаем видимость дочерних элементов
       setFileTree(prev => {
@@ -394,13 +362,8 @@ const FileManager: React.FC<FileManagerProps> = ({
 
   // Update processTreeWithExpandedPaths for path normalization
   const processTreeWithExpandedPaths = (item: FileItem): FileItem => {
-    // Normalize the path for comparison
-    const normalizedPath = normalizePath(item.path, '');
+    const normalizedPath = normalizePath(item.path);
     const shouldExpand = expandedPathsRef.current.has(normalizedPath);
-    
-    if (shouldExpand && item.is_directory) {
-      console.log(`Setting path as expanded in tree: ${item.path} (normalized: ${normalizedPath})`);
-    }
     
     return {
       ...item,
@@ -412,204 +375,127 @@ const FileManager: React.FC<FileManagerProps> = ({
 
   // Handler for context menu create actions
   const handleContextCreateDirectory = async (path: string) => {
-    console.log('Creating directory in:', path);
-    console.log('Selected folder:', selectedFolder);
-    console.log('Current file tree:', fileTree);
-    
-    if (!fileTree || fileTree.length === 0) {
-      console.log('File tree is empty, cannot create directory');
-      return;
-    }
-    
     // Close the context menu immediately
     setContextMenu(null);
     
     // Make sure the parent directory is expanded first
     try {
       const item = findItem(fileTree, path);
-      console.log('Found item:', item);
       if (item && !item.expanded) {
         await toggleDirectory(item);
       }
       
-      // Then set creating state with a small delay to ensure proper rendering
-      setTimeout(() => {
-        setCreatingItem({
-          parentPath: path,
-          isDirectory: true
-        });
-      }, 50);
+      // Set creating state
+      setCreatingItem({
+        parentPath: path,
+        isDirectory: true
+      });
     } catch (error) {
       console.error("Error expanding directory:", error);
     }
   };
   
   const handleContextCreateFile = async (path: string) => {
-    console.log('Creating file in:', path);
-    console.log('Selected folder:', selectedFolder);
-    console.log('Current file tree:', fileTree);
-    
-    if (!fileTree || fileTree.length === 0) {
-      console.log('File tree is empty, cannot create file');
-      return;
-    }
-    
     // Close the context menu immediately
     setContextMenu(null);
     
     // Make sure the parent directory is expanded first
     try {
       const item = findItem(fileTree, path);
-      console.log('Found item:', item);
       if (item && !item.expanded) {
         await toggleDirectory(item);
       }
       
-      // Then set creating state with a small delay to ensure proper rendering
-      setTimeout(() => {
-        setCreatingItem({
-          parentPath: path,
-          isDirectory: false
-        });
-      }, 50);
+      // Set creating state
+      setCreatingItem({
+        parentPath: path,
+        isDirectory: false
+      });
     } catch (error) {
       console.error("Error expanding directory:", error);
     }
   };
   
-  const renderCreatingInput = () => {
-    if (!creatingItem) {
-      console.log('No creating item, not rendering input');
-      return null;
-    }
-
-    console.log('Rendering creating input for:', creatingItem);
+  // Function to render the CreateInput component with improved styling
+  const CreateInput = () => {
+    const inputRef = useRef<HTMLInputElement>(null);
     
-    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Enter pressed, submitting creation');
-        await handleCreateSubmit(e.currentTarget.value);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Escape pressed, canceling creation');
-        handleCreateCancel();
+    useEffect(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
       }
-    };
-
+    }, []);
+    
     return (
-      <div className="creating-input-container" style={{ 
-        display: 'flex', 
+      <div style={{
+        padding: '8px 10px',
+        margin: '4px 0',
+        background: '#2d3748',
+        borderRadius: '4px',
+        display: 'flex',
         alignItems: 'center',
-        padding: '2px 0',
-        marginLeft: '20px'
+        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
       }}>
-        <span className="icon" style={{ marginRight: '5px' }}>
-          {creatingItem.isDirectory ? (
-            <FolderIcon width={14} height={14} />
-          ) : (
-            getFileIcon(createInputRef.current?.value || "")
-          )}
+        <span style={{ marginRight: '8px', color: creatingItemIsDir ? '#ffd700' : '#cccccc' }}>
+          {creatingItemIsDir ? <FolderIcon width={16} height={16} /> : 
+            <div style={{ width: 16, height: 16 }}>{getFileIcon("")}</div>}
         </span>
         <input
-          ref={createInputRef}
+          ref={inputRef}
           type="text"
-          autoFocus
-          onKeyDown={handleKeyDown}
-          onBlur={handleCreateCancel}
-          placeholder={creatingItem.isDirectory ? "Folder name" : "File name"}
-          className="creating-input"
-          style={{ 
-            flex: 1,
-            padding: '2px 4px',
-            border: '1px solid #ccc',
-            borderRadius: '3px',
-            outline: 'none'
+          placeholder={creatingItemIsDir ? "New folder name" : "New file name"}
+          value={creatingItemName}
+          onChange={(e) => setCreatingItemName(e.target.value)}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#ffffff',
+            padding: '4px 0'
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleCreateSubmit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              handleCreateCancel();
+            }
+          }}
+          autoFocus
         />
       </div>
     );
   };
 
-  const handleCreateSubmit = async (name: string) => {
-    if (!creatingItem) {
-      console.log('No creating item, cannot submit');
-      return;
-    }
-
-    console.log('Submitting creation with name:', name);
-    console.log('Creating item:', creatingItem);
+  const handleCreateSubmit = async () => {
+    if (!creatingItem) return;
     
-    if (!name.trim()) {
-      console.log('Empty name, canceling');
+    if (!creatingItemName.trim()) {
       handleCreateCancel();
       return;
     }
 
     try {
-      const fullPath = `${creatingItem.parentPath}/${name}`;
-      console.log('Creating at path:', fullPath);
+      // Join paths properly
+      const separator = '\\';
+      const normalizedParent = creatingItem.parentPath.replace(/[\/\\]+$/, '');
+      const fullPath = `${normalizedParent}${separator}${creatingItemName}`;
       
       if (creatingItem.isDirectory) {
         await invoke('create_folder', { path: fullPath });
-        console.log('Directory created successfully');
       } else {
         await invoke('create_file', { path: fullPath });
-        console.log('File created successfully');
       }
 
-      // Сохраняем текущее состояние раскрытых папок
-      const expandedPaths = getExpandedPaths(fileTree);
-      console.log('Expanded paths before refresh:', [...expandedPaths]);
-
-      // Особая логика для обновления только конкретной папки
-      const parentPath = creatingItem.parentPath;
-      
-      try {
-        // Найдем родительскую папку, которую нужно обновить
-        const parentItem = findItem(fileTree, parentPath);
-        
-        if (parentItem && parentItem.is_directory) {
-          console.log('Refreshing only parent folder:', parentPath);
-          
-          // Запрашиваем только содержимое этой директории
-          const result = await invoke<FileItem>("get_subdirectory", { path: parentPath });
-          
-          // Обрабатываем результат, сохраняя развернутый статус
-          const processedResult = {
-            ...result,
-            expanded: true,
-            loaded: true,
-            children: result.children?.map(child => ({
-              ...child,
-              expanded: expandedPaths.has(child.path),
-              loaded: child.children !== undefined
-            }))
-          };
-          
-          // Обновляем только эту часть дерева
-          setFileTree(prev => {
-            const updatedTree = prev.map(root => updateTree([root], parentPath, processedResult)[0]);
-            console.log("Directory updated with new content:", parentPath);
-            return updatedTree;
-          });
-        } else {
-          // Если не удалось найти родительскую папку, обновляем все дерево
-          console.log('Could not find parent folder, refreshing entire tree');
-          await handleRefresh();
-        }
-      } catch (error) {
-        console.error('Error refreshing parent directory:', error);
-        await handleRefresh();
-      }
+      // Refresh the parent directory
+      await handleRefresh();
       
       // Clear creating state
       setCreatingItem(null);
     } catch (error) {
       console.error("Error creating item:", error);
-      // Keep the input visible if there was an error
     }
   };
 
@@ -618,37 +504,17 @@ const FileManager: React.FC<FileManagerProps> = ({
   };
 
   const handleFileClick = (path: string, isDirectory: boolean) => {
-    console.log(`Клик по ${isDirectory ? 'директории' : 'файлу'}: ${path}`);
-    
     if (isDirectory) {
-      // Для директорий только разворачиваем/сворачиваем, 
-      // но не устанавливаем как выбранный файл
+      // For directories, just expand/collapse
       const item = findItem(fileTree, path);
       if (item) {
         toggleDirectory(item);
       }
     } else {
-      // Для файлов обычное поведение
+      // For files, set as selected file
       if (path) {
         setSelectedFile(path);
-        
-        // Проверяем, существует ли файл физически
-        invoke('file_exists', { path })
-          .then((exists) => {
-            if (!exists) {
-              console.warn(`Файл не существует: ${path}`);
-              // Можно показать уведомление пользователю
-            }
-          })
-          .catch(error => {
-            console.error('Ошибка при проверке файла:', error);
-          });
       }
-    }
-    
-    // Устанавливаем фокус на файловый менеджер после клика
-    if (fileManagerRef.current) {
-      fileManagerRef.current.focus();
     }
   };
 
@@ -676,6 +542,7 @@ const FileManager: React.FC<FileManagerProps> = ({
   const getIssueClass = (path: string): string => {
     const issue = fileIssues[path];
     if (issue) {
+      console.log(`🔍 Checking issues for ${path}:`, issue);
       if (issue.errors > 0) return 'error';
       if (issue.warnings > 0) return 'warning';
     }
@@ -685,13 +552,10 @@ const FileManager: React.FC<FileManagerProps> = ({
   const handleRefresh = async () => {
     if (selectedFolder) {
       try {
-        console.log("Refreshing file tree");
-        console.log("Currently expanded paths:", [...expandedPathsRef.current]);
-        
         // Save expanded paths before refresh
         const expandedPathsSet = new Set<string>(expandedPathsRef.current);
         
-        // Перезагружаем дерево файлов
+        // Reload the tree
         const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
         
         // Process the tree with our expanded paths
@@ -701,33 +565,18 @@ const FileManager: React.FC<FileManagerProps> = ({
         processedTree.expanded = true;
         processedTree.loaded = true;
         
-        // After loading the tree, ensure expanded paths are still maintained
-        const ensurePathsExpanded = (item: FileItem) => {
-          if (item.path && item.is_directory) {
-            // Normalize the path for comparison
-            const normalizedPath = normalizePath(item.path, '');
-            if (expandedPathsSet.has(normalizedPath)) {
-              // This is important - directly update the expandedPathsRef for persistence
-              expandedPathsRef.current.add(normalizedPath);
-              console.log(`Re-expanding path: ${normalizedPath}`);
-              item.expanded = true;
-              item.loaded = true;
-            }
-            
-            // Process children recursively
-            if (item.children) {
-              item.children.forEach(ensurePathsExpanded);
-            }
-          }
-        };
-        
-        // Apply the recursive function to ensure all paths stay expanded
-        ensurePathsExpanded(processedTree);
-        
         setFileTree([processedTree]);
-        updateVisibleItems([processedTree]);
         
-        console.log('Дерево файлов успешно обновлено');
+        // Also refresh Python diagnostics if available
+        if (typeof window !== 'undefined') {
+          const win = window as any;
+          if (win.updateAllPythonDiagnostics) {
+            console.log('🐍 Refreshing all Python diagnostics from file manager...');
+            win.updateAllPythonDiagnostics().catch((err: any) => {
+              console.error('Error refreshing Python diagnostics:', err);
+            });
+          }
+        }
       } catch (error) {
         console.error('Ошибка при обновлении:', error);
       }
@@ -735,7 +584,7 @@ const FileManager: React.FC<FileManagerProps> = ({
   };
 
   const deleteFile = async (path: string) => {
-    // Определяем, является ли путь директорией
+    // Determine if the path is a directory
     const isDirectory = fileTree.some(item => 
       item.path === path && item.is_directory || 
       (item.children && item.children.some(child => child.path === path && child.is_directory))
@@ -750,60 +599,15 @@ const FileManager: React.FC<FileManagerProps> = ({
     
     if (confirmDelete) {
       try {
-        // Находим родительский путь
-        const pathParts = path.split(/[\/\\]/);
-        pathParts.pop(); // Удаляем последний элемент (имя файла/папки)
-        const parentPath = pathParts.join('\\');
-        
-        console.log(`Удаление ${isDirectory ? 'папки' : 'файла'}: ${path}`);
-        console.log(`Родительский путь: ${parentPath}`);
-        
-        // Удаляем файл или директорию через API
         await invoke("delete_file", { path });
-        console.log(`${isDirectory ? 'Директория' : 'Файл'} удален: ${path}`);
         
-        // Если удаленный файл был выбран, снимаем выбор
+        // If deleted file was selected, unselect it
         if (selectedFile === path) {
           setSelectedFile(null);
         }
         
-        // Обновляем дерево файлов, удаляя элемент из родителя
-        setFileTree(prevTree => {
-          // Находим и обновляем родительский элемент
-          const findAndUpdateParent = (items: FileItem[]): FileItem[] => {
-            return items.map(item => {
-              // Если это родительский элемент
-              if (item.path === parentPath) {
-                console.log(`Найден родительский элемент: ${item.path}`);
-                
-                // Фильтруем дочерние элементы, удаляя целевой
-                const updatedChildren = item.children?.filter(child => child.path !== path) || [];
-                
-                // Возвращаем обновленный элемент без удаленного дочернего элемента
-                return {
-                  ...item,
-                  children: updatedChildren
-                };
-              }
-              
-              // Если у текущего элемента есть дети, рекурсивно ищем среди них
-              if (item.children) {
-                return {
-                  ...item,
-                  children: findAndUpdateParent(item.children)
-                };
-              }
-              
-              // Если не нашли, возвращаем элемент как есть
-              return item;
-            });
-          };
-          
-          // Обрабатываем дерево
-          const updatedTree = findAndUpdateParent(prevTree);
-          console.log("Дерево файлов обновлено после удаления (в стиле VS Code)");
-          return updatedTree;
-        });
+        // Refresh the tree
+        await handleRefresh();
       } catch (error) {
         console.error('Ошибка при удалении:', error);
         alert(`Не удалось удалить: ${error}`);
@@ -836,83 +640,22 @@ const FileManager: React.FC<FileManagerProps> = ({
       // Create new path using the system's preferred separator (backslash for Windows)
       const newPath = [...pathParts, newName].join('\\');
       
-      console.log(`Переименование: ${oldPath} -> ${newPath}`);
-      
       // Call backend function for renaming
       await invoke('rename_file', { oldPath, newPath });
       
-      // Save the state of expanded directories
-      const expandedPaths = getExpandedPaths(fileTree);
-      
-      // Update file tree starting from the root of the selected directory
-      if (selectedFolder) {
-        // Completely update the entire file tree
-        const tree = await invoke<FileItem>("get_directory_tree", { path: selectedFolder });
-        
-        // Process the tree and restore expanded directories state
-        const processedTree = {
-          ...tree,
-          expanded: true,
-          loaded: true,
-          children: tree.children?.map(child => processChildWithExpanded(child, expandedPaths))
-        };
-        
-        setFileTree([processedTree]);
-        updateVisibleItems([processedTree]);
-        
-        // If the renamed file was selected, update selected file
-        if (selectedFile === oldPath) {
-          setSelectedFile(newPath);
-        }
+      // If the renamed file was selected, update selected file
+      if (selectedFile === oldPath) {
+        setSelectedFile(newPath);
       }
+      
+      // Refresh the tree
+      await handleRefresh();
     } catch (error) {
       console.error('Error renaming file:', error);
       alert(`Failed to rename: ${error}`);
     } finally {
       setRenamingItem(null);
     }
-  };
-  
-  // Enhanced function to get all expanded paths
-  const getExpandedPaths = (tree: FileItem[]): Set<string> => {
-    const expandedPaths = new Set<string>();
-    
-    const traverse = (item: FileItem) => {
-      // Check if the item has a path and is expanded
-      if (item.path && (item.expanded || expandedPathsRef.current.has(item.path))) {
-        console.log(`Adding expanded path: ${item.path}`);
-        expandedPaths.add(item.path);
-      }
-      
-      // Recursively process children
-      if (item.children && item.children.length > 0) {
-        item.children.forEach(traverse);
-      }
-    };
-    
-    tree.forEach(traverse);
-    return expandedPaths;
-  };
-  
-  // Improved function to process a child with expanded state
-  const processChildWithExpanded = (item: FileItem, expandedPaths: Set<string>): FileItem => {
-    // Check if this item should be expanded
-    const isForceExpand = item.path && expandedPaths.has(item.path);
-    const isExpanded = Boolean(item.path && (expandedPaths.has(item.path) || isForceExpand));
-    
-    if (isForceExpand) {
-      console.log(`Force expanding in processChild: ${item.path}`);
-    }
-    
-    // If this is a newly created directory, ensure it's loaded
-    const isLoaded = Boolean(item.loaded || isExpanded);
-    
-    return {
-      ...item,
-      expanded: isExpanded,
-      loaded: isLoaded,
-      children: item.children?.map(child => processChildWithExpanded(child, expandedPaths))
-    };
   };
 
   const handleRenameCancel = () => {
@@ -925,107 +668,136 @@ const FileManager: React.FC<FileManagerProps> = ({
     window.dispatchEvent(new CustomEvent('set-terminal-path', { detail: { path } }));
   };
 
-  const renderTree = (items: FileItem[]) => (
-    <ul className="file-tree">
-      {creatingItem && selectedFolder && creatingItem.parentPath === selectedFolder && (
-        <li className="tree-item">
-          <div className="creating-input-wrapper" style={{ marginLeft: "28px" }}>
-            {renderCreatingInput()}
-          </div>
-        </li>
-      )}
-      {items.map((item) => {
-        const gitStatusClass = getGitStatusClass(item);
-        const issueClass = getIssueClass(item.path);
-        const isActive = selectedFile === item.path;
-        
-        return (
-          <li
-            key={item.path}
-            className="tree-item"
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setContextMenu({
-                x: e.clientX,
-                y: e.clientY,
-                path: item.path,
-                isDirectory: item.is_directory,
-              });
-            }}
-          >
-            {item.is_directory ? (
-              <div className="directory">
+  const renderTree = (items: FileItem[]) => {
+    return (
+      <ul className="file-tree">
+        {items.map((item) => {
+          const gitStatusClass = getGitStatusClass(item);
+          const issueClass = getIssueClass(item.path);
+          const isActive = selectedFile === item.path;
+          
+          return (
+            <li
+              key={item.path}
+              className="tree-item"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  path: item.path,
+                  isDirectory: item.is_directory,
+                });
+              }}
+            >
+              {item.is_directory ? (
+                <div className="directory">
+                  <div
+                    onClick={(e) => {
+                      if (
+                        e.target instanceof Element && 
+                        (e.target.closest('.chevron') || e.target.closest('.icon'))
+                      ) {
+                        toggleDirectory(item);
+                      } else {
+                        // Всегда только раскрываем/сворачиваем папку при клике
+                        toggleDirectory(item);
+                      }
+                    }}
+                    className={`directory-item ${gitStatusClass}`}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <span className="chevron" onClick={(e) => {
+                      e.stopPropagation();
+                      toggleDirectory(item);
+                    }}>
+                      {item.expanded ? (
+                        <ChevronDown width={14} height={14} />
+                      ) : (
+                        <ChevronRight width={14} height={14} />
+                      )}
+                    </span>
+                    <span className={`icon ${gitStatusClass}`}>
+                      {item.expanded ? <FolderOpen width={14} height={14} /> : <FolderIcon width={14} height={14} />}
+                    </span>
+                    <span className="item-name">{item.name}</span>
+                    {item.changesCount && item.changesCount > 0 && <span className="changes-badge">{item.changesCount}</span>}
+                  </div>
+                  
+                  {item.expanded && item.children && renderTree(item.children)}
+                </div>
+              ) : (
                 <div
-                  onClick={(e) => {
-                    if (
-                      e.target instanceof Element && 
-                      (e.target.closest('.chevron') || e.target.closest('.icon'))
-                    ) {
-                      toggleDirectory(item);
-                    } else {
-                      // Всегда только раскрываем/сворачиваем папку при клике
-                      toggleDirectory(item);
-                    }
-                  }}
-                  className={`directory-item ${gitStatusClass}`}
-                  style={{ cursor: 'pointer' }}
+                  className={`file-item ${gitStatusClass} ${issueClass} ${isActive ? 'active' : ''}`}
+                  onClick={() => handleFileClick(item.path, false)}
                 >
-                  <span className="chevron" onClick={(e) => {
-                    e.stopPropagation();
-                    toggleDirectory(item);
-                  }}>
-                    {item.expanded ? (
-                      <ChevronDown width={14} height={14} />
-                    ) : (
-                      <ChevronRight width={14} height={14} />
-                    )}
-                  </span>
-                  <span className={`icon ${gitStatusClass}`}>
-                    {item.expanded ? <FolderOpen width={14} height={14} /> : <FolderIcon width={14} height={14} />}
+                  <span className="icon">
+                    {getFileIcon(item.name)}
                   </span>
                   <span className="item-name">{item.name}</span>
-                  {item.changesCount && item.changesCount > 0 && <span className="changes-badge">{item.changesCount}</span>}
+                  {item.fileIssue && (item.fileIssue.errors > 0 || item.fileIssue.warnings > 0) && (
+                    <span className="issues-badge">
+                      {item.fileIssue.errors > 0 ? `E:${item.fileIssue.errors}` : ''}
+                      {item.fileIssue.errors > 0 && item.fileIssue.warnings > 0 ? '/' : ''}
+                      {item.fileIssue.warnings > 0 ? `W:${item.fileIssue.warnings}` : ''}
+                    </span>
+                  )}
                 </div>
-                {item.expanded && item.children && renderTree(item.children)}
-                {creatingItem && creatingItem.parentPath === item.path && renderCreatingInput()}
-              </div>
-            ) : (
-              <div
-                className={`file-item ${gitStatusClass} ${issueClass} ${isActive ? 'active' : ''}`}
-                onClick={() => handleFileClick(item.path, false)}
-              >
-                <span className="icon">
-                  {getFileIcon(item.name)}
-                </span>
-                <span className="item-name">{item.name}</span>
-                {item.fileIssue && (item.fileIssue.errors > 0 || item.fileIssue.warnings > 0) && (
-                  <span className="issues-badge">
-                    {item.fileIssue.errors > 0 ? `E:${item.fileIssue.errors}` : ''}
-                    {item.fileIssue.errors > 0 && item.fileIssue.warnings > 0 ? '/' : ''}
-                    {item.fileIssue.warnings > 0 ? `W:${item.fileIssue.warnings}` : ''}
-                  </span>
-                )}
-              </div>
-            )}
-            {renamingItem && renamingItem.path === item.path && (
-              <InlineRenameInput
-                initialValue={item.name}
-                onSubmit={handleRenameSubmit}
-                onCancel={handleRenameCancel}
-              />
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
+              )}
+              {renamingItem && renamingItem.path === item.path && (
+                <InlineRenameInput
+                  initialValue={item.name}
+                  onSubmit={handleRenameSubmit}
+                  onCancel={handleRenameCancel}
+                />
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
   return (
-    <div ref={fileManagerRef} className="file-manager">
+    <div 
+      ref={fileManagerRef} 
+      className="file-manager"
+      style={{ position: 'relative' }}
+    >
+      <div className="file-manager-controls" style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '8px 10px',
+        borderBottom: '1px solid #3a3a3a'
+      }}>
+        <span className="file-manager-title" style={{ fontWeight: 500 }}>
+          Explorer{selectedFolder ? `: ${selectedFolder.split(/[\/\\]/).pop()}` : ''}
+        </span>
+        <div className="file-manager-actions">
+          <button 
+            onClick={handleRefresh}
+            title="Refresh file tree and diagnostics"
+            style={{ 
+              background: 'transparent', 
+              border: 'none', 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#cccccc'
+            }}
+          >
+            <RefreshCcw size={14} />
+          </button>
+        </div>
+      </div>
+      
+      {/* Always display the creation input when creatingItem is set */}
+      {creatingItem && <CreateInput />}
       {renderTree(fileTree)}
       
-      {/* Контекстное меню для файлов и папок */}
       {contextMenu && (
         <>
           {contextMenu.isDirectory ? (

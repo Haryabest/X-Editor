@@ -16,6 +16,15 @@ import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
 import Settings from '../lefttoolbar/settings';
 import './style.css';
+import { FaPython } from "react-icons/fa";
+import { PlayCircle, FastForward } from "lucide-react";
+import { MainContext } from "../MainContext";
+import { Editor } from "../editor/editor";
+import { ContextMenu } from "../../components/ContextMenu/ContextMenuComponent";
+import "./toolbar.css";
+import SettingsModal from "../../components/SettingsModal";
+import ShareModal from "../../components/ShareModal";
+import { updateAllPythonDiagnostics, forcePythonDiagnosticsUpdate } from "../centerContainer/python-lsp-starter";
 
 export interface TopToolbarProps {
   currentFiles: FileItem[];
@@ -44,6 +53,7 @@ export interface TopToolbarProps {
   // Modal handlers
   onOpenAboutModal?: () => void;
   onOpenDocModal?: () => void;
+  onRunPythonDiagnostics?: () => void;
 }
 
 const menuData: Record<string, MenuItem[]> = {
@@ -74,7 +84,8 @@ const menuData: Record<string, MenuItem[]> = {
     { text: "Запустить", shortcut: "F5" },
     { text: "Перезапустить", shortcut: "Shift + F5" },
     { text: "Остановить", shortcut: "Ctrl + F2" },
-    { text: "Отладка", shortcut: "F9" }
+    { text: "Отладка", shortcut: "F9" },
+    { text: "Диагностика Python", shortcut: "" }
   ],
   "Консоль": [
     { text: "Открыть консоль", shortcut: "Ctrl + `" },
@@ -113,7 +124,8 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onOpenSettings,
   // Modal handlers
   onOpenAboutModal,
-  onOpenDocModal
+  onOpenDocModal,
+  onRunPythonDiagnostics
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = useState(false);
@@ -489,8 +501,55 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
             break;
         }
         break;
+      case "Выполнить":
+        switch (option.text) {
+          case "Запустить":
+            console.log("Running code...");
+            // Add your run code logic here
+            break;
+          case "Перезапустить":
+            console.log("Restarting code...");
+            // Add your restart code logic here
+            break;
+          case "Остановить":
+            console.log("Stopping code...");
+            // Add your stop code logic here
+            break;
+          case "Отладка":
+            console.log("Debugging code...");
+            // Add your debug code logic here
+            break;
+          case "Диагностика Python":
+            console.log("Running Python diagnostics...");
+            handleRunPythonDiagnostics();
+            break;
+          default:
+            break;
+        }
+        break;
       default:
         break;
+    }
+  };
+
+  const handleRunPythonDiagnostics = () => {
+    if (onRunPythonDiagnostics) {
+      onRunPythonDiagnostics();
+    } else {
+      try {
+        if (typeof updateAllPythonDiagnostics === 'function') {
+          updateAllPythonDiagnostics();
+          console.log('Python diagnostics updated successfully');
+        } else if (typeof forcePythonDiagnosticsUpdate === 'function') {
+          // Call with undefined to force update on all files
+          forcePythonDiagnosticsUpdate();
+          console.log('Python diagnostics updated successfully');
+        } else {
+          console.warn('Python diagnostics functions not available');
+        }
+      } catch (error) {
+        console.error('Error updating Python diagnostics:', error);
+      }
     }
   };
 

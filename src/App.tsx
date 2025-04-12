@@ -20,6 +20,51 @@ import { initializeSettings, getUISettings, saveUISettings } from './utils/setti
 
 import './App.css';
 
+// Компонент для уведомлений
+const Notification = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'warning' | 'info'; onClose: () => void }) => {
+  const backgroundColor = {
+    success: '#4caf50',
+    error: '#f44336',
+    warning: '#ff9800',
+    info: '#2196f3'
+  }[type];
+
+  return (
+    <div 
+      style={{
+        position: 'fixed',
+        top: '24px',
+        right: '24px',
+        backgroundColor,
+        color: 'white',
+        padding: '12px 20px',
+        borderRadius: '4px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        maxWidth: '400px'
+      }}
+    >
+      <span>{message}</span>
+      <button 
+        onClick={onClose}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: 'white',
+          marginLeft: '16px',
+          cursor: 'pointer',
+          fontSize: '18px'
+        }}
+      >
+        &times;
+      </button>
+    </div>
+  );
+};
+
 interface UIFileItem extends FileItem {
   icon?: string;
   type?: string;
@@ -78,6 +123,13 @@ function App() {
     const saved = localStorage.getItem('editor-font-size');
     return saved ? parseInt(saved, 10) : 14;
   });
+  
+  // Состояние для уведомлений
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+  } | null>(null);
+
   const editorRef = useRef<{ 
     selectAll: () => void; 
     deselect: () => void;
@@ -392,6 +444,8 @@ function App() {
         document.removeEventListener('mousemove', onMouseMove);
       } else {
         setTerminalHeight(newHeight);
+        // Force fit the terminal after resize
+        document.dispatchEvent(new CustomEvent('terminal-resize'));
       }
     };
 
@@ -462,6 +516,31 @@ function App() {
     
     return () => {
       document.removeEventListener('terminal-close', handleTerminalClose);
+    };
+  }, []);
+
+  // Слушатель для уведомлений
+  useEffect(() => {
+    const handleShowNotification = (event: CustomEvent<{
+      message: string;
+      type: 'success' | 'error' | 'warning' | 'info';
+      duration?: number;
+    }>) => {
+      const { message, type, duration = 5000 } = event.detail;
+      
+      console.log(`Показываем уведомление: ${message} (${type})`);
+      setNotification({ message, type });
+      
+      // Автоматически скрываем через указанное время
+      setTimeout(() => {
+        setNotification(null);
+      }, duration);
+    };
+    
+    document.addEventListener('show-notification', handleShowNotification as EventListener);
+    
+    return () => {
+      document.removeEventListener('show-notification', handleShowNotification as EventListener);
     };
   }, []);
 
@@ -581,6 +660,88 @@ function App() {
     return issuesMap;
   };
 
+  // Expose Python diagnostic functions globally
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        // Import the functions dynamically to avoid TS errors
+        import('./main-screen/centerContainer/python-lsp-starter').then(module => {
+          console.log('🐍 Exposing Python diagnostic functions globally');
+          
+          // Используем встроенный анализатор вместо LSP
+          (window as any).forcePythonDiagnosticsUpdate = module.forcePythonDiagnosticsUpdate;
+          (window as any).updateAllPythonDiagnostics = module.updateAllPythonDiagnostics;
+          
+          // Эти функции не нужны при использовании встроенного анализатора
+          // (window as any).isPythonLSPConnected = module.isPythonLSPConnected;
+          // (window as any).initializePythonLSP = module.initializePythonLSP;
+          
+          // Add a helper function to refresh diagnostics for the current file
+          (window as any).refreshCurrentFileDiagnostics = () => {
+            if (selectedFile && selectedFile.endsWith('.py')) {
+              console.log('🐍 Refreshing diagnostics for current Python file:', selectedFile);
+              
+              // Предпочитаем использовать глобальную функцию обновления диагностики,
+              // которая будет использовать встроенный анализатор mockPythonDiagnostics
+              if (typeof (window as any).updatePythonDiagnostics === 'function') {
+                (window as any).updatePythonDiagnostics(selectedFile);
+                return true;
+              } else if (typeof module.forcePythonDiagnosticsUpdate === 'function') {
+                module.forcePythonDiagnosticsUpdate(selectedFile);
+                return true;
+              }
+            }
+            return false;
+          };
+          
+          // Добавляем функцию getPythonDiagnostics для доступа к текущим маркерам
+          (window as any).getPythonDiagnostics = () => {
+            if ((window as any).pythonDiagnosticsStore) {
+              // Приводим маркеры к формату, который ожидает интерфейс
+              const allDiagnostics = [];
+              try {
+                const models = window.monaco?.editor.getModels() || [];
+                for (const model of models) {
+                  const uri = model.uri.toString();
+                  if (uri.endsWith('.py')) {
+                    const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+                    if (markers && markers.length > 0) {
+                      const fileName = uri.split('/').pop() || '';
+                      
+                      allDiagnostics.push({
+                        filePath: uri,
+                        fileName,
+                        issues: markers.map(marker => ({
+                          severity: marker.severity === 1 ? 'error' : 
+                                   marker.severity === 2 ? 'warning' : 'info',
+                          message: marker.message,
+                          line: marker.startLineNumber,
+                          column: marker.startColumn,
+                          endLine: marker.endLineNumber,
+                          endColumn: marker.endColumn,
+                          source: marker.source || 'python-lint',
+                          code: marker.code
+                        }))
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('Ошибка при получении Python диагностики:', error);
+              }
+              return allDiagnostics;
+            }
+            return [];
+          };
+        }).catch(err => {
+          console.error('Failed to import Python LSP module:', err);
+        });
+      } catch (error) {
+        console.error('Error exposing Python diagnostic functions:', error);
+      }
+    }
+  }, [selectedFile]);
+
   return (
     <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
       <div className="app-container">
@@ -680,10 +841,11 @@ function App() {
                 </div>
                 {isTerminalVisible && (
                   <Terminal 
-                    height={terminalHeight}
+                    terminalHeight={terminalHeight}
                     selectedFolder={selectedFolder}
                     issues={issues}
                     onIssueClick={handleIssueClick}
+                    onResize={(newHeight) => setTerminalHeight(newHeight)}
                   />
                 )}
               </div>
@@ -701,6 +863,15 @@ function App() {
         {/* Modal components */}
         <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
         <DocumentationModal isOpen={isDocModalOpen} onClose={closeDocModal} />
+        
+        {/* Notification component */}
+        {notification && (
+          <Notification 
+            message={notification.message} 
+            type={notification.type} 
+            onClose={() => setNotification(null)} 
+          />
+        )}
       </div>
     </FontSizeContext.Provider>
   );

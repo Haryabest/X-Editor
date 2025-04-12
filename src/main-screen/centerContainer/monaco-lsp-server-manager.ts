@@ -222,9 +222,18 @@ class LanguageServerManager {
       switch (method) {
         case 'textDocument/didOpen':
           console.log(`Уведомление об открытии документа: ${params.textDocument?.uri}`);
+          // Эмулируем отправку диагностики для Python файлов
+          if (serverId === 'python' && params.textDocument?.uri.endsWith('.py')) {
+            this.mockPythonDiagnostics(params.textDocument?.uri, params.textDocument?.text);
+          }
           break;
         case 'textDocument/didChange':
           console.log(`Уведомление об изменении документа: ${params.textDocument?.uri}`);
+          // Эмулируем отправку диагностики при изменении Python файлов
+          if (serverId === 'python' && params.textDocument?.uri.endsWith('.py') && params.contentChanges) {
+            const content = params.contentChanges[0]?.text || '';
+            this.mockPythonDiagnostics(params.textDocument?.uri, content);
+          }
           break;
         case 'textDocument/didClose':
           console.log(`Уведомление о закрытии документа: ${params.textDocument?.uri}`);
@@ -234,6 +243,441 @@ class LanguageServerManager {
       }
     } catch (error) {
       console.error(`Ошибка при отправке уведомления ${method} к серверу ${serverId}:`, error);
+    }
+  }
+  
+  /**
+   * Создает тестовую диагностику для Python файлов
+   */
+  private mockPythonDiagnostics(uri: string, content: string): void {
+    console.log(`Создание тестовой диагностики для Python файла: ${uri}`);
+    
+    try {
+      // Получаем хранилище диагностики для Python
+      const diagnosticsStore = (window as any).pythonDiagnosticsStore;
+      if (!diagnosticsStore) {
+        console.warn('Хранилище диагностики Python не доступно');
+        return;
+      }
+      
+      // Если файл пустой или содержит только пробелы/табуляции, то не создаем предупреждений
+      const trimmedContent = content ? content.trim() : '';
+      if (!trimmedContent) {
+        console.log('Файл пустой, очищаем все маркеры');
+        try {
+          // Получаем URI для файла
+          let monacoUri;
+          try {
+            monacoUri = window.monaco.Uri.parse(uri);
+          } catch (e) {
+            if (uri.startsWith('file://')) {
+              monacoUri = window.monaco.Uri.file(uri.substring(7).replace(/\\/g, '/'));
+            } else {
+              monacoUri = window.monaco.Uri.file(uri.replace(/\\/g, '/'));
+            }
+          }
+          
+          // Если есть модель, очищаем все маркеры
+          const model = window.monaco.editor.getModel(monacoUri);
+          if (model) {
+            window.monaco.editor.setModelMarkers(model, 'python-lsp', []);
+          }
+          
+          // Очищаем хранилище диагностики
+          diagnosticsStore.clearMarkers(monacoUri.toString());
+          
+          // Уведомляем об обновлении маркеров
+          document.dispatchEvent(new CustomEvent('markers-updated'));
+        } catch (e) {
+          console.error('Ошибка при очистке маркеров для пустого файла:', e);
+        }
+        return;
+      }
+      
+      // Выполняем примитивный анализ кода Python
+      const lines = content.split('\n');
+      const markers: any[] = [];
+      
+      // Создаем простой контекст для проверки синтаксиса
+      const context = {
+        indentationLevel: 0,
+        expectIndent: false,
+        openParens: 0,
+        openBrackets: 0,
+        openBraces: 0,
+        inMultilineString: false,
+        defNames: new Set<string>(),
+        varNames: new Set<string>(),
+        lastDef: '',
+        globalVars: new Set<string>()
+      };
+      
+      console.log(`Анализ Python файла: ${uri} с ${lines.length} строками`);
+      
+      // Первый проход - собираем определения функций и переменных
+      lines.forEach((line, lineIndex) => {
+        const trimmedLine = line.trim();
+        
+        // Игнорируем пустые строки и комментарии
+        if (trimmedLine === '' || trimmedLine.startsWith('#')) {
+          return;
+        }
+        
+        // Поиск определений функций
+        const defMatch = trimmedLine.match(/^def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/);
+        if (defMatch) {
+          context.defNames.add(defMatch[1]);
+        }
+        
+        // Поиск определений переменных и добавление в глобальные, если они вне функций
+        const varMatch = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=/);
+        if (varMatch) {
+          context.varNames.add(varMatch[1]);
+          
+          // Если не внутри функции, это глобальная переменная
+          if (trimmedLine.indexOf('def ') !== 0 && !trimmedLine.startsWith('class ')) {
+            context.globalVars.add(varMatch[1]);
+          }
+        }
+        
+        // Находим глобальные объявления в функциях
+        const globalMatch = trimmedLine.match(/global\s+([^#]+)/);
+        if (globalMatch) {
+          const globals = globalMatch[1].split(',').map(g => g.trim());
+          globals.forEach(g => {
+            context.globalVars.add(g);
+          });
+        }
+      });
+      
+      console.log(`Найдено функций: ${context.defNames.size}, переменных: ${context.varNames.size}`);
+      
+      // Второй проход - анализ ошибок
+      lines.forEach((line, lineIndex) => {
+        const trimmedLine = line.trim();
+        
+        // Игнорируем пустые строки и комментарии
+        if (trimmedLine === '' || trimmedLine.startsWith('#')) {
+          return;
+        }
+
+        // Ошибка синтаксиса в строке с print из Python 2
+        if (/^print\s+[^(]/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Error,
+            message: 'В Python 3 функция print требует скобки',
+            startLineNumber: lineIndex + 1,
+            startColumn: line.indexOf('print') + 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.indexOf('print') + 6,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Пропущенные ":" после блочных конструкций
+        if (/^(if|elif|else|for|while|def|class|with|try|except|finally)\b.*[^:)]\s*$/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Error,
+            message: 'Ожидается двоеточие ":" в конце блочной конструкции',
+            startLineNumber: lineIndex + 1,
+            startColumn: line.length,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Неверное имя функции (начинается с заглавной буквы)
+        const badFunctionMatch = /^def\s+([A-Z][a-zA-Z0-9_]*)\s*\(/.exec(trimmedLine);
+        if (badFunctionMatch) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: `Имя функции "${badFunctionMatch[1]}" начинается с заглавной буквы. По PEP 8 имена функций должны быть в нижнем регистре.`,
+            startLineNumber: lineIndex + 1,
+            startColumn: line.indexOf(badFunctionMatch[1]) + 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.indexOf(badFunctionMatch[1]) + badFunctionMatch[1].length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Неверный отступ (не кратный 4 пробелам)
+        const leadingSpaces = line.length - line.trimLeft().length;
+        if (leadingSpaces > 0 && leadingSpaces % 4 !== 0 && !line.startsWith('\t')) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: `Отступ в ${leadingSpaces} пробелов не кратен 4. Рекомендуется использовать отступы кратные 4 пробелам.`,
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: leadingSpaces + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Использование операторов is/is not с литералами
+        if (/\bis\s+(["'].*?["']|\d+|True|False)/.test(trimmedLine) || 
+            /\bis\s+not\s+(["'].*?["']|\d+|True|False)/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Оператор "is" проверяет идентичность объектов, а не значений. Для сравнения значений используйте "==" или "!=".',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Использование == None вместо is None
+        if (/==\s*None/.test(trimmedLine) || /None\s*==/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Используйте "is None" вместо "== None" для проверки на None.',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Использование == True вместо напрямую
+        if (/==\s*True/.test(trimmedLine) || /True\s*==/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Вместо "== True" просто используйте выражение напрямую.',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Использование mutable значения как значения по умолчанию аргумента
+        if (/def\s+\w+\([^)]*=\s*(\[\]|\{\}|\(\))\s*[,)]/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Использование изменяемых объектов ([], {}, set()) в качестве значений по умолчанию может привести к неожиданному поведению.',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Использование глобальных переменных в функциях без объявления global
+        const assignmentMatch = /^\s*(\w+)\s*=/.exec(trimmedLine);
+        if (assignmentMatch && 
+            context.defNames.has(context.lastDef || '') && 
+            context.globalVars.has(assignmentMatch[1]) && 
+            !trimmedLine.includes('global')) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Error,
+            message: `Переменная "${assignmentMatch[1]}" используется глобально и требует объявления "global ${assignmentMatch[1]}" внутри функции.`,
+            startLineNumber: lineIndex + 1,
+            startColumn: line.indexOf(assignmentMatch[1]) + 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.indexOf(assignmentMatch[1]) + assignmentMatch[1].length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Нет пробелов вокруг операторов
+        if (/[a-zA-Z0-9_]([\+\-\*\/])[a-zA-Z0-9_]/.test(trimmedLine)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Рекомендуется добавлять пробелы вокруг операторов для лучшей читаемости.',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Проверка неправильных отступов (spaces vs tabs)
+        if (line.match(/^ +\t/) || line.match(/^\t+ /)) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Warning,
+            message: 'Смешанные отступы (пробелы и табуляции)',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Проверка на syntax error в import
+        if (trimmedLine.startsWith('import') && line.includes(',')) {
+          markers.push({
+            severity: window.monaco.MarkerSeverity.Error,
+            message: 'Неправильный синтаксис import. Используйте несколько строк import или from ... import',
+            startLineNumber: lineIndex + 1,
+            startColumn: 1,
+            endLineNumber: lineIndex + 1,
+            endColumn: line.length + 1,
+            source: 'python-lsp'
+          });
+        }
+        
+        // Проверка незакрытых скобок в строке
+        const openParens = (line.match(/\(/g) || []).length;
+        const closeParens = (line.match(/\)/g) || []).length;
+        const openBrackets = (line.match(/\[/g) || []).length;
+        const closeBrackets = (line.match(/\]/g) || []).length;
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/\}/g) || []).length;
+        
+        // Обновляем контекст с открытыми и закрытыми скобками
+        context.openParens += openParens - closeParens;
+        context.openBrackets += openBrackets - closeBrackets;
+        context.openBraces += openBraces - closeBraces;
+        
+        // Если скобки не в балансе в этой строке и строка не продолжается
+        if (!line.trim().endsWith('\\') && !context.inMultilineString) {
+          if (openParens !== closeParens && !line.includes('"""') && !line.includes("'''")) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Непарные круглые скобки в строке',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-lsp'
+            });
+          }
+          
+          if (openBrackets !== closeBrackets) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Непарные квадратные скобки в строке',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-lsp'
+            });
+          }
+          
+          if (openBraces !== closeBraces) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Непарные фигурные скобки в строке',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-lsp'
+            });
+          }
+        }
+        
+        // Переключаем состояние многострочного литерала
+        if ((line.match(/"""/g) || []).length % 2 !== 0 || (line.match(/'''/g) || []).length % 2 !== 0) {
+          context.inMultilineString = !context.inMultilineString;
+        }
+        
+        // Проверка незакрытых одинарных и двойных кавычек в строке (не в многострочном режиме)
+        if (!context.inMultilineString) {
+          const singleQuotes = (line.match(/'/g) || []).length - (line.match(/'''/g) || []).length * 3;
+          const doubleQuotes = (line.match(/"/g) || []).length - (line.match(/"""/g) || []).length * 3;
+          
+          if (singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Незакрытые строковые литералы',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-lsp'
+            });
+          }
+        }
+        
+        // Обновляем контекст для отслеживания текущей функции
+        if (/^def\s+(\w+)/.test(trimmedLine)) {
+          const match = /^def\s+(\w+)/.exec(trimmedLine);
+          if (match) {
+            context.lastDef = match[1];
+          }
+        }
+      });
+      
+      // Проверка оставшихся непарных скобок после анализа всего файла
+      if (context.openParens !== 0 || context.openBrackets !== 0 || context.openBraces !== 0) {
+        markers.push({
+          severity: window.monaco.MarkerSeverity.Error,
+          message: `Непарные скобки в файле: ${context.openParens > 0 ? '+' : ''}${context.openParens} круглых, ${context.openBrackets > 0 ? '+' : ''}${context.openBrackets} квадратных, ${context.openBraces > 0 ? '+' : ''}${context.openBraces} фигурных`,
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 10,
+          source: 'python-lsp'
+        });
+      }
+      
+      // Добавляем маркеры в редактор
+      console.log(`Найдено ${markers.length} проблем в Python файле`);
+      
+      try {
+        // Преобразуем URI в формат Monaco
+        let monacoUri;
+        try {
+          monacoUri = window.monaco.Uri.parse(uri);
+        } catch (e) {
+          // Обрабатываем различные форматы URI
+          if (uri.startsWith('file://')) {
+            // Формируем нормализованный URI
+            let path = uri.substring(7);
+            
+            // Обрабатываем пути с кириллицей
+            if (path.includes('%')) {
+              try {
+                path = decodeURIComponent(path);
+              } catch (decodeErr) {
+                console.warn('Не удалось декодировать URI:', uri);
+              }
+            }
+            
+            // Нормализуем слэши для Windows
+            path = path.replace(/\\/g, '/');
+            
+            monacoUri = window.monaco.Uri.file(path);
+          } else {
+            // Если это не file://, просто используем как путь
+            monacoUri = window.monaco.Uri.file(uri.replace(/\\/g, '/'));
+          }
+        }
+        
+        // Для диагностики
+        console.log(`URI для маркеров: ${monacoUri.toString()}`);
+        
+        // Устанавливаем маркеры через хранилище диагностики
+        // Используем оба варианта URI для большей надежности
+        diagnosticsStore.setMarkers(monacoUri.toString(), markers);
+        
+        // Также пробуем установить для различных вариантов URI
+        // Это необходимо из-за различий в обработке URI в разных частях кода
+        const alternativeUri = `file:///${encodeURIComponent(uri.replace(/^file:\/\//, '').replace(/\\/g, '/'))}`;
+        if (alternativeUri !== monacoUri.toString()) {
+          console.log(`Устанавливаем маркеры также для альтернативного URI: ${alternativeUri}`);
+          diagnosticsStore.setMarkers(alternativeUri, markers);
+        }
+        
+        console.log(`Маркеры установлены для ${uri}`);
+        
+        // Уведомляем об обновлении маркеров
+        document.dispatchEvent(new CustomEvent('markers-updated'));
+      } catch (e) {
+        console.error('Ошибка при установке маркеров:', e);
+      }
+    } catch (error) {
+      console.error('Ошибка при создании тестовой диагностики Python:', error);
     }
   }
   

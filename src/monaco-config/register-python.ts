@@ -3,17 +3,49 @@
  */
 
 import * as monaco from 'monaco-editor';
+import { invoke } from '@tauri-apps/api/core';
 import { 
-  initializePythonLSP, 
   updateAllPythonDiagnostics, 
   isPythonLSPConnected, 
   forcePythonDiagnosticsUpdate,
-  clearAllPythonDiagnostics,
-  isPythonDiagnosticsAvailable
+  clearAllPythonDiagnostics
 } from '../main-screen/centerContainer/python-lsp-starter';
+import { MonacoLSPDiagnostics } from '../main-screen/centerContainer/monaco-lsp-diagnostics';
+import { loadPylanceFromCDN, PylanceAPI } from './pylance-loader';
+
+// Интерфейс для pip пакетов
+interface PipPackage {
+  name: string;
+  version: string;
+}
+
+// Кэш pip пакетов
+let pipPackagesCache: PipPackage[] = [];
+let pipPackagesLoaded = false;
 
 /**
- * Регистрирует поддержку Python в Monaco Editor через LSP
+ * Загружает список установленных pip пакетов
+ */
+async function loadPipPackages(): Promise<PipPackage[]> {
+  if (pipPackagesLoaded && pipPackagesCache.length > 0) {
+    return pipPackagesCache;
+  }
+
+  try {
+    console.log('Загрузка установленных pip пакетов...');
+    const packages = await invoke<PipPackage[]>('get_pip_packages');
+    pipPackagesCache = packages;
+    pipPackagesLoaded = true;
+    console.log(`Загружено ${packages.length} pip пакетов`);
+    return packages;
+  } catch (error) {
+    console.error('Ошибка при загрузке pip пакетов:', error);
+    return [];
+  }
+}
+
+/**
+ * Регистрирует поддержку Python в Monaco Editor, используя встроенный анализатор или Pylance
  * @returns Успешность регистрации
  */
 export function registerPython(): boolean {
@@ -43,523 +75,315 @@ export function registerPython(): boolean {
       console.log('Python язык зарегистрирован в Monaco');
     }
     
-    // Задаем конфигурацию языка
-    monaco.languages.setLanguageConfiguration('python', {
-      comments: {
-        lineComment: '#',
-        blockComment: ['"""', '"""']
-      },
-      brackets: [
-        ['{', '}'],
-        ['[', ']'],
-        ['(', ')']
-      ],
-      autoClosingPairs: [
-        { open: '{', close: '}' },
-        { open: '[', close: ']' },
-        { open: '(', close: ')' },
-        { open: '"', close: '"', notIn: ['string'] },
-        { open: '\'', close: '\'', notIn: ['string', 'comment'] },
-        { open: '"""', close: '"""', notIn: ['string'] },
-        { open: '\'\'\'', close: '\'\'\'', notIn: ['string'] },
-      ],
-      surroundingPairs: [
-        { open: '{', close: '}' },
-        { open: '[', close: ']' },
-        { open: '(', close: ')' },
-        { open: '"', close: '"' },
-        { open: '\'', close: '\'' },
-      ],
-      onEnterRules: [
-        {
-          beforeText: /^\s*(?:def|class|for|if|elif|else|while|try|with|finally|except|async|match|case).*?:\s*$/,
-          action: { indentAction: monaco.languages.IndentAction.Indent }
-        }
-      ],
-      folding: {
-        offSide: true,
-        markers: {
-          start: /^\s*#\s*region\b/,
-          end: /^\s*#\s*endregion\b/
-        }
-      }
+    // Пытаемся загрузить Pylance для улучшенного опыта
+    initializePylance().catch(err => {
+      console.warn('Не удалось инициализировать Pylance, используем встроенный анализатор:', err);
+      
+      // Если Pylance не загрузился, используем встроенное автодополнение
+      setupBuiltinPythonSupport(monaco);
     });
     
-    // Создаем глобальный объект для отслеживания диагностики Python
-    try {
-      // Создаем хранилище для диагностических маркеров
-      if (!(window as any).pythonDiagnosticsStore) {
-        (window as any).pythonDiagnosticsStore = {
-          markers: new Map(),
-          setMarkers: function(uri: string, markers: any[]) {
-            this.markers.set(uri, markers);
-            try {
-              if (window.monaco) {
-                const monacoUri = window.monaco.Uri.parse(uri);
-                // Используем стандартный метод setModelMarkers вместо createDiagnosticsCollection
-                window.monaco.editor.setModelMarkers(
-                  window.monaco.editor.getModel(monacoUri) || { uri: monacoUri },
-                  'python',
-                  markers
-                );
-              }
-            } catch (e) {
-              console.error('Ошибка при установке маркеров Python:', e);
-            }
-          },
-          clearMarkers: function(uri: string) {
-            if (uri) {
-              this.markers.delete(uri);
-              try {
-                if (window.monaco) {
-                  const monacoUri = window.monaco.Uri.parse(uri);
-                  window.monaco.editor.setModelMarkers(
-                    window.monaco.editor.getModel(monacoUri) || { uri: monacoUri },
-                    'python',
-                    []
-                  );
-                }
-              } catch (e) {
-                console.error('Ошибка при очистке маркеров Python:', e);
-              }
-            }
-          },
-          clearAllMarkers: function() {
-            this.markers.clear();
-            try {
-              if (window.monaco) {
-                const models = window.monaco.editor.getModels();
-                for (const model of models) {
-                  if (model.getLanguageId() === 'python') {
-                    window.monaco.editor.setModelMarkers(model, 'python', []);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error('Ошибка при очистке всех маркеров Python:', e);
-            }
-          }
-        };
-        console.log('Создано хранилище диагностики для Python');
-      }
-    } catch (error) {
-      console.error('Ошибка при создании хранилища диагностики Python:', error);
+    // Предзагружаем pip пакеты для автодополнения
+    loadPipPackages().catch(err => console.error('Ошибка при предзагрузке pip пакетов:', err));
+    
+    // Создаем объект для хранения диагностики, если его еще нет
+    if (!(window as any).pythonDiagnosticsStore) {
+      console.log('Создание хранилища диагностики Python...');
+      const store = new MonacoLSPDiagnostics();
+      store.initialize(monaco);
+      (window as any).pythonDiagnosticsStore = store;
+      
+      // Глобальная функция для доступа к маркерам Python
+      (window as any).getPythonDiagnostics = () => {
+        if ((window as any).pythonDiagnosticsStore && 
+            typeof (window as any).pythonDiagnosticsStore.getAllMarkersForUI === 'function') {
+          return (window as any).pythonDiagnosticsStore.getAllMarkersForUI();
+        }
+        return [];
+      };
     }
-    
-    // Определяем токены подсветки синтаксиса
-    monaco.languages.setMonarchTokensProvider('python', {
-      defaultToken: '',
-      tokenPostfix: '.python',
-      
-      keywords: [
-        'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-        'def', 'del', 'elif', 'else', 'except', 'exec', 'finally', 'for', 'from',
-        'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or',
-        'pass', 'print', 'raise', 'return', 'try', 'while', 'with', 'yield',
-        'match', 'case', 'type'
-      ],
-      
-      builtins: [
-        'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
-        'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
-        'divmod', 'enumerate', 'eval', 'filter', 'float', 'format', 'frozenset',
-        'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'input',
-        'int', 'isinstance', 'issubclass', 'iter', 'len', 'list', 'locals', 'map',
-        'max', 'memoryview', 'min', 'next', 'object', 'oct', 'open', 'ord', 'pow',
-        'print', 'property', 'range', 'repr', 'reversed', 'round', 'set', 'setattr',
-        'slice', 'sorted', 'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
-        'vars', 'zip', '__import__'
-      ],
-      
-      brackets: [
-        { open: '{', close: '}', token: 'delimiter.curly' },
-        { open: '[', close: ']', token: 'delimiter.square' },
-        { open: '(', close: ')', token: 'delimiter.parenthesis' }
-      ],
-      
-      tokenizer: {
-        root: [
-          { include: '@whitespace' },
-          { include: '@numbers' },
-          { include: '@strings' },
-          
-          [/[,:;]/, 'delimiter'],
-          [/[{}\[\]()]/, '@brackets'],
-          
-          [/@[a-zA-Z_]\w*/, 'tag'],
-          [/[a-zA-Z_]\w*/, {
-            cases: {
-              '@keywords': 'keyword',
-              '@builtins': 'type.identifier',
-              '@default': 'identifier'
-            }
-          }]
-        ],
-        
-        whitespace: [
-          [/\s+/, 'white'],
-          [/(^#.*$)/, 'comment'],
-          [/'''/, 'string', '@endDocString'],
-          [/"""/, 'string', '@endDblDocString']
-        ],
-        
-        numbers: [
-          [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
-          [/0[xX][0-9a-fA-F]+/, 'number.hex'],
-          [/\d+/, 'number']
-        ],
-        
-        strings: [
-          [/'/, 'string', '@singleString'],
-          [/"/, 'string', '@doubleString'],
-        ],
-        
-        singleString: [
-          [/[^']+/, 'string'],
-          [/''/, 'string.escape'],
-          [/'/, 'string', '@pop']
-        ],
-        
-        doubleString: [
-          [/[^"]+/, 'string'],
-          [/""/, 'string.escape'],
-          [/"/, 'string', '@pop']
-        ],
-        
-        endDocString: [
-          [/[^']+/, 'string'],
-          [/\\'/, 'string'],
-          [/'''/, 'string', '@pop'],
-          [/'/, 'string']
-        ],
-        
-        endDblDocString: [
-          [/[^"]+/, 'string'],
-          [/\\"/, 'string'],
-          [/"""/, 'string', '@pop'],
-          [/"/, 'string']
-        ],
-      }
-    });
-    
-    // Регистрируем глобальную функцию для управления диагностикой Python
-    (window as any).updatePythonDiagnostics = async (filepath?: string): Promise<string> => {
-      console.log(`Запрос на обновление диагностики Python ${filepath ? `для файла ${filepath}` : 'для всех файлов'}`);
-      
+
+    // Добавляем глобальные функции для работы с диагностикой Python
+    (window as any).updatePythonDiagnostics = async (filePath: string) => {
       try {
-        // Если LSP еще не подключен, инициализируем его с принудительными повторными попытками
-        if (!isPythonLSPConnected()) {
-          console.log('Python LSP не подключен, инициализация...');
-          
-          // Попытка инициализации с повторами
-          let tryCount = 0;
-          let initialized = false;
-          
-          while (tryCount < 3 && !initialized) {
-            tryCount++;
-            console.log(`Попытка инициализации Python LSP: ${tryCount}/3`);
+        console.log('Обновление встроенной диагностики Python для файла:', filePath);
+        
+        // Получаем содержимое файла из Monaco, если есть модель
+        let content = '';
+        
+        if (monaco && monaco.editor) {
+          try {
+            const models = monaco.editor.getModels();
+            const model = models.find((model: any) => {
+              const modelPath = model.uri.path;
+              return modelPath === filePath || 
+                     modelPath.endsWith(filePath) || 
+                     model.uri.toString().includes(filePath);
+            });
             
-            initialized = await initializePythonLSP();
-            
-            if (!initialized && tryCount < 3) {
-              console.log(`Ожидание перед следующей попыткой...`);
-              // Ждем перед следующей попыткой
-              await new Promise(resolve => setTimeout(resolve, 1000));
+            if (model) {
+              content = model.getValue();
             }
+          } catch (err) {
+            console.warn('Ошибка при получении содержимого из модели Monaco:', err);
           }
-          
-          if (!initialized) {
-            console.error('Не удалось инициализировать Python LSP после нескольких попыток');
-            return 'error: Не удалось инициализировать LSP';
-          }
-          
-          console.log('Python LSP успешно инициализирован');
         }
         
-        // Проверяем доступность диагностики
-        if (!isPythonDiagnosticsAvailable()) {
-          console.warn('Диагностика Python недоступна');
+        // Если не удалось получить из Monaco, пробуем через Tauri
+        if (!content) {
+          try {
+            content = await invoke('read_file', { path: filePath }) as string;
+          } catch (err) {
+            console.error('Ошибка при чтении файла через Tauri:', err);
+            return `error: Не удалось прочитать файл ${filePath}`;
+          }
         }
         
-        // Обновляем диагностику
-        if (filepath) {
-          // Для конкретного файла
-          console.log(`Обновление диагностики для файла: ${filepath}`);
-          const success = await forcePythonDiagnosticsUpdate(filepath);
+        if (!content) {
+          return `error: Пустое содержимое файла ${filePath}`;
+        }
+        
+        // Импортируем менеджер для доступа к mockPythonDiagnostics
+        const { languageServerManager } = await import('../main-screen/centerContainer/monaco-lsp-server-manager');
+        
+        // Вызываем метод для диагностики
+        if (languageServerManager) {
+          languageServerManager.sendNotification('python', 'textDocument/didOpen', {
+            textDocument: {
+              uri: filePath,
+              languageId: 'python',
+              version: 1,
+              text: content
+            }
+          });
           
-          if (success) {
-            console.log(`Диагностика успешно обновлена для: ${filepath}`);
-            return `success: ${filepath}`;
-          } else {
-            console.warn(`Не удалось обновить диагностику для: ${filepath}`);
-            return `error: ${filepath}`;
-          }
+          return 'success';
         } else {
-          // Для всех файлов
-          console.log('Обновление диагностики для всех Python файлов');
-          const success = await updateAllPythonDiagnostics();
-          
-          if (success) {
-            console.log('Диагностика успешно обновлена для всех файлов');
-            return 'success: all files';
-          } else {
-            console.warn('Не удалось обновить диагностику для всех файлов');
-            return 'error: all files';
-          }
+          console.error('Менеджер серверов не доступен');
+          return 'error: Менеджер серверов не доступен';
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error('Ошибка при обновлении диагностики Python:', error);
-        return `error: ${error.message || 'Неизвестная ошибка'}`;
+        return `error: ${error}`;
       }
     };
     
-    // Инициализируем Python LSP при запуске
+    // Оставляем только проверку встроенным анализатором без LSP сервера
     setTimeout(async () => {
       try {
-        console.log('Автоматическая инициализация Python LSP...');
-        
-        // Инициализируем Python LSP
-        const lspInitialized = await initializePythonLSP();
-        
-        if (lspInitialized) {
-          console.log('Python LSP успешно инициализирован автоматически');
-          
-          // Регистрируем обработчик для очистки диагностики при закрытии
-          window.addEventListener('beforeunload', () => {
-            console.log('Очистка ресурсов Python LSP...');
-            clearAllPythonDiagnostics();
-          });
-          
-          // Обновляем диагностику для всех открытых Python файлов
-          setTimeout(async () => {
-            await updateAllPythonDiagnostics();
-          }, 2000);
-        } else {
-          console.warn('Не удалось автоматически инициализировать Python LSP');
-          
-          // Повторяем попытку инициализации еще раз через 3 секунды
-          setTimeout(async () => {
-            console.log('Повторная попытка инициализации Python LSP...');
-            const retryResult = await initializePythonLSP();
-            
-            if (retryResult) {
-              console.log('Python LSP успешно инициализирован при повторной попытке');
-              
-              setTimeout(async () => {
-                await updateAllPythonDiagnostics();
-              }, 1000);
-            } else {
-              console.error('Python LSP не удалось инициализировать даже при повторной попытке');
-            }
-          }, 3000);
-        }
+        // Регистрируем обработчик для очистки диагностики при закрытии
+        window.addEventListener('beforeunload', () => {
+          console.log('Очистка ресурсов Python диагностики...');
+          clearAllPythonDiagnostics();
+        });
       } catch (error) {
-        console.error('Ошибка при автоматической инициализации Python LSP:', error);
+        console.error('Ошибка при настройке обработчиков Python диагностики:', error);
       }
     }, 1000);
     
-    // Регистрируем провайдер автодополнений для Python
-    monaco.languages.registerCompletionItemProvider('python', {
-      triggerCharacters: ['.', ':', '(', '[', ',', ' '],
-      provideCompletionItems: async (model: monaco.editor.ITextModel, position: monaco.Position) => {
-        try {
-          // Проверяем, подключен ли LSP
-          if (!isPythonLSPConnected()) {
-            console.warn('Python LSP не подключен, базовое автодополнение');
-            return getBasicCompletionItems();
-          }
-          
-          // Получаем данные из редактора
-          const uri = model.uri.toString();
-          const lineContent = model.getLineContent(position.lineNumber);
-          
-          // Логируем запрос автодополнения
-          console.log(`Python completion request: line ${position.lineNumber}, col ${position.column}, содержимое строки: "${lineContent.slice(0, position.column)}"`);
-          
-          // Запрашиваем автодополнение у LSP
-          try {
-            // Импортируем менеджер LSP серверов
-            const { languageServerManager } = await import('../main-screen/centerContainer/monaco-lsp-server-manager');
-            
-            // Определяем триггер запроса
-            const triggerChar = determineTriggerCharacter(lineContent, position.column);
-            
-            // Формируем запрос LSP
-            const completionParams = {
-              textDocument: { uri },
-              position: {
-                line: position.lineNumber - 1,
-                character: position.column - 1
-              },
-              context: {
-                triggerKind: triggerChar ? 2 : 1, // 1 = Invoke, 2 = TriggerCharacter
-                triggerCharacter: triggerChar
-              }
-            };
-            
-            // Отправляем запрос к LSP
-            console.log('Отправка запроса автодополнения к Python LSP:', completionParams);
-            const completionResponse = await languageServerManager.sendRequest('python', 'textDocument/completion', completionParams);
-            
-            // Обрабатываем ответ
-            if (completionResponse && completionResponse.items && completionResponse.items.length > 0) {
-              console.log(`Получено ${completionResponse.items.length} предложений автодополнения от Python LSP`);
-              
-              // Преобразуем ответ LSP в формат Monaco
-              const suggestions = completionResponse.items.map((item: any) => {
-                try {
-                  // Базовое преобразование
-                  const suggestion: monaco.languages.CompletionItem = {
-                    label: item.label,
-                    kind: convertCompletionItemKind(item.kind || 1),
-                    detail: item.detail,
-                    documentation: item.documentation
-                      ? (typeof item.documentation === 'string'
-                         ? item.documentation
-                         : item.documentation.value)
-                      : undefined,
-                    insertText: item.insertText || item.label,
-                    sortText: item.sortText,
-                    filterText: item.filterText,
-                    range: {
-                      startLineNumber: position.lineNumber,
-                      endLineNumber: position.lineNumber,
-                      startColumn: position.column - (item.textEdit?.range?.startColumn || 0),
-                      endColumn: position.column
-                    }
-                  };
-                  
-                  // Если это сниппет
-                  if (item.insertTextFormat === 2) {
-                    suggestion.insertTextRules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
-                  }
-                  
-                  return suggestion;
-                } catch (itemError) {
-                  console.warn('Ошибка при преобразовании элемента автодополнения:', itemError);
-                  return {
-                    label: item.label || 'unknown',
-                    kind: monaco.languages.CompletionItemKind.Text
-                  };
-                }
-              });
-              
-              return { suggestions };
-            } else {
-              console.log('От Python LSP не получено предложений автодополнения, используем базовые');
-            }
-          } catch (lspError) {
-            console.warn('Ошибка при получении автодополнения от LSP:', lspError);
-          }
-          
-          // Если не получили автодополнение от LSP, используем базовое
-          return getBasicCompletionItems();
-        } catch (error) {
-          console.error('Ошибка в провайдере автодополнений Python:', error);
-          return { suggestions: [] };
-        }
-      }
-    });
-    
-    // Регистрируем провайдер hover для Python
-    monaco.languages.registerHoverProvider('python', {
-      provideHover: async (model: monaco.editor.ITextModel, position: monaco.Position) => {
-        try {
-          // Проверяем, подключен ли LSP
-          if (!isPythonLSPConnected()) {
-            return getBasicHoverContent(model, position);
-          }
-          
-          // Получаем данные из редактора
-          const uri = model.uri.toString();
-          const wordInfo = model.getWordAtPosition(position);
-          
-          if (!wordInfo) {
-            return null;
-          }
-          
-          // Импортируем менеджер LSP серверов
-          const { languageServerManager } = await import('../main-screen/centerContainer/monaco-lsp-server-manager');
-          
-          // Запрашиваем hover у LSP
-          try {
-            const hoverResponse = await languageServerManager.sendRequest('python', 'textDocument/hover', {
-              textDocument: { uri },
-              position: {
-                line: position.lineNumber - 1,
-                character: position.column - 1
-              }
-            });
-            
-            if (hoverResponse && hoverResponse.contents) {
-              // Преобразуем ответ LSP в формат Monaco
-              let content = '';
-              
-              // Обрабатываем различные форматы содержимого из LSP
-              if (typeof hoverResponse.contents === 'string') {
-                content = hoverResponse.contents;
-              } else if (hoverResponse.contents.kind === 'markdown' || hoverResponse.contents.kind === 'plaintext') {
-                content = hoverResponse.contents.value;
-              } else if (Array.isArray(hoverResponse.contents)) {
-                // Объединяем массив содержимого
-                content = hoverResponse.contents.map((item: any) => {
-                  if (typeof item === 'string') {
-                    return item;
-                  } else if (item.value) {
-                    return item.value;
-                  }
-                  return '';
-                }).join('\n\n');
-              } else if (hoverResponse.contents.value) {
-                content = hoverResponse.contents.value;
-              }
-              
-              // Формируем результат hover
-              return {
-                contents: [{ value: content }],
-                range: {
-                  startLineNumber: position.lineNumber,
-                  startColumn: wordInfo.startColumn,
-                  endLineNumber: position.lineNumber,
-                  endColumn: wordInfo.endColumn
-                }
-              };
-            }
-          } catch (lspError) {
-            console.warn('Ошибка при получении hover от LSP:', lspError);
-          }
-          
-          // Если не получили hover от LSP, используем базовый
-          return getBasicHoverContent(model, position);
-        } catch (error) {
-          console.error('Ошибка в провайдере hover для Python:', error);
-          return null;
-        }
-      }
-    });
-    
-    console.log('Регистрация Python в Monaco успешно завершена');
     return true;
   } catch (error) {
-    console.error('Ошибка при регистрации Python:', error);
+    console.error('Ошибка при регистрации поддержки Python:', error);
     return false;
   }
 }
 
 /**
- * Получение базовых элементов автодополнения для Python
+ * Настройка встроенной поддержки Python без Pylance
  */
-function getBasicCompletionItems(): { suggestions: monaco.languages.CompletionItem[] } {
+function setupBuiltinPythonSupport(monaco: any) {
   try {
-    if (!window.monaco) {
-      console.warn('Monaco не определен при создании базовых элементов автодополнения');
-      return { suggestions: [] };
+    // Определяем python стандартную библиотеку
+    const pythonStdlibKeywords = [
+      // Builtin Functions
+      'abs', 'all', 'any', 'ascii', 'bin', 'bool', 'breakpoint', 'bytearray', 'bytes', 
+      'callable', 'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir', 
+      'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format', 'frozenset', 
+      'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'input', 'int', 
+      'isinstance', 'issubclass', 'iter', 'len', 'list', 'locals', 'map', 'max', 'memoryview', 
+      'min', 'next', 'object', 'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 
+      'repr', 'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod', 
+      'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip', '__import__',
+      
+      // Common Modules
+      'os', 'sys', 'io', 're', 'math', 'json', 'time', 'datetime', 'random', 'collections',
+      'itertools', 'functools', 'pathlib', 'shutil', 'tempfile', 'urllib', 'http', 'socket',
+      'argparse', 'logging', 'unittest', 'typing', 'csv', 'pickle', 'sqlite3', 'xml',
+      'email', 'hashlib', 'base64'
+    ];
+    
+    // Создаем автоматическое дополнение для модулей (используется в getPythonCompletions)
+    const pythonModuleHints = pythonStdlibKeywords.map(keyword => ({
+      label: keyword,
+      kind: monaco.languages.CompletionItemKind.Module,
+      insertText: keyword,
+      detail: 'Python Built-in/Standard Library',
+      documentation: { value: `Python стандартный модуль или встроенная функция: **${keyword}**` }
+    }));
+    
+    // Регистрируем провайдер автодополнения
+    monaco.languages.registerCompletionItemProvider('python', {
+      triggerCharacters: ['.', ':', '(', '[', ',', ' ', '"', "'"],
+      provideCompletionItems: (model: any, position: any) => {
+        return getPythonCompletions(model, position, monaco, pythonModuleHints);
+      }
+    });
+  } catch (error) {
+    console.error('Ошибка при настройке встроенной поддержки Python:', error);
+  }
+}
+
+/**
+ * Инициализация Pylance для улучшенного анализа Python
+ */
+async function initializePylance(): Promise<boolean> {
+  try {
+    console.log('Инициализация Pylance...');
+    
+    // Загружаем Pylance из CDN
+    const pylance = await loadPylanceFromCDN();
+    
+    if (!pylance) {
+      console.warn('Не удалось загрузить Pylance из CDN');
+      return false;
     }
     
-    const monaco = window.monaco;
-    const suggestions: monaco.languages.CompletionItem[] = [];
+    console.log('Pylance успешно загружен, настраиваем для использования с Monaco');
     
-    // Базовые ключевые слова Python
+    // Настраиваем провайдер для Python
+    window.monaco.languages.registerCompletionItemProvider('python', {
+      triggerCharacters: ['.', ':', '(', '[', ',', ' ', '"', "'"],
+      provideCompletionItems: async (model: any, position: any) => {
+        try {
+          // Pylance API для автодополнения
+          if (pylance.provideCompletionItems) {
+            const result = await pylance.provideCompletionItems(model, position);
+            
+            // Если Pylance не вернул результаты, используем встроенное автодополнение
+            if (!result || !result.suggestions || result.suggestions.length === 0) {
+              return getPythonCompletions(model, position, window.monaco, []);
+            }
+            
+            return result;
+          } else {
+            return getPythonCompletions(model, position, window.monaco, []);
+          }
+        } catch (error) {
+          console.error('Ошибка при получении автодополнений от Pylance:', error);
+          return getPythonCompletions(model, position, window.monaco, []);
+        }
+      }
+    });
+    
+    // Настраиваем ховеры
+    window.monaco.languages.registerHoverProvider('python', {
+      provideHover: async (model: any, position: any) => {
+        try {
+          return await pylance.provideHover(model, position);
+        } catch (error) {
+          console.error('Ошибка при получении hover от Pylance:', error);
+          return null;
+        }
+      }
+    });
+    
+    // Настраиваем определения
+    window.monaco.languages.registerDefinitionProvider('python', {
+      provideDefinition: async (model: any, position: any) => {
+        try {
+          return await pylance.provideDefinition(model, position);
+        } catch (error) {
+          console.error('Ошибка при получении определения от Pylance:', error);
+          return null;
+        }
+      }
+    });
+    
+    // Настраиваем диагностику
+    pylance.onDiagnostics((uri: string, diagnostics: any[]) => {
+      try {
+        if ((window as any).pythonDiagnosticsStore) {
+          (window as any).pythonDiagnosticsStore.setMarkers(uri, diagnostics);
+        }
+      } catch (error) {
+        console.error('Ошибка при обработке диагностики Pylance:', error);
+      }
+    });
+    
+    console.log('Pylance успешно настроен');
+    
+    // Сохраняем глобальную ссылку на Pylance
+    (window as any).pylance = pylance;
+    
+    return true;
+  } catch (error) {
+    console.error('Ошибка при инициализации Pylance:', error);
+    return false;
+  }
+}
+
+/**
+ * Получение базовых автодополнений для Python (используется, если Pylance недоступен)
+ */
+function getPythonCompletions(model: any, position: any, monaco: any, moduleHints: any[]): any {
+  try {
+    // Получаем текущую линию и позицию
+    const lineContent = model.getLineContent(position.lineNumber);
+    const wordUntilPosition = model.getWordUntilPosition(position);
+    
+    // Базовое определение диапазона для замены
+    const range = {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: wordUntilPosition.startColumn,
+      endColumn: wordUntilPosition.endColumn
+    };
+    
+    // Проверяем, является ли это импортом
+    const isImport = lineContent.trim().startsWith('import ') || 
+                    lineContent.trim().startsWith('from ') ||
+                    lineContent.includes(' import ');
+    
+    // Если это import, предлагаем pip пакеты и стандартные модули
+    if (isImport) {
+      // Собираем все предложения
+      const suggestions = [...moduleHints];
+      
+      // Вернем только встроенные модули, pip-пакеты не будем загружать синхронно
+      return { suggestions };
+    }
+    
+    // Проверяем, является ли это обращением к методу объекта (после точки)
+    const isDotAccess = lineContent.substring(0, position.column - 1).endsWith('.');
+    
+    if (isDotAccess) {
+      // Получаем текст до точки
+      const beforeDot = lineContent.substring(0, position.column - 1).trim();
+      const lastDotIndex = beforeDot.lastIndexOf('.');
+      const lastWordStart = Math.max(
+        beforeDot.lastIndexOf(' '), 
+        beforeDot.lastIndexOf('('),
+        beforeDot.lastIndexOf('['),
+        beforeDot.lastIndexOf(','),
+        beforeDot.lastIndexOf('='),
+        lastDotIndex === beforeDot.length - 1 ? lastDotIndex : -1
+      ) + 1;
+      
+      const objectName = beforeDot.substring(lastWordStart).trim();
+      
+      // Определяем методы на основе имени объекта
+      const methodSuggestions = getPythonMethodSuggestions(objectName, monaco);
+      if (methodSuggestions.length > 0) {
+        return { 
+          suggestions: methodSuggestions.map((s: any) => ({
+            ...s,
+            range
+          }))
+        };
+      }
+    }
+    
+    // Если нет специальных обработчиков, возвращаем базовые ключевые слова Python
     const pythonKeywords = [
       'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
       'def', 'del', 'elif', 'else', 'except', 'exec', 'finally', 'for', 'from',
@@ -568,185 +392,164 @@ function getBasicCompletionItems(): { suggestions: monaco.languages.CompletionIt
       'match', 'case', 'True', 'False', 'None'
     ];
     
-    // Базовые встроенные функции Python
-    const builtinFunctions = [
-      'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
-      'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
-      'divmod', 'enumerate', 'eval', 'filter', 'float', 'format', 'frozenset',
-      'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex', 'id', 'input',
-      'int', 'isinstance', 'issubclass', 'iter', 'len', 'list', 'locals', 'map',
-      'max', 'memoryview', 'min', 'next', 'object', 'oct', 'open', 'ord', 'pow',
-      'print', 'property', 'range', 'repr', 'reversed', 'round', 'set', 'setattr',
-      'slice', 'sorted', 'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
-      'vars', 'zip'
+    const baseSuggestions = pythonKeywords.map(keyword => ({
+      label: keyword,
+      kind: monaco.languages.CompletionItemKind.Keyword,
+      insertText: keyword,
+      range
+    }));
+    
+    // Добавляем стандартные подсказки и встроенные типы
+    const builtinTypes = [
+      'int', 'float', 'str', 'bool', 'list', 'tuple', 'dict', 'set', 'bytes',
+      'bytearray', 'range', 'complex', 'slice', 'frozenset', 'object'
     ];
     
-    // Добавляем ключевые слова
-    for (const keyword of pythonKeywords) {
-      suggestions.push({
-        label: keyword,
-        kind: monaco.languages.CompletionItemKind.Keyword,
-        insertText: keyword,
-        detail: 'Ключевое слово Python'
-      } as monaco.languages.CompletionItem);
-    }
+    const typeSuggestions = builtinTypes.map(type => ({
+      label: type,
+      kind: monaco.languages.CompletionItemKind.Class,
+      insertText: type,
+      detail: 'Built-in type',
+      range
+    }));
     
-    // Добавляем встроенные функции
-    for (const func of builtinFunctions) {
-      suggestions.push({
-        label: func,
-        kind: monaco.languages.CompletionItemKind.Function,
-        insertText: func + '($0)',
-        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        detail: 'Встроенная функция Python'
-      } as monaco.languages.CompletionItem);
-    }
-    
-    return { suggestions };
+    // Объединяем все базовые подсказки
+    return {
+      suggestions: [...baseSuggestions, ...typeSuggestions, ...moduleHints]
+    };
   } catch (error) {
-    console.error('Ошибка при создании базовых элементов автодополнения:', error);
+    console.error('Ошибка в провайдере автодополнений Python:', error);
     return { suggestions: [] };
   }
 }
 
 /**
- * Определение символа-триггера для запроса автодополнения
+ * Возвращает предложения методов для типа объекта
+ * @param objectName Имя объекта
  */
-function determineTriggerCharacter(lineContent: string, column: number): string | undefined {
-  try {
-    if (column <= 1 || !lineContent || column > lineContent.length) {
-      return undefined;
-    }
-    
-    const triggerChars = ['.', ':', '(', '[', ',', ' '];
-    const prevChar = lineContent.charAt(column - 2);
-    
-    if (triggerChars.includes(prevChar)) {
-      return prevChar;
-    }
-    
-    return undefined;
-  } catch (error) {
-    console.error('Ошибка при определении символа-триггера:', error);
-    return undefined;
+function getPythonMethodSuggestions(objectName: string, monaco: any): any[] {
+  const suggestions: any[] = [];
+  
+  // Методы для разных типов объектов
+  const typeMethodMap: Record<string, { name: string, detail: string, doc?: string }[]> = {
+    // Строковые методы
+    'str': [
+      { name: 'capitalize()', detail: 'Возвращает копию строки с первым символом в верхнем регистре' },
+      { name: 'casefold()', detail: 'Возвращает копию строки, подходящую для сравнения без учета регистра' },
+      { name: 'center(width, fillchar=" ")', detail: 'Возвращает центрированную строку' },
+      { name: 'count(sub, start=0, end=None)', detail: 'Возвращает количество непересекающихся вхождений подстроки' },
+      { name: 'encode(encoding="utf-8", errors="strict")', detail: 'Кодирует строку, возвращая объект bytes' },
+      { name: 'endswith(suffix, start=0, end=None)', detail: 'Проверяет, заканчивается ли строка указанным суффиксом' },
+      { name: 'expandtabs(tabsize=8)', detail: 'Возвращает копию строки, где все табуляции заменены пробелами' },
+      { name: 'find(sub, start=0, end=None)', detail: 'Возвращает индекс первого вхождения подстроки' },
+      { name: 'format(*args, **kwargs)', detail: 'Форматирует строку' },
+      { name: 'format_map(mapping)', detail: 'Форматирует строку с использованием указанного отображения' },
+      { name: 'index(sub, start=0, end=None)', detail: 'Как find(), но вызывает ValueError при отсутствии подстроки' },
+      { name: 'isalnum()', detail: 'Проверяет, содержит ли строка только алфавитно-цифровые символы' },
+      { name: 'isalpha()', detail: 'Проверяет, содержит ли строка только алфавитные символы' },
+      { name: 'isascii()', detail: 'Проверяет, содержит ли строка только ASCII символы' },
+      { name: 'isdecimal()', detail: 'Проверяет, содержит ли строка только десятичные символы' },
+      { name: 'isdigit()', detail: 'Проверяет, содержит ли строка только цифры' },
+      { name: 'isidentifier()', detail: 'Проверяет, является ли строка допустимым идентификатором' },
+      { name: 'islower()', detail: 'Проверяет, содержит ли строка только символы в нижнем регистре' },
+      { name: 'isnumeric()', detail: 'Проверяет, содержит ли строка только числовые символы' },
+      { name: 'isprintable()', detail: 'Проверяет, состоит ли строка только из печатаемых символов' },
+      { name: 'isspace()', detail: 'Проверяет, содержит ли строка только пробельные символы' },
+      { name: 'istitle()', detail: 'Проверяет, начинается ли каждое слово с заглавной буквы' },
+      { name: 'isupper()', detail: 'Проверяет, содержит ли строка только символы в верхнем регистре' },
+      { name: 'join(iterable)', detail: 'Возвращает строку, объединяющую элементы итерируемого объекта' },
+      { name: 'ljust(width, fillchar=" ")', detail: 'Выравнивает строку по левому краю' },
+      { name: 'lower()', detail: 'Возвращает копию строки со всеми символами в нижнем регистре' },
+      { name: 'lstrip(chars=None)', detail: 'Возвращает копию строки с удаленными начальными символами' },
+      { name: 'partition(sep)', detail: 'Разбивает строку по первому вхождению сепаратора' },
+      { name: 'replace(old, new, count=-1)', detail: 'Возвращает копию строки с замененными подстроками' },
+      { name: 'rfind(sub, start=0, end=None)', detail: 'Возвращает индекс последнего вхождения подстроки' },
+      { name: 'rindex(sub, start=0, end=None)', detail: 'Как rfind(), но вызывает ValueError при отсутствии подстроки' },
+      { name: 'rjust(width, fillchar=" ")', detail: 'Выравнивает строку по правому краю' },
+      { name: 'rpartition(sep)', detail: 'Разбивает строку по последнему вхождению сепаратора' },
+      { name: 'rsplit(sep=None, maxsplit=-1)', detail: 'Разбивает строку справа налево' },
+      { name: 'rstrip(chars=None)', detail: 'Возвращает копию строки с удаленными конечными символами' },
+      { name: 'split(sep=None, maxsplit=-1)', detail: 'Разбивает строку на список подстрок' },
+      { name: 'splitlines(keepends=False)', detail: 'Разбивает строку на список строк по границам строк' },
+      { name: 'startswith(prefix, start=0, end=None)', detail: 'Проверяет, начинается ли строка с указанного префикса' },
+      { name: 'strip(chars=None)', detail: 'Возвращает копию строки с удаленными начальными и конечными символами' },
+      { name: 'swapcase()', detail: 'Меняет регистр символов' },
+      { name: 'title()', detail: 'Возвращает copy of the string where each word is titlecased' },
+      { name: 'translate(table)', detail: 'Возвращает копию строки с замененными символами' },
+      { name: 'upper()', detail: 'Возвращает копию строки со всеми символами в верхнем регистре' },
+      { name: 'zfill(width)', detail: 'Возвращает копию строки с заполнением слева нулями до указанной ширины' },
+    ],
+    // Методы списков
+    'list': [
+      { name: 'append(x)', detail: 'Добавляет элемент в конец списка' },
+      { name: 'clear()', detail: 'Удаляет все элементы из списка' },
+      { name: 'copy()', detail: 'Возвращает копию списка' },
+      { name: 'count(x)', detail: 'Возвращает количество вхождений значения x' },
+      { name: 'extend(iterable)', detail: 'Добавляет элементы iterable в конец списка' },
+      { name: 'index(x, start=0, end=None)', detail: 'Возвращает индекс первого вхождения x' },
+      { name: 'insert(i, x)', detail: 'Вставляет элемент x в позицию i' },
+      { name: 'pop(i=-1)', detail: 'Удаляет и возвращает элемент в позиции i' },
+      { name: 'remove(x)', detail: 'Удаляет первое вхождение значения x' },
+      { name: 'reverse()', detail: 'Обращает порядок элементов в списке' },
+      { name: 'sort(key=None, reverse=False)', detail: 'Сортирует список на месте' },
+    ],
+    // Методы словарей
+    'dict': [
+      { name: 'clear()', detail: 'Удаляет все элементы из словаря' },
+      { name: 'copy()', detail: 'Возвращает копию словаря' },
+      { name: 'get(key, default=None)', detail: 'Возвращает значение для ключа или default' },
+      { name: 'items()', detail: 'Возвращает представление пар (ключ, значение)' },
+      { name: 'keys()', detail: 'Возвращает представление ключей словаря' },
+      { name: 'pop(key, default=None)', detail: 'Удаляет ключ и возвращает значение или default' },
+      { name: 'popitem()', detail: 'Удаляет и возвращает пару (ключ, значение)' },
+      { name: 'setdefault(key, default=None)', detail: 'Возвращает значение ключа, устанавливая default, если ключ отсутствует' },
+      { name: 'update(other)', detail: 'Обновляет словарь парами (ключ, значение) из other' },
+      { name: 'values()', detail: 'Возвращает представление значений словаря' },
+    ],
+  };
+  
+  // Определяем тип объекта по имени или методам
+  let objectType = '';
+  
+  if (objectName === 'str' || objectName.startsWith('"') || objectName.startsWith("'")) {
+    objectType = 'str';
+  } else if (objectName === 'list' || objectName.startsWith('[')) {
+    objectType = 'list';
+  } else if (objectName === 'dict' || objectName.startsWith('{')) {
+    objectType = 'dict';
   }
-}
-
-/**
- * Преобразование типа элемента автодополнения из LSP в Monaco
- */
-function convertCompletionItemKind(lspKind: number): monaco.languages.CompletionItemKind {
-  try {
-    if (!window.monaco) {
-      return 0; // Значение по умолчанию
-    }
-    
-    const monaco = window.monaco;
-    
-    // Соответствие типов LSP и Monaco
-    // См. https://microsoft.github.io/language-server-protocol/specifications/specification-current/#completionItemKind
-    switch (lspKind) {
-      case 1: return monaco.languages.CompletionItemKind.Text;
-      case 2: return monaco.languages.CompletionItemKind.Method;
-      case 3: return monaco.languages.CompletionItemKind.Function;
-      case 4: return monaco.languages.CompletionItemKind.Constructor;
-      case 5: return monaco.languages.CompletionItemKind.Field;
-      case 6: return monaco.languages.CompletionItemKind.Variable;
-      case 7: return monaco.languages.CompletionItemKind.Class;
-      case 8: return monaco.languages.CompletionItemKind.Interface;
-      case 9: return monaco.languages.CompletionItemKind.Module;
-      case 10: return monaco.languages.CompletionItemKind.Property;
-      case 11: return monaco.languages.CompletionItemKind.Unit;
-      case 12: return monaco.languages.CompletionItemKind.Value;
-      case 13: return monaco.languages.CompletionItemKind.Enum;
-      case 14: return monaco.languages.CompletionItemKind.Keyword;
-      case 15: return monaco.languages.CompletionItemKind.Snippet;
-      case 16: return monaco.languages.CompletionItemKind.Color;
-      case 17: return monaco.languages.CompletionItemKind.File;
-      case 18: return monaco.languages.CompletionItemKind.Reference;
-      case 19: return monaco.languages.CompletionItemKind.Folder;
-      case 20: return monaco.languages.CompletionItemKind.EnumMember;
-      case 21: return monaco.languages.CompletionItemKind.Constant;
-      case 22: return monaco.languages.CompletionItemKind.Struct;
-      case 23: return monaco.languages.CompletionItemKind.Event;
-      case 24: return monaco.languages.CompletionItemKind.Operator;
-      case 25: return monaco.languages.CompletionItemKind.TypeParameter;
-      default: return monaco.languages.CompletionItemKind.Text;
-    }
-  } catch (error) {
-    console.error('Ошибка при преобразовании типа элемента автодополнения:', error);
-    return window.monaco.languages.CompletionItemKind.Text;
+  
+  // Если тип определен, добавляем соответствующие методы
+  if (objectType && typeMethodMap[objectType]) {
+    typeMethodMap[objectType].forEach(method => {
+      suggestions.push({
+        label: method.name.split('(')[0],
+        kind: monaco.languages.CompletionItemKind.Method,
+        insertText: method.name.split('(')[0],
+        detail: method.detail,
+        documentation: { value: method.doc || method.detail }
+      });
+    });
   }
-}
-
-/**
- * Получение базового содержимого для hover
- */
-function getBasicHoverContent(model: monaco.editor.ITextModel, position: monaco.Position): monaco.languages.Hover | null {
-  try {
-    if (!window.monaco) {
-      console.warn('Monaco не определен при создании базового hover содержимого');
-      return null;
-    }
-    
-    const wordInfo = model.getWordAtPosition(position);
-    if (!wordInfo) {
-      return null;
-    }
-    
-    const word = wordInfo.word;
-    
-    // Получаем контекст строки
-    const lineContent = model.getLineContent(position.lineNumber);
-    
-    // Определяем тип элемента по контексту
-    let elementType = 'unknown';
-    if (lineContent.includes('def ' + word)) {
-      elementType = 'function';
-    } else if (lineContent.includes('class ' + word)) {
-      elementType = 'class';
-    } else if (/\b(True|False|None)\b/.test(word)) {
-      elementType = 'constant';
-    } else if (lineContent.match(new RegExp(`\\b${word}\\s*=`))) {
-      elementType = 'variable';
-    }
-    
-    // Формируем содержимое hover
-    let content = `**${word}**\n\n`;
-    switch (elementType) {
-      case 'function':
-        content += `Функция\n\n\`\`\`python\ndef ${word}():\n    pass\n\`\`\``;
-        break;
-      case 'class':
-        content += `Класс\n\n\`\`\`python\nclass ${word}:\n    pass\n\`\`\``;
-        break;
-      case 'constant':
-        if (word === 'True' || word === 'False') {
-          content += `Константа (логическое значение)`;
-        } else if (word === 'None') {
-          content += `Константа (отсутствие значения)`;
-        } else {
-          content += `Константа`;
-        }
-        break;
-      case 'variable':
-        content += `Переменная`;
-        break;
-      default:
-        content += `Идентификатор Python\n\nСтрока: ${position.lineNumber}\nПозиция: ${position.column}`;
-    }
-    
-    return {
-      contents: [{ value: content }],
-      range: {
-        startLineNumber: position.lineNumber,
-        startColumn: wordInfo.startColumn,
-        endLineNumber: position.lineNumber,
-        endColumn: wordInfo.endColumn
-      }
-    };
-  } catch (error) {
-    console.error('Ошибка при создании базового hover содержимого:', error);
-    return null;
+  
+  // Общие магические методы для всех объектов
+  const commonMethods = [
+    { name: '__str__()', detail: 'Возвращает строковое представление объекта' },
+    { name: '__repr__()', detail: 'Возвращает представление объекта для воспроизведения' },
+    { name: '__len__()', detail: 'Возвращает длину объекта' },
+  ];
+  
+  // Если особый тип не определен, добавляем общие методы для всех объектов
+  if (!objectType) {
+    commonMethods.forEach(method => {
+      suggestions.push({
+        label: method.name.split('(')[0],
+        kind: monaco.languages.CompletionItemKind.Method,
+        insertText: method.name.split('(')[0],
+        detail: method.detail
+      });
+    });
   }
+  
+  return suggestions;
 }

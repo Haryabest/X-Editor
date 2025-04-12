@@ -747,3 +747,190 @@
   bottom: 0;
   background-color: #45fce4;
 }
+
+.vertical-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+  background-color: #2a2a2a;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.vertical-resizer:hover {
+  background-color: #10b981;
+  height: 6px;
+}
+
+.vertical-resizer:active {
+  background-color: #0d946a;
+}
+
+/* Python badge styling */
+.python-badge {
+  display: inline-block;
+  background-color: #3572A5;
+  color: white;
+  font-size: 0.7em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Issue counts styling */
+.issue-counts {
+  display: flex;
+  margin-left: auto;
+  gap: 8px;
+}
+
+.error-count {
+  display: flex;
+  align-items: center;
+  color: #ff5555;
+  font-size: 0.85em;
+  gap: 3px;
+}
+
+.warning-count {
+  display: flex;
+  align-items: center;
+  color: #ffaa33;
+  font-size: 0.85em;
+  gap: 3px;
+}
+
+/* File header styling */
+.file-issues .file-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.file-issues .file-header:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.file-issues .file-name {
+  margin-left: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.file-issues .file-icon {
+  display: flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+/* Issue details styling */
+.issue-details {
+  padding: 0 8px 8px 28px;
+}
+
+.issue-item {
+  display: flex;
+  padding: 6px;
+  border-radius: 4px;
+  margin-top: 6px;
+  cursor: pointer;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.issue-item:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.issue-message {
+  flex: 1;
+  margin: 0 8px;
+  font-size: 0.9em;
+}
+
+.issue-position {
+  font-size: 0.75em;
+  color: #aaa;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.issue-source {
+  margin-left: 6px;
+  color: #888;
+}
+
+/* Empty state styling */
+.no-issues {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #aaa;
+}
+
+.no-issues-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.icon-container {
+  margin-bottom: 8px;
+  background-color: rgba(76, 175, 80, 0.1);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Terminal filters styling */
+.terminal-filters {
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.issue-search {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #fff;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+
+.filter-btn.active {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
