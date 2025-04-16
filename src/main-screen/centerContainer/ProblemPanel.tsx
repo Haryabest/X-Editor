@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, AlertCircle, AlertTriangle, Info, File } from 'lucide-react';
+import { ChevronRight, ChevronDown, AlertCircle, AlertTriangle, Info, File, RefreshCw } from 'lucide-react';
 // Импортируем стили
 import '../../styles/problem-panel.css';
+
+// Добавляем описание функции в глобальный интерфейс Window
+declare global {
+  interface Window {
+    refreshAllPythonDiagnostics?: () => Promise<void>;
+    getPythonDiagnostics?: () => any[];
+    forceUpdateAllDecorations?: () => number;
+  }
+}
 
 interface ProblemIssue {
   severity: 'error' | 'warning' | 'info';
@@ -29,6 +38,7 @@ interface ProblemPanelProps {
 const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
   const [problems, setProblems] = useState<ProblemFile[]>([]);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [isScanning, setIsScanning] = useState<boolean>(false);
   const [stats, setStats] = useState<{ errors: number; warnings: number; infos: number }>({
     errors: 0,
     warnings: 0,
@@ -53,6 +63,57 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
       }
       return newSet;
     });
+  };
+
+  // Функция для запуска расширенной проверки кода
+  const runExtendedCodeScan = async () => {
+    try {
+      setIsScanning(true);
+      
+      // Сначала запускаем обычную проверку
+      if (window.refreshAllPythonDiagnostics) {
+        await window.refreshAllPythonDiagnostics();
+      }
+      
+      // Затем принудительно обновляем все декорации
+      if (window.forceUpdateAllDecorations) {
+        window.forceUpdateAllDecorations();
+      }
+      
+      // Получаем обновленные данные
+      if (window.getPythonDiagnostics && typeof window.getPythonDiagnostics === 'function') {
+        const diagnostics = window.getPythonDiagnostics();
+        if (diagnostics && Array.isArray(diagnostics)) {
+          setProblems(diagnostics);
+          
+          // Обновляем статистику
+          let errors = 0;
+          let warnings = 0;
+          let infos = 0;
+          
+          diagnostics.forEach((file: ProblemFile) => {
+            file.issues.forEach((issue: ProblemIssue) => {
+              if (issue.severity === 'error') errors++;
+              else if (issue.severity === 'warning') warnings++;
+              else infos++;
+            });
+          });
+          
+          setStats({ errors, warnings, infos });
+          
+          // Разворачиваем все файлы
+          const newExpandedFiles = new Set<string>();
+          diagnostics.forEach((file: ProblemFile) => {
+            newExpandedFiles.add(file.filePath);
+          });
+          setExpandedFiles(newExpandedFiles);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при запуске расширенной проверки:', error);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   // Слушаем событие обновления диагностики Python
@@ -142,10 +203,39 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
   // Функция для усечения длинных сообщений
   const truncateMessage = (message: string, maxLength: number = 80) => {
     if (!message) return '';
-    if (message.length <= maxLength) {
-      return message;
+    
+    // Проверяем, содержит ли сообщение информацию о файле в квадратных скобках
+    const fileNameMatch = message.match(/\[(.*?)\]/);
+    let fileName = '';
+    let cleanMessage = message;
+    
+    // Если есть информация о файле в формате [filename], извлекаем её
+    if (fileNameMatch && fileNameMatch[1]) {
+      fileName = fileNameMatch[1];
+      // Удаляем имя файла из сообщения для компактности
+      cleanMessage = message.replace(fileNameMatch[0], '').trim();
     }
-    return message.substring(0, maxLength) + '...';
+    
+    // Очищаем сообщение от лишних префиксов
+    cleanMessage = cleanMessage
+      .replace(/Python \[\d+(\.\d+)*\]/g, '')
+      .replace(/\(pycodestyle\)/g, '')
+      .replace(/\(pylint\)/g, '')
+      .replace(/\(mypy\)/g, '')
+      .replace(/\(pyflakes\)/g, '')
+      .replace(/(^\s+|\s+$)/g, ''); // Удаляем пробелы в начале и конце
+    
+    // Если сообщение слишком длинное, сокращаем его
+    if (cleanMessage.length > maxLength) {
+      cleanMessage = cleanMessage.substring(0, maxLength - 3) + '...';
+    }
+    
+    // Добавляем информацию о файле обратно, если она была
+    if (fileName) {
+      return `[${fileName}] ${cleanMessage}`;
+    }
+    
+    return cleanMessage;
   };
 
   // Выключаем глобальные стили и используем только встроенные tailwind классы
@@ -189,6 +279,58 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
                 {stats.warnings}
               </span>
             )}
+            <div className="flex space-x-1">
+              <button 
+                className="flex items-center bg-gray-700 hover:bg-gray-600 rounded px-1 py-0.5 text-xs text-gray-300"
+                onClick={() => {
+                  // Вызываем обновление диагностики
+                  if (window.refreshAllPythonDiagnostics) {
+                    window.refreshAllPythonDiagnostics().then(() => {
+                      // После обновления получаем новые данные
+                      if (window.getPythonDiagnostics && typeof window.getPythonDiagnostics === 'function') {
+                        const diagnostics = window.getPythonDiagnostics();
+                        if (diagnostics && Array.isArray(diagnostics)) {
+                          setProblems(diagnostics);
+                          
+                          // Обновляем статистику
+                          let errors = 0;
+                          let warnings = 0;
+                          let infos = 0;
+                          
+                          diagnostics.forEach((file: ProblemFile) => {
+                            file.issues.forEach((issue: ProblemIssue) => {
+                              if (issue.severity === 'error') errors++;
+                              else if (issue.severity === 'warning') warnings++;
+                              else infos++;
+                            });
+                          });
+                          
+                          setStats({ errors, warnings, infos });
+                        }
+                      }
+                    });
+                  }
+                }}
+                title="Обновить диагностику"
+              >
+                <RefreshCw size={10} className="mr-1" />
+                Обновить
+              </button>
+              
+              <button 
+                className={`flex items-center rounded px-1 py-0.5 text-xs ${
+                  isScanning 
+                    ? 'bg-blue-600 text-white cursor-wait' 
+                    : 'bg-blue-700 hover:bg-blue-600 text-gray-200'
+                }`}
+                onClick={runExtendedCodeScan}
+                disabled={isScanning}
+                title="Расширенная проверка всех типов ошибок, включая деление на ноль"
+              >
+                <AlertCircle size={10} className="mr-1" />
+                {isScanning ? 'Проверка...' : 'Глубокая проверка'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

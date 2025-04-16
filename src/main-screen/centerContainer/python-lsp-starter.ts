@@ -226,299 +226,67 @@ export async function updateAllPythonDiagnostics(): Promise<boolean> {
  * @param filepath Путь к файлу или URI
  * @returns Promise с результатом операции
  */
-export async function updatePythonDiagnosticsForFile(filepath: string): Promise<boolean> {
+export async function updatePythonDiagnosticsForFile(fileURI: string): Promise<void> {
   try {
-    console.log('🐍 Python diagnostics requested for file:', filepath);
-    console.log('Debug: Current Python LSP status:', getPythonLSPStatus());
-    
-    // Проверка и инициализация LSP, если необходимо
-    if (!isPythonLSPConnected()) {
-      console.warn(`Python LSP сервер не подключен, инициализация...`);
-      const initialized = await initializePythonLSP();
-      console.log('Debug: Python LSP initialization result:', initialized);
-      if (!initialized) {
-        console.error('Не удалось инициализировать Python LSP сервер');
-        return false;
-      }
-    }
-    
-    console.log(`🐍 Обновление диагностики для: ${filepath}`);
-    
-    // Проверка, является ли файл Python-файлом
-    const isPythonFile = filepath.endsWith('.py') || filepath.endsWith('.pyw') || 
-                         filepath.endsWith('.pyi') || 
-                         lspDocumentManager.getDocument(filepath)?.languageId === 'python';
-    
+    const isPythonFile = fileURI.endsWith('.py') || fileURI.endsWith('.pyi');
     if (!isPythonFile) {
-      console.warn(`Файл ${filepath} не является Python файлом`);
-      return false;
+      return;
     }
+
+    if (!window.pyLspConn) {
+      console.warn('LSP not connected, cannot update diagnostics');
+      return;
+    }
+
+    console.log(`🐍 Updating diagnostics for ${fileURI}`);
+
+    // Получаем содержимое файла
+    const fileContent = await getFileContent(fileURI);
+    if (!fileContent) {
+      console.warn(`Could not get content for ${fileURI}`);
+      return;
+    }
+
+    // Нормализуем путь
+    const normalizedUri = normalizeFileURI(fileURI);
     
-    // Получаем документ из менеджера LSP
-    let doc = lspDocumentManager.getDocument(filepath);
-    console.log('Debug: Found document in LSP manager:', !!doc);
+    // Добавляем документ в LSP
+    addDocumentToLsp(normalizedUri, fileContent);
     
-    // Если документ не найден, пытаемся найти его по другому URI или создать
-    if (!doc) {
-      // Попытка найти документ по другому URI
-      const allUris = lspDocumentManager.getAllDocumentUris();
-      const matchingUri = allUris.find(uri => 
-        uri.includes(filepath) || filepath.includes(uri.replace('file://', ''))
+    // Запрашиваем диагностику файла через LSP
+    await validatePythonFile(normalizedUri, fileContent);
+    
+    // Обновляем диагностику в редакторе
+    if (window.pythonDiagnosticsStore && window.monaco) {
+      // Получаем все маркеры для текущего файла
+      const markers = window.pythonDiagnosticsStore.getMarkersForUri(normalizedUri);
+      
+      // Преобразуем маркеры в формат для Monaco Editor
+      const monacoMarkers = markers.map((marker: any) => ({
+        severity: marker.severity,
+        message: marker.message,
+        startLineNumber: marker.range.start.line + 1,
+        startColumn: marker.range.start.character + 1,
+        endLineNumber: marker.range.end.line + 1,
+        endColumn: marker.range.end.character + 1,
+        source: marker.source || 'Python'
+      }));
+      
+      // Устанавливаем маркеры в редакторе
+      window.monaco.editor.setModelMarkers(
+        getModelForUri(normalizedUri) || null,
+        'python',
+        monacoMarkers
       );
       
-      if (matchingUri) {
-        doc = lspDocumentManager.getDocument(matchingUri);
-        console.log(`Найден документ по URI: ${matchingUri}`);
-      }
-      
-      // Если документ всё равно не найден, пытаемся создать его
-      if (!doc) {
-        try {
-          console.log(`Документ не найден, создаем новый: ${filepath}`);
-          
-          // Получаем содержимое файла через API
-          let content = '';
-          try {
-            const response = await fetch(`/api/file?path=${encodeURIComponent(filepath)}`);
-            if (response.ok) {
-              content = await response.text();
-              console.log(`Получено содержимое файла (${content.length} байт)`);
-            } else {
-              console.error(`Ошибка при получении содержимого файла: ${response.statusText}`);
-              return false;
-            }
-          } catch (err) {
-            console.error(`Ошибка при запросе файла через API:`, err);
-            
-            // Пробуем получить модель напрямую через Monaco
-            try {
-              if (window.monaco) {
-                const fileUri = window.monaco.Uri.file(filepath);
-                const model = window.monaco.editor.getModel(fileUri);
-                
-                if (model) {
-                  content = model.getValue();
-                  console.log(`Получено содержимое из модели Monaco (${content.length} байт)`);
-                } else {
-                  console.warn(`Модель Monaco для ${filepath} не найдена`);
-                }
-              }
-            } catch (monacoErr) {
-              console.error(`Ошибка при доступе к модели Monaco:`, monacoErr);
-            }
-            
-            if (!content) {
-              return false;
-            }
-          }
-          
-          // Нормализуем путь файла для создания URI
-          let fileUri = filepath;
-          if (!fileUri.startsWith('file://')) {
-            fileUri = `file://${fileUri.replace(/\\/g, '/')}`;
-          }
-          
-          // Добавляем документ в менеджер
-          lspDocumentManager.addDocument(fileUri, 'python', content);
-          console.log(`Документ добавлен в LSP: ${fileUri}`);
-          
-          // Получаем созданный документ
-          doc = lspDocumentManager.getDocument(fileUri);
-          
-          // Если документ не найден даже после создания, пытаемся получить его по оригинальному пути
-          if (!doc) {
-            doc = lspDocumentManager.getDocument(filepath);
-          }
-          
-          if (!doc) {
-            console.error(`Не удалось добавить документ: ${filepath}`);
-            return false;
-          }
-        } catch (err) {
-          console.error(`Ошибка при создании документа: ${filepath}`, err);
-          return false;
-        }
-      }
-    }
-    
-    // Проверяем наличие хранилища диагностики
-    if (!(window as any).pythonDiagnosticsStore) {
-      console.warn('Хранилище диагностики Python недоступно');
-    }
-    
-    // Получаем содержимое документа для отправки на сервер
-    let content = '';
-    let version = doc.version || 1;
-    
-    try {
-      // Пытаемся получить текст из документа
-      if (doc.textDocument && typeof doc.textDocument.getText === 'function') {
-        content = doc.textDocument.getText();
-      } else if ((doc as any).content) {
-        content = (doc as any).content;
-      }
-      
-      // Если не удалось получить контент из документа, пробуем другие способы
-      if (!content) {
-        // Проверяем, есть ли модель Monaco для этого файла
-        if (window.monaco) {
-          try {
-            const fileUri = window.monaco.Uri.file(filepath);
-            const model = window.monaco.editor.getModel(fileUri);
-            
-            if (model) {
-              content = model.getValue();
-              console.log(`Получено содержимое из модели Monaco (${content.length} байт)`);
-            }
-          } catch (monacoErr) {
-            console.warn(`Ошибка при доступе к модели Monaco:`, monacoErr);
-          }
-        }
-        
-        // Если всё еще нет содержимого, запрашиваем файл через API
-        if (!content) {
-          try {
-            const response = await fetch(`/api/file?path=${encodeURIComponent(filepath)}`);
-            if (response.ok) {
-              content = await response.text();
-              console.log(`Получено содержимое файла через API (${content.length} байт)`);
-            } else {
-              console.error(`Ошибка при получении содержимого через API: ${response.statusText}`);
-            }
-          } catch (apiErr) {
-            console.error(`Ошибка при запросе файла через API:`, apiErr);
-          }
-        }
-      }
-    } catch (contentErr) {
-      console.error(`Ошибка при получении содержимого документа:`, contentErr);
-    }
-    
-    if (!content) {
-      console.warn(`Пустое содержимое документа: ${filepath}`);
-      return false;
-    }
-    
-    // Обновляем содержимое документа в LSP и запрашиваем диагностику
-    try {
-      console.log(`🐍 Получение диагностики для файла ${doc.uri}...`);
-      
-      // Сначала уведомляем об открытии документа
-      languageServerManager.sendNotification('python', 'textDocument/didOpen', {
-        textDocument: {
-          uri: doc.uri,
-          languageId: 'python',
-          version: version,
-          text: content
-        }
+      // Отправляем событие с обновленными диагностиками для панели проблем
+      const diagnosticEvent = new CustomEvent('pythonDiagnosticsUpdated', {
+        detail: getPythonDiagnostics()
       });
-      console.log(`🐍 Отправлено уведомление didOpen для: ${doc.uri}`);
-      
-      // Затем уведомляем об изменении
-      languageServerManager.sendNotification('python', 'textDocument/didChange', {
-        textDocument: {
-          uri: doc.uri,
-          version: version + 1
-        },
-        contentChanges: [{ text: content }]
-      });
-      console.log(`🐍 Отправлено уведомление didChange для: ${doc.uri}`);
-      
-      // Ждем немного, чтобы сервер обработал изменения и опубликовал диагностику
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Проверяем, есть ли диагностика в редакторе
-      let diagnosticsFound = false;
-      
-      if (window.monaco) {
-        try {
-          const monacoUri = window.monaco.Uri.file(filepath);
-          const markers = window.monaco.editor.getModelMarkers({ resource: monacoUri }) as MarkerData[];
-          
-          if (markers && markers.length > 0) {
-            console.log(`🐍 Найдено ${markers.length} маркеров для файла ${filepath}`);
-            diagnosticsFound = true;
-            
-            // Сохраняем маркеры в глобальном хранилище, если оно доступно
-            if (window.globalMarkersStore) {
-              window.globalMarkersStore.set(monacoUri.toString(), markers);
-              console.log(`🐍 Сохранено ${markers.length} маркеров в глобальном хранилище`);
-            }
-            
-            // Уведомляем о обновлении маркеров
-            document.dispatchEvent(new CustomEvent('markers-updated'));
-          } else {
-            console.log(`🐍 Маркеры не найдены для файла ${filepath}`);
-          }
-        } catch (err) {
-          console.error(`Ошибка при получении маркеров: ${err}`);
-        }
-      }
-      
-      // Если диагностика не найдена, очищаем существующие маркеры
-      if (!diagnosticsFound && (window as any).pythonDiagnosticsStore) {
-        try {
-          let monacoUri;
-          try {
-            monacoUri = window.monaco.Uri.parse(doc.uri);
-          } catch (e) {
-            monacoUri = window.monaco.Uri.file(filepath);
-          }
-          
-          (window as any).pythonDiagnosticsStore.clearMarkers(monacoUri.toString());
-          console.log(`🐍 Очищены маркеры для: ${filepath}`);
-          
-          // Уведомляем об обновлении маркеров
-          document.dispatchEvent(new CustomEvent('markers-updated'));
-        } catch (clearErr) {
-          console.error(`Ошибка при очистке маркеров:`, clearErr);
-        }
-      }
-      
-      // Применяем декорации ошибок к активному редактору
-      if (window.monaco) {
-        try {
-          // Обновляем глобальное хранилище маркеров и применяем декорации
-          if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
-            console.log('🐍 Обновление всех декораций после диагностики');
-            window.setupAllErrorDecorations();
-          } 
-          // Запасной вариант - обновляем форсированно все декорации
-          else if (window.forceUpdateAllDecorations && typeof window.forceUpdateAllDecorations === 'function') {
-            console.log('🐍 Форсированное обновление всех декораций после диагностики');
-            window.forceUpdateAllDecorations();
-          }
-          // Запасной вариант - находим все редакторы и обновляем декорации
-          else if (window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
-            const editors = window.monaco.editor.getEditors();
-            if (editors && editors.length > 0) {
-              console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
-              editors.forEach((editor: any) => {
-                try {
-                  if (window.setupErrorDecorations) {
-                    window.setupErrorDecorations(editor);
-                  }
-                } catch (err) {
-                  console.warn('Ошибка при обновлении декораций:', err);
-                }
-              });
-            } else {
-              console.log('Нет активных редакторов для обновления декораций');
-            }
-          }
-        } catch (err) {
-          console.error('Ошибка при обновлении декораций после диагностики:', err);
-        }
-      }
-      
-      return true;
-    } catch (error) {
-      console.error(`🐍 Ошибка при обновлении диагностики: ${filepath}`, error);
-      return false;
+      window.dispatchEvent(diagnosticEvent);
     }
   } catch (error) {
-    console.error(`🐍 Неожиданная ошибка при обновлении Python диагностики: ${filepath}`, error);
-    return false;
+    console.error(`Error updating Python diagnostics for ${fileURI}:`, error);
   }
 }
 
@@ -675,7 +443,12 @@ const updatePythonDiagnostics = (
   }
 
   try {
-    const markers = pyDiags.map((diag) => {
+    // Убеждаемся, что мы получаем все диагностики, а не только часть из них
+    console.log(`[Python] Получено ${pyDiags.length} диагностик для обработки`);
+    
+    // Усиливаем обнаружение синтаксических ошибок
+    let syntaxErrorDetected = false;
+    let markers = pyDiags.map((diag) => {
       const startPos = diag.range.start;
       const endPos = diag.range.end;
       
@@ -685,6 +458,21 @@ const updatePythonDiagnostics = (
       // Обрезаем длинные сообщения
       if (message.length > 100) {
         message = message.substring(0, 97) + '...';
+      }
+      
+      // Определяем, является ли это синтаксической ошибкой
+      const isSyntaxError = 
+        message.includes('SyntaxError') || 
+        message.includes('синтаксическая ошибка') ||
+        message.includes('недопустимый синтаксис') ||
+        message.includes('invalid syntax') ||
+        message.includes('expected') ||
+        message.includes('ожидалось');
+      
+      if (isSyntaxError) {
+        syntaxErrorDetected = true;
+        // Приоритизируем и улучшаем синтаксические ошибки
+        message = `Синтаксическая ошибка: ${message}`;
       }
       
       // Удаляем избыточную информацию
@@ -699,8 +487,14 @@ const updatePythonDiagnostics = (
       // Добавляем короткую версию сообщения для компактного отображения
       const shortMessage = message.length > 50 ? message.substring(0, 47) + '...' : message;
 
+      // Принудительно устанавливаем более высокую важность для синтаксических ошибок
+      let severity = mapSeverity(diag.severity);
+      if (isSyntaxError) {
+        severity = 8; // MarkerSeverity.Error
+      }
+
       return {
-        severity: mapSeverity(diag.severity),
+        severity: severity,
         startLineNumber: startPos.line + 1,
         startColumn: startPos.character + 1,
         endLineNumber: endPos.line + 1,
@@ -708,9 +502,184 @@ const updatePythonDiagnostics = (
         message: message,
         shortMessage: shortMessage, // Сохраняем короткое сообщение
         code: diag.code,
-        source: 'Python', // Унифицируем источник
+        source: diag.source || 'Python', // Сохраняем оригинальный источник
+        isSyntaxError: isSyntaxError // Добавляем флаг синтаксической ошибки
       };
     });
+    
+    // Если анализатор не выявил ошибок, но файл содержит синтаксические ошибки,
+    // выполняем дополнительную проверку содержимого файла
+    if (!syntaxErrorDetected && model && model.getValue) {
+      const content = model.getValue();
+      try {
+        // Проверяем наличие очевидных синтаксических ошибок, которые мог пропустить LSP
+        // Проверка на незакрытые скобки, кавычки и т.д.
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          // Проверяем незакрытые строки
+          const unclosedString = line.match(/(['"])(?:(?!\1)[^\\]|\\[\s\S])*$/);
+          // Проверяем незакрытые скобки
+          const openBrackets = (line.match(/\(/g) || []).length;
+          const closeBrackets = (line.match(/\)/g) || []).length;
+          const openSquare = (line.match(/\[/g) || []).length;
+          const closeSquare = (line.match(/\]/g) || []).length;
+          const openCurly = (line.match(/\{/g) || []).length;
+          const closeCurly = (line.match(/\}/g) || []).length;
+          
+          if (unclosedString || 
+              openBrackets > closeBrackets || 
+              openSquare > closeSquare || 
+              openCurly > closeCurly) {
+            // Добавляем синтаксическую ошибку, если нашли
+            markers.push({
+              severity: 8, // MarkerSeverity.Error
+              startLineNumber: i + 1,
+              startColumn: 1,
+              endLineNumber: i + 1,
+              endColumn: line.length + 1,
+              message: 'Возможно наличие незакрытых скобок или кавычек',
+              shortMessage: 'Незакрытые скобки/кавычки',
+              code: 'syntax',
+              source: 'Python Validator',
+              isSyntaxError: true
+            });
+          }
+          
+          // Проверяем отсутствие двоеточия после control flow statements
+          if (line.match(/^\s*(if|for|while|def|class|with|try|except|finally)\s+[^:]*$/)) {
+            markers.push({
+              severity: 8, // MarkerSeverity.Error
+              startLineNumber: i + 1,
+              startColumn: 1,
+              endLineNumber: i + 1,
+              endColumn: line.length + 1,
+              message: 'Синтаксическая ошибка: отсутствует двоеточие',
+              shortMessage: 'Отсутствует двоеточие',
+              code: 'syntax',
+              source: 'Python Validator',
+              isSyntaxError: true
+            });
+          }
+          
+          // Проверяем использование неопределенных переменных
+          const variableMatch = line.match(/\b(print|return|assert)\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/);
+          if (variableMatch && variableMatch[2]) {
+            const varName = variableMatch[2];
+            // Проверяем, определена ли переменная где-то в файле
+            if (!content.includes(`${varName} =`) && 
+                !content.includes(`def ${varName}`) &&
+                !content.includes(`class ${varName}`) &&
+                !content.includes(`import ${varName}`) &&
+                !content.includes(`from`) &&
+                !['os', 'sys', 'math', 'random', 'datetime', 'time', 'json', 're', 'functools', 'collections'].includes(varName)) {
+              markers.push({
+                severity: 8, // MarkerSeverity.Error
+                startLineNumber: i + 1,
+                startColumn: line.indexOf(varName),
+                endLineNumber: i + 1,
+                endColumn: line.indexOf(varName) + varName.length,
+                message: `Ошибка: использование неопределенной переменной "${varName}"`,
+                shortMessage: `Неопределенная переменная: ${varName}`,
+                code: 'undefined-variable',
+                source: 'Python Validator',
+                isSyntaxError: false
+              });
+            }
+          }
+          
+          // Проверка деления на ноль
+          const divisionByZeroMatch = line.match(/\b(\w+)\s*\/\s*(0|0\.0*)\b/);
+          if (divisionByZeroMatch) {
+            markers.push({
+              severity: 8, // MarkerSeverity.Error
+              startLineNumber: i + 1,
+              startColumn: line.indexOf(divisionByZeroMatch[0]),
+              endLineNumber: i + 1,
+              endColumn: line.indexOf(divisionByZeroMatch[0]) + divisionByZeroMatch[0].length,
+              message: 'Ошибка: деление на ноль',
+              shortMessage: 'Деление на ноль',
+              code: 'division-by-zero',
+              source: 'Python Validator',
+              isSyntaxError: false
+            });
+          }
+          
+          // Проверка на пустые списки в условиях
+          const emptyListCheck = line.match(/\bif\s+\[\s*\]\s*:/);
+          if (emptyListCheck) {
+            markers.push({
+              severity: 4, // MarkerSeverity.Warning
+              startLineNumber: i + 1,
+              startColumn: line.indexOf('[]'),
+              endLineNumber: i + 1,
+              endColumn: line.indexOf('[]') + 2,
+              message: 'Предупреждение: Пустой список всегда оценивается как False',
+              shortMessage: 'Условие с пустым списком',
+              code: 'empty-list-condition',
+              source: 'Python Validator',
+              isSyntaxError: false
+            });
+          }
+          
+          // Проверка сравнения с None с использованием == вместо is
+          const noneEqualityCheck = line.match(/\b(\w+)\s*==\s*None\b|\bNone\s*==\s*(\w+)\b/);
+          if (noneEqualityCheck) {
+            markers.push({
+              severity: 4, // MarkerSeverity.Warning
+              startLineNumber: i + 1,
+              startColumn: line.indexOf(noneEqualityCheck[0]),
+              endLineNumber: i + 1,
+              endColumn: line.indexOf(noneEqualityCheck[0]) + noneEqualityCheck[0].length,
+              message: 'Рекомендуется использовать "is None" вместо "== None"',
+              shortMessage: 'Используйте "is None"',
+              code: 'none-equality',
+              source: 'Python Validator',
+              isSyntaxError: false
+            });
+          }
+          
+          // Проверка вызова функций с неправильным числом аргументов 
+          // Проверяем вызовы функций, определенных в том же файле
+          const funcCallMatch = line.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\(([^)]*)\)/);
+          if (funcCallMatch) {
+            const funcName = funcCallMatch[1];
+            const argCount = funcCallMatch[2].split(',').filter(arg => arg.trim()).length;
+            
+            // Поиск определения функции
+            const funcDefRegex = new RegExp(`def\\s+${funcName}\\s*\\(([^)]+)\\)`, 'g');
+            const funcDefMatch = [...content.matchAll(funcDefRegex)];
+            
+            if (funcDefMatch.length > 0) {
+              // Находим последнее определение функции
+              const funcDef = funcDefMatch[funcDefMatch.length - 1];
+              const params = funcDef[1].split(',').filter(param => param.trim());
+              
+              // Считаем количество обязательных параметров (без значений по умолчанию)
+              const requiredParams = params.filter(param => !param.includes('=')).length;
+              
+              // Проверяем, соответствует ли количество аргументов количеству параметров
+              if (argCount < requiredParams) {
+                markers.push({
+                  severity: 8, // MarkerSeverity.Error
+                  startLineNumber: i + 1,
+                  startColumn: line.indexOf(funcCallMatch[0]),
+                  endLineNumber: i + 1,
+                  endColumn: line.indexOf(funcCallMatch[0]) + funcCallMatch[0].length,
+                  message: `Ошибка: недостаточно аргументов для функции "${funcName}". Ожидается минимум ${requiredParams}, получено ${argCount}`,
+                  shortMessage: `Недостаточно аргументов для ${funcName}`,
+                  code: 'arguments-count',
+                  source: 'Python Validator',
+                  isSyntaxError: false
+                });
+              }
+            }
+          }
+        }
+      } catch (parseErr) {
+        console.warn('[Python] Ошибка при дополнительной проверке синтаксиса:', parseErr);
+      }
+    }
 
     // Устанавливаем маркеры в модель Monaco
     console.log(`[Python] Установка ${markers.length} маркеров для модели ${model.uri.toString()}`);
@@ -873,7 +842,7 @@ const updatePythonDiagnostics = (
     if (window.pythonDiagnosticsStore) {
       // Преобразуем маркеры для хранилища
       const storeMarkers = markers.map((marker: any) => ({
-        severity: marker.severity,
+        severity: marker.severity === 8 ? 'error' : marker.severity === 4 ? 'warning' : 'info', // Конвертируем в строковое представление
         range: {
           start: { 
             line: marker.startLineNumber - 1, 
@@ -885,20 +854,59 @@ const updatePythonDiagnostics = (
           }
         },
         message: marker.message,
-        source: marker.source
+        rawMessage: marker.shortMessage || marker.message,
+        line: marker.startLineNumber,
+        column: marker.startColumn,
+        endLine: marker.endLineNumber,
+        endColumn: marker.endColumn,
+        source: marker.source || 'Python Validator',
+        code: marker.code || (marker.isSyntaxError ? 'syntax-error' : undefined)
       }));
       
       // Устанавливаем маркеры в хранилище
-      window.pythonDiagnosticsStore.setMarkers(model.uri.toString(), storeMarkers);
+      const fileUri = model.uri.toString();
+      window.pythonDiagnosticsStore.setMarkers(fileUri, storeMarkers);
+      
+      // Создаем проблемы для панели проблем
+      const filePathFromUri = fileUri.replace('file://', '');
+      const fileName = filePathFromUri.split('/').pop() || filePathFromUri.split('\\').pop() || 'unknown';
+      
+      // Организуем маркеры по файлам для отображения в панели проблем
+      const fileProblems = {
+        filePath: filePathFromUri,
+        fileName: fileName,
+        issues: storeMarkers.map((marker: any) => ({
+          severity: marker.severity,
+          message: marker.message,
+          rawMessage: marker.rawMessage || marker.message,
+          line: marker.line || marker.range.start.line + 1,
+          column: marker.column || marker.range.start.character + 1,
+          endLine: marker.endLine || marker.range.end.line + 1,
+          endColumn: marker.endColumn || marker.range.end.character + 1,
+          source: marker.source,
+          code: marker.code
+        }))
+      };
       
       // Отправляем событие обновления UI
       try {
+        // Отправляем событие обновления маркеров
         document.dispatchEvent(new CustomEvent('markers-updated', { 
-          detail: { uri: model.uri.toString(), markers } 
+          detail: { uri: fileUri, markers } 
         }));
         
+        // Получаем все проблемы для отображения
+        const allProblems = window.pythonDiagnosticsStore.getAllMarkersForUI() || [];
+        
+        // Обновляем текущий файл в списке проблем или добавляем новый
+        const updatedProblems = allProblems.filter(p => p.filePath !== filePathFromUri);
+        if (fileProblems.issues.length > 0) {
+          updatedProblems.push(fileProblems);
+        }
+        
+        // Отправляем событие обновления панели проблем с обновленными данными
         const problemsEvent = new CustomEvent('python-diagnostics-updated', { 
-          detail: { diagnostics: window.pythonDiagnosticsStore.getAllMarkersForUI() || [] } 
+          detail: { diagnostics: updatedProblems } 
         });
         document.dispatchEvent(problemsEvent);
       } catch (err) {
@@ -1041,6 +1049,63 @@ window.updatePythonDiagnostics = async (filePath?: string): Promise<string> => {
   }
 };
 
+/**
+ * Обновить диагностику для всех Python-файлов и обновить отображение ошибок
+ */
+export async function refreshAllPythonDiagnostics(): Promise<void> {
+  try {
+    console.log('🐍 Запуск обновления диагностики для всех Python файлов...');
+    
+    // Получаем все модели из Monaco
+    if (!window.monaco || !window.monaco.editor) {
+      console.error('Monaco не инициализирован');
+      return;
+    }
+    
+    // Получаем все открытые модели
+    const allModels = window.monaco.editor.getModels();
+    
+    // Фильтруем только Python файлы
+    const pythonModels = allModels.filter(model => {
+      const uri = model.uri.toString();
+      return uri.endsWith('.py');
+    });
+    
+    console.log(`🐍 Найдено ${pythonModels.length} Python файлов для обновления`);
+    
+    // Форсируем обновление диагностики для каждого файла
+    for (const model of pythonModels) {
+      try {
+        const uri = model.uri.toString();
+        const filePath = uri.replace('file://', '');
+        
+        console.log(`🐍 Обновление диагностики для ${filePath}`);
+        await updatePythonDiagnosticsForFile(filePath);
+        
+        // Небольшая пауза между обработками файлов
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (err) {
+        console.error('Ошибка при обновлении диагностики для модели:', err);
+      }
+    }
+    
+    // Обновляем отображение во всех редакторах
+    if (window.forceUpdateAllDecorations && typeof window.forceUpdateAllDecorations === 'function') {
+      window.forceUpdateAllDecorations();
+    }
+    
+    // Отправляем событие об обновлении диагностики
+    document.dispatchEvent(new CustomEvent('python-diagnostics-updated'));
+    
+    console.log('🐍 Обновление диагностики для всех Python файлов завершено');
+  } catch (error) {
+    console.error('Ошибка при обновлении диагностики всех Python файлов:', error);
+  }
+}
+
+// Делаем функцию доступной глобально
+(window as any).refreshAllPythonDiagnostics = refreshAllPythonDiagnostics;
+
 // Расширяем глобальный интерфейс Window
 declare global {
   interface Window {
@@ -1049,3 +1114,73 @@ declare global {
     globalMarkersStore?: Map<string, any[]>;
   }
 }
+
+/**
+ * Получить все текущие Python диагностики для отображения в панели проблем
+ * @returns Массив проблем по файлам
+ */
+export function getPythonDiagnostics(): any[] {
+  try {
+    // Проверяем наличие хранилища диагностики
+    if (!window.pythonDiagnosticsStore) {
+      console.warn('Хранилище диагностики Python недоступно');
+      return [];
+    }
+    
+    // Получаем все маркеры из хранилища
+    const allMarkers = window.pythonDiagnosticsStore.getAllMarkers();
+    if (!allMarkers || typeof allMarkers !== 'object') {
+      return [];
+    }
+    
+    // Преобразуем маркеры в формат для панели проблем
+    const result: any[] = [];
+    
+    // Обрабатываем все URI в хранилище
+    for (const [uri, markers] of Object.entries(allMarkers)) {
+      if (!Array.isArray(markers) || markers.length === 0) {
+        continue;
+      }
+      
+      // Получаем путь файла из URI
+      let filePath = uri.replace('file://', '');
+      // Нормализуем пути для Windows
+      filePath = filePath.replace(/^\/([a-zA-Z]:)/, '$1');
+      
+      // Получаем имя файла из пути
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+      
+      // Создаем объект с проблемами для файла
+      const fileProblems = {
+        filePath,
+        fileName,
+        issues: markers.map((marker: any) => ({
+          severity: marker.severity === 8 || marker.severity === 'error' ? 'error' : 
+                   marker.severity === 4 || marker.severity === 'warning' ? 'warning' : 'info',
+          message: marker.message || '',
+          rawMessage: marker.rawMessage || marker.shortMessage || marker.message || '',
+          line: marker.line || (marker.range?.start?.line ?? 0) + 1,
+          column: marker.column || (marker.range?.start?.character ?? 0) + 1,
+          endLine: marker.endLine || (marker.range?.end?.line ?? 0) + 1,
+          endColumn: marker.endColumn || (marker.range?.end?.character ?? 0) + 1,
+          source: marker.source || 'Python',
+          code: marker.code
+        }))
+      };
+      
+      // Добавляем в результат, если есть проблемы
+      if (fileProblems.issues.length > 0) {
+        result.push(fileProblems);
+      }
+    }
+    
+    console.log(`🐍 Получено ${result.length} файлов с проблемами`);
+    return result;
+  } catch (error) {
+    console.error('Ошибка при получении Python диагностик:', error);
+    return [];
+  }
+}
+
+// Делаем функцию доступной глобально
+(window as any).getPythonDiagnostics = getPythonDiagnostics;
