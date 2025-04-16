@@ -164,4 +164,16 @@ declare namespace monaco {
     export function registerDefinitionProvider(languageId: string, provider: any): IDisposable;
     export function registerDocumentFormattingEditProvider(languageId: string, provider: any): IDisposable;
   }
+}
+
+// Расширяем интерфейс Window для добавления глобальных функций Monaco
+interface Window {
+  monaco: typeof monaco;
+  setupErrorDecorations?: (editor: any) => void;
+  validatePythonSyntax?: (content: string, modelUri: any) => any[];
+  updatePythonDiagnostics?: (filePath: string) => Promise<string>;
+  pythonDiagnosticsStore?: any;
+  getPythonDiagnostics?: () => any[];
+  pylance?: any;
+  forceUpdateAllDecorations?: () => void;
 } 

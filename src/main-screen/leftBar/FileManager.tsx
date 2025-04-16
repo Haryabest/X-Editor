@@ -51,17 +51,19 @@ interface FileManagerProps {
       warnings: number;
     }
   };
+  editor: any; // Замена на any
 }
 
 const FileManager: React.FC<FileManagerProps> = ({ 
   selectedFolder, 
   setSelectedFile, 
-  setCurrentFiles, 
+  setCurrentFiles,
   setLastOpenedFolder,
   setSelectedFolder,
   selectedFile,
   gitChanges = [],
-  fileIssues = {}
+  fileIssues = {},
+  editor
 }) => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [contextMenu, setContextMenu] = useState<{
@@ -83,6 +85,14 @@ const FileManager: React.FC<FileManagerProps> = ({
   const [creatingDir, setCreatingDir] = useState(false);
   const [creatingItemName, setCreatingItemName] = useState('');
   const [creatingItemIsDir, setCreatingItemIsDir] = useState(true);
+  const [createPath, setCreatePath] = useState<string | null>(null);
+  const [createType, setCreateType] = useState<'file' | 'directory'>('file');
+  const [createName, setCreateName] = useState<string>('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [renamePath, setRenamePath] = useState<string | null>(null);
+  const [renameNewName, setRenameNewName] = useState<string>('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [currentFiles, setCurrentFilesInternal] = useState<FileItem[]>([]);
   
   // Add a ref for the creating input
   const createInputRef = useRef<HTMLInputElement>(null);
@@ -128,19 +138,70 @@ const FileManager: React.FC<FileManagerProps> = ({
     }
   }, [gitChanges]);
 
-  // Add debugging for file issues
+  // Инициализируем функцию обновления декораций для ошибок, если её ещё нет
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.forceUpdateAllDecorations) {
+      window.forceUpdateAllDecorations = () => {
+        try {
+          if (window.monaco && window.setupErrorDecorations) {
+            console.log('⚡ Принудительное обновление декораций для всех редакторов');
+            // Используем более безопасный подход к получению редакторов
+            const editors = window.monaco && 
+                          typeof window.monaco === 'object' && 
+                          window.monaco.editor && 
+                          typeof window.monaco.editor.getEditors === 'function' 
+                            ? window.monaco.editor.getEditors() 
+                            : [];
+                            
+            if (Array.isArray(editors)) {
+              editors.forEach((editor: any) => {
+                if (editor && typeof editor.getModel === 'function' && editor.getModel() && window.setupErrorDecorations) {
+                  window.setupErrorDecorations(editor);
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при обновлении декораций:', error);
+        }
+      };
+    }
+  }, []); // Пустой массив зависимостей, так как это инициализация
+
+  // Отдельный эффект для обработки обновления маркеров
+  useEffect(() => {
+    const handleMarkersUpdated = () => {
+      if (window.forceUpdateAllDecorations) {
+        window.forceUpdateAllDecorations();
+      }
+    };
+    
+    document.addEventListener('markers-updated', handleMarkersUpdated);
+    return () => {
+      document.removeEventListener('markers-updated', handleMarkersUpdated);
+    };
+  }, []); // Пустой массив зависимостей, так как обработчик не меняется
+
+  // Отдельный эффект для обработки fileIssues
   useEffect(() => {
     if (Object.keys(fileIssues).length > 0) {
       console.log('🔍 FileManager received file issues:', fileIssues);
     }
-  }, [fileIssues]);
+  }, [fileIssues]); // Зависимость только от fileIssues
 
   // Обновляем список видимых элементов при каждом изменении дерева файлов
   useEffect(() => {
     if (fileTree.length > 0) {
-      updateVisibleItems(fileTree);
+      // Более эффективное обновление, без лишних вызовов
+      const items = collectVisibleItems(fileTree);
+      // Проверяем, действительно ли изменилось содержимое перед обновлением
+      if (JSON.stringify(items.map((i: FileItem) => i.path)) !== JSON.stringify(currentFiles.map((i: FileItem) => i.path))) {
+        setCurrentFiles(items);
+        setCurrentFilesInternal(items);
+      }
     }
-  }, [fileTree]);
+  // Убираем setCurrentFiles из зависимостей, чтобы избежать бесконечного цикла
+  }, [fileTree, gitStatusMap, fileIssues, currentFiles]);
 
   // Собираем видимые элементы из текущего дерева
   const collectVisibleItems = (items: FileItem[]): FileItem[] => {
@@ -169,12 +230,6 @@ const FileManager: React.FC<FileManagerProps> = ({
     });
     
     return visible;
-  };
-
-  // Обновляем состояние
-  const updateVisibleItems = (tree: FileItem[]) => {
-    const items = collectVisibleItems(tree);
-    setCurrentFiles(items);
   };
 
   useEffect(() => {
@@ -543,6 +598,45 @@ const FileManager: React.FC<FileManagerProps> = ({
     const issue = fileIssues[path];
     if (issue) {
       console.log(`🔍 Checking issues for ${path}:`, issue);
+      
+      // Добавляем код для принудительного отображения ошибок в редакторе
+      if (issue.errors > 0 || issue.warnings > 0) {
+        try {
+          // Используем requestAnimationFrame для оптимизации производительности
+          requestAnimationFrame(() => {
+            if (window.monaco && window.setupErrorDecorations) {
+              // Используем более безопасный подход к получению редакторов
+              const editors = window.monaco && 
+                            typeof window.monaco === 'object' && 
+                            window.monaco.editor && 
+                            typeof window.monaco.editor.getEditors === 'function' 
+                              ? window.monaco.editor.getEditors() 
+                              : [];
+                              
+              if (Array.isArray(editors)) {
+                for (const editor of editors) {
+                  if (editor && typeof editor.getModel === 'function') {
+                    const model = editor.getModel();
+                    if (model) {
+                      const uri = model.uri.toString();
+                      // Проверяем, соответствует ли URI текущему пути файла
+                      if (uri.includes(path.replace(/\\/g, '/')) || 
+                          path.includes(uri.replace('file:///', ''))) {
+                        console.log(`🔍 Принудительно обновляем декорации для ${path}`);
+                        window.setupErrorDecorations(editor);
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Ошибка при попытке применить декорации:', error);
+        }
+      }
+      
       if (issue.errors > 0) return 'error';
       if (issue.warnings > 0) return 'warning';
     }

@@ -8,6 +8,38 @@ import { languageServerManager } from './monaco-lsp-server-manager';
 import { lspDocumentManager } from './lsp-document-manager';
 import { MonacoLSPDiagnostics } from './monaco-lsp-diagnostics';
 
+// Импорт необходимых типов
+import * as monaco from 'monaco-editor';
+
+// Определение типов LSP
+interface DiagnosticPosition {
+  line: number;
+  character: number;
+}
+
+interface DiagnosticRange {
+  start: DiagnosticPosition;
+  end: DiagnosticPosition;
+}
+
+interface Diagnostic {
+  range: DiagnosticRange;
+  severity?: DiagnosticSeverity;
+  code?: string | number;
+  source?: string;
+  message: string;
+  relatedInformation?: any[];
+  tags?: number[];
+}
+
+// Определяем перечисление для уровней важности диагностики
+enum DiagnosticSeverity {
+  Error = 1,
+  Warning = 2,
+  Information = 3,
+  Hint = 4
+}
+
 // Глобальные переменные для отслеживания состояния
 let pythonLSPInitialized = false;
 let diagnosticHandlersInitialized = false;
@@ -433,6 +465,26 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
         }
       }
       
+      // Применяем декорации ошибок к активному редактору
+      if (window.monaco && window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+        // Находим все редакторы и обновляем декорации
+        const editors = window.monaco.editor.getEditors();
+        if (editors && editors.length > 0) {
+          console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
+          editors.forEach((editor: any) => {
+            try {
+              if (window.setupErrorDecorations) {
+                window.setupErrorDecorations(editor);
+              }
+            } catch (err) {
+              console.warn('Ошибка при обновлении декораций:', err);
+            }
+          });
+        } else {
+          console.log('Нет активных редакторов для обновления декораций');
+        }
+      }
+      
       return true;
     } catch (error) {
       console.error(`🐍 Ошибка при обновлении диагностики: ${filepath}`, error);
@@ -524,30 +576,32 @@ export async function forcePythonDiagnosticsUpdate(filepath: string) {
           }
         }));
       }
+      
+      // Применяем декорации ошибок к активному редактору
+      if (window.monaco && window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+        // Находим все редакторы и обновляем декорации
+        const editors = window.monaco.editor.getEditors();
+        if (editors && editors.length > 0) {
+          console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
+          editors.forEach((editor: any) => {
+            try {
+              if (window.setupErrorDecorations) {
+                window.setupErrorDecorations(editor);
+              }
+            } catch (err) {
+              console.warn('Ошибка при обновлении декораций:', err);
+            }
+          });
+        } else {
+          console.log('Нет активных редакторов для обновления декораций');
+        }
+      }
     } catch (e) {
       console.error('Ошибка при проверке результатов диагностики:', e);
     }
   }
   
   return result;
-}
-
-/**
- * Преобразование уровня важности LSP в уровень Monaco
- * @param lspSeverity Уровень важности из LSP (1-4)
- * @returns Уровень важности для Monaco
- */
-function convertSeverity(lspSeverity: number): number {
-  if (!window.monaco) return 8; // Значение по умолчанию
-  
-  // 1 = Error, 2 = Warning, 3 = Information, 4 = Hint
-  switch (lspSeverity) {
-    case 1: return window.monaco.MarkerSeverity.Error;
-    case 2: return window.monaco.MarkerSeverity.Warning;
-    case 3: return window.monaco.MarkerSeverity.Info;
-    case 4: return window.monaco.MarkerSeverity.Hint;
-    default: return window.monaco.MarkerSeverity.Info;
-  }
 }
 
 /**
@@ -565,4 +619,300 @@ export function clearAllPythonDiagnostics(): void {
  */
 export function isPythonDiagnosticsAvailable(): boolean {
   return !!(window as any).pythonDiagnosticsStore;
+}
+
+/**
+ * Преобразование уровня важности LSP в уровень Monaco
+ * @param severity Уровень важности диагностики
+ * @returns Уровень важности для Monaco
+ */
+const mapSeverity = (severity: DiagnosticSeverity | undefined): number => {
+  if (!severity) return 1; // По умолчанию Info
+
+  switch (severity) {
+    case DiagnosticSeverity.Error:
+      return 8; // monaco.MarkerSeverity.Error
+    case DiagnosticSeverity.Warning:
+      return 4; // monaco.MarkerSeverity.Warning
+    case DiagnosticSeverity.Information:
+      return 2; // monaco.MarkerSeverity.Info
+    case DiagnosticSeverity.Hint:
+      return 1; // monaco.MarkerSeverity.Hint
+    default:
+      return 2; // Info по умолчанию
+  }
+};
+
+/**
+ * Обновление диагностики Python для модели
+ * @param model Модель текста Monaco
+ * @param pyDiags Массив диагностик Python
+ */
+const updatePythonDiagnostics = (
+  model: any, // Используем any для модели Monaco
+  pyDiags: Diagnostic[]
+) => {
+  if (!model || !window.monaco?.editor?.setModelMarkers) {
+    console.error('Не удалось обновить диагностику: Monaco или модель недоступны');
+    return;
+  }
+
+  try {
+    const markers = pyDiags.map((diag) => {
+      const startPos = diag.range.start;
+      const endPos = diag.range.end;
+      
+      // Делаем сообщения более компактными
+      let message = diag.message;
+      
+      // Обрезаем длинные сообщения
+      if (message.length > 100) {
+        message = message.substring(0, 97) + '...';
+      }
+      
+      // Удаляем избыточную информацию
+      message = message
+        .replace(/Python \[\d+(\.\d+)*\]/g, '')
+        .replace(/\(pycodestyle\)/g, '')
+        .replace(/\(pylint\)/g, '')
+        .replace(/\(mypy\)/g, '')
+        .replace(/\(pyflakes\)/g, '')
+        .replace(/(^\s+|\s+$)/g, ''); // Удаляем пробелы в начале и конце
+
+      return {
+        severity: mapSeverity(diag.severity),
+        startLineNumber: startPos.line + 1,
+        startColumn: startPos.character + 1,
+        endLineNumber: endPos.line + 1,
+        endColumn: endPos.character + 1,
+        message: message,
+        code: diag.code,
+        source: 'Python', // Унифицируем источник
+      };
+    });
+
+    // Устанавливаем маркеры в модель Monaco
+    console.log(`[Python] Установка ${markers.length} маркеров для модели ${model.uri.toString()}`);
+    window.monaco.editor.setModelMarkers(model, 'python', markers);
+
+    // Обновляем все декорации в редакторах, использующих эту модель
+    if (window.monaco.editor && window.monaco.editor.getEditors) {
+      const editors = window.monaco.editor.getEditors().filter((editor: any) => 
+        editor.getModel() && editor.getModel().uri.toString() === model.uri.toString()
+      );
+
+      if (editors.length > 0) {
+        console.log(`[Python] Обновление декораций для ${editors.length} редакторов`);
+        
+        editors.forEach((editor: any) => {
+          try {
+            // Если есть глобальная функция setup, используем её
+            if (window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+              window.setupErrorDecorations(editor);
+            } else {
+              // Применяем декорации напрямую
+              // Убедимся, что у редактора включены нужные опции
+              editor.updateOptions({ 
+                glyphMargin: true, 
+                lineNumbers: 'on',
+                minimap: { enabled: true } 
+              });
+              
+              // Устанавливаем стили, если их еще нет
+              if (!document.getElementById('python-error-styles')) {
+                const style = document.createElement('style');
+                style.id = 'python-error-styles';
+                style.innerHTML = `
+                  .python-error-decoration { 
+                    background-color: rgba(255, 0, 0, 0.1) !important; 
+                    border-bottom: 1px wavy red !important; 
+                  }
+                  .python-warning-decoration { 
+                    background-color: rgba(255, 165, 0, 0.1) !important; 
+                    border-bottom: 1px wavy orange !important; 
+                  }
+                  .python-error-inline { 
+                    text-decoration: wavy underline red !important; 
+                  }
+                  .python-warning-inline { 
+                    text-decoration: wavy underline orange !important; 
+                  }
+                  .error-glyph { 
+                    width: 12px !important; 
+                    height: 12px !important; 
+                    display: inline-block !important;
+                    margin-left: 3px !important;
+                    background-color: transparent !important;
+                    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="red"/><path d="M8 4v5M8 11v1" stroke="white" stroke-width="1.5" /></svg>') !important; 
+                    background-size: 12px 12px !important;
+                    background-repeat: no-repeat !important;
+                    background-position: center !important;
+                  }
+                  .warning-glyph { 
+                    width: 12px !important; 
+                    height: 12px !important;
+                    display: inline-block !important;
+                    margin-left: 3px !important;
+                    background-color: transparent !important;
+                    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M7.5 2L1 13h13L7.5 2z" fill="orange"/><path d="M7.5 6v4M7.5 12v1" stroke="white" stroke-width="1.5" /></svg>') !important;
+                    background-size: 12px 12px !important;
+                    background-repeat: no-repeat !important;
+                    background-position: center !important;
+                  }
+                `;
+                document.head.appendChild(style);
+              }
+              
+              // Создаем декорации на основе маркеров
+              const errorDecorations = markers.map((marker: any) => {
+                // Создаем диапазон безопасным способом
+                let range;
+                try {
+                  range = {
+                    startLineNumber: marker.startLineNumber,
+                    startColumn: marker.startColumn, 
+                    endLineNumber: marker.endLineNumber,
+                    endColumn: marker.endColumn
+                  };
+                } catch (err) {
+                  console.warn('[Python] Ошибка при создании диапазона маркера:', err);
+                  return null;
+                }
+
+                return {
+                  range: range,
+                  options: {
+                    className: marker.severity === 8 ? 'python-error-decoration' : 'python-warning-decoration',
+                    hoverMessage: { value: marker.message },
+                    inlineClassName: marker.severity === 8 ? 'python-error-inline' : 'python-warning-inline',
+                    glyphMarginClassName: marker.severity === 8 ? 'error-glyph' : 'warning-glyph',
+                    overviewRuler: {
+                      color: marker.severity === 8 ? 'red' : 'orange',
+                      position: window.monaco.editor.OverviewRulerLane.Right
+                    }
+                  }
+                };
+              }).filter(Boolean); // Убираем null значения
+              
+              // Удаляем старые декорации и применяем новые
+              const oldDecorations = editor.getDecorationsInRange(model.getFullModelRange()) || [];
+              const oldDecorationIds = oldDecorations
+                .filter((d: any) => d.options.className?.includes('python-') || 
+                                d.options.glyphMarginClassName?.includes('-glyph'))
+                .map((d: any) => d.id);
+              
+              console.log(`[Python] Удалено ${oldDecorationIds.length} старых декораций`);
+              editor.deltaDecorations(oldDecorationIds, errorDecorations);
+              
+              // Принудительно обновляем отображение
+              setTimeout(() => {
+                editor.layout();
+                editor.render(true);
+              }, 100);
+            }
+          } catch (err) {
+            console.error('[Python] Ошибка при обновлении декораций:', err);
+          }
+        });
+      }
+    }
+    
+    // Обновляем панель проблем, если доступно хранилище диагностики
+    if (window.pythonDiagnosticsStore) {
+      // Преобразуем маркеры для хранилища
+      const storeMarkers = markers.map((marker: any) => ({
+        severity: marker.severity,
+        range: {
+          start: { 
+            line: marker.startLineNumber - 1, 
+            character: marker.startColumn - 1 
+          },
+          end: {
+            line: marker.endLineNumber - 1,
+            character: marker.endColumn - 1
+          }
+        },
+        message: marker.message,
+        source: marker.source
+      }));
+      
+      // Устанавливаем маркеры в хранилище
+      window.pythonDiagnosticsStore.setMarkers(model.uri.toString(), storeMarkers);
+      
+      // Отправляем событие обновления UI
+      try {
+        document.dispatchEvent(new CustomEvent('markers-updated', { 
+          detail: { uri: model.uri.toString(), markers } 
+        }));
+        
+        const problemsEvent = new CustomEvent('python-diagnostics-updated', { 
+          detail: { diagnostics: window.pythonDiagnosticsStore.getAllMarkersForUI() || [] } 
+        });
+        document.dispatchEvent(problemsEvent);
+      } catch (err) {
+        console.error('[Python] Ошибка при обновлении UI:', err);
+      }
+    }
+  } catch (error) {
+    console.error('[Python] Ошибка в updatePythonDiagnostics:', error);
+  }
+};
+
+/**
+ * Обновление всех отображений ошибок для открытых Python файлов
+ */
+export function refreshPythonDiagnosticsDisplay() {
+  console.log('🔄 Обновление отображения ошибок Python в редакторах...');
+  
+  try {
+    // Проверяем наличие Monaco и функции обновления декораций
+    if (!window.monaco || !window.setupErrorDecorations) {
+      console.warn('Monaco или функция setupErrorDecorations недоступны');
+      return;
+    }
+    
+    // Получаем все открытые редакторы
+    const editors = window.monaco.editor.getEditors();
+    if (!editors || editors.length === 0) {
+      console.log('Нет активных редакторов для обновления');
+      return;
+    }
+    
+    console.log(`🎨 Обновление декораций для ${editors.length} открытых редакторов`);
+    
+    // Обновляем декорации для каждого редактора
+    editors.forEach((editor: any) => {
+      if (editor && editor.getModel()) {
+        try {
+          const model = editor.getModel();
+          const languageId = model.getLanguageId();
+          
+          // Проверяем, является ли это Python файлом
+          if (languageId === 'python') {
+            console.log(`🐍 Обновление декораций для Python файла: ${model.uri.toString()}`);
+            if (window.setupErrorDecorations) {
+              window.setupErrorDecorations(editor);
+            }
+          }
+        } catch (err) {
+          console.warn('Ошибка при обновлении декораций редактора:', err);
+        }
+      }
+    });
+    
+    // Если есть хранилище диагностики, обновляем панель проблем
+    if (window.pythonDiagnosticsStore) {
+      try {
+        const diagnostics = window.pythonDiagnosticsStore.getAllMarkersForUI() || [];
+        document.dispatchEvent(new CustomEvent('python-diagnostics-updated', { 
+          detail: { diagnostics } 
+        }));
+        console.log(`📊 Обновлена панель проблем с ${diagnostics.length} файлами диагностики`);
+      } catch (err) {
+        console.error('Ошибка при обновлении панели проблем:', err);
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка при обновлении отображения ошибок Python:', error);
+  }
 }

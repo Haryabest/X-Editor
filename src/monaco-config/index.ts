@@ -19,6 +19,8 @@ declare global {
     monaco: any;
     logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
     monacoDebug?: any;
+    setupErrorDecorations?: (editor: any) => void;
+    validatePythonSyntax?: (content: string, modelUri: any) => any[];
   }
 }
 
@@ -1663,6 +1665,275 @@ export function configureMonaco(openedFiles: MonacoFileConfig[]): void {
         }
       } catch (err) {
         console.error(`Error configuring file: ${file.path}`, err);
+      }
+    });
+
+    // Добавляем функцию для отображения ошибок непосредственно в редакторе
+    window.setupErrorDecorations = (editor: any) => {
+      if (!editor || !window.monaco) return;
+      
+      const model = editor.getModel();
+      if (!model) return;
+      
+      // Получаем все маркеры для текущей модели
+      const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+      console.log(`Найдено ${markers.length} маркеров для модели ${model.uri.toString()}`);
+      
+      // Создаем декорации для ошибок и предупреждений
+      const errorDecorations = markers.map((marker: any) => {
+        const isError = marker.severity === window.monaco.MarkerSeverity.Error;
+        const isWarning = marker.severity === window.monaco.MarkerSeverity.Warning;
+        
+        if (!isError && !isWarning) return null;
+        
+        // Тип декорации в зависимости от типа ошибки
+        const className = isError ? 'monaco-error-decoration' : 'monaco-warning-decoration';
+        
+        // Формируем полное сообщение с указанием типа ошибки
+        const messagePrefix = isError ? '🔴 Ошибка: ' : '⚠️ Предупреждение: ';
+        
+        return {
+          range: new window.monaco.Range(
+            marker.startLineNumber,
+            marker.startColumn,
+            marker.endLineNumber,
+            marker.endColumn
+          ),
+          options: {
+            inlineClassName: className,
+            hoverMessage: {
+              value: messagePrefix + marker.message
+            },
+            className: isError ? 'squiggly-error' : 'squiggly-warning',
+            marginClassName: isError ? 'margin-error' : 'margin-warning',
+            isWholeLine: false,
+            stickiness: 1 // Сохраняем декорации при редактировании
+          }
+        };
+      }).filter(Boolean);
+      
+      // Получаем текущие декорации, если они есть
+      let currentDecorations: string[] = [];
+      if (editor._errorDecorations) {
+        currentDecorations = editor._errorDecorations;
+      }
+      
+      // Применяем декорации к редактору и сохраняем их ID
+      editor._errorDecorations = editor.deltaDecorations(currentDecorations, errorDecorations);
+      
+      console.log(`Применено ${errorDecorations.length} декораций к редактору`);
+    };
+    
+    // Добавляем стили для декораций ошибок с более яркими цветами
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = `
+      .monaco-error-decoration {
+        background-color: rgba(255, 0, 0, 0.3) !important;
+        border-bottom: 2px wavy #ff0000 !important;
+        font-weight: bold;
+      }
+      .monaco-warning-decoration {
+        background-color: rgba(255, 166, 0, 0.2) !important;
+        border-bottom: 2px wavy #ff9800 !important;
+      }
+      .squiggly-error {
+        background: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%206%203'%20enable-background%3D'new%200%200%206%203'%20height%3D'3'%20width%3D'6'%3E%3Cg%20fill%3D'%23ff0000'%3E%3Cpolygon%20points%3D'5.5%2C0%202.5%2C3%201.1%2C3%204.1%2C0'%2F%3E%3Cpolygon%20points%3D'4%2C0%206%2C2%206%2C0.6%205.4%2C0'%2F%3E%3Cpolygon%20points%3D'0%2C2%201%2C3%202.4%2C3%200%2C0.6'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") repeat-x bottom left !important;
+      }
+      .squiggly-warning {
+        background: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%206%203'%20enable-background%3D'new%200%200%206%203'%20height%3D'3'%20width%3D'6'%3E%3Cg%20fill%3D'%23ff9800'%3E%3Cpolygon%20points%3D'5.5%2C0%202.5%2C3%201.1%2C3%204.1%2C0'%2F%3E%3Cpolygon%20points%3D'4%2C0%206%2C2%206%2C0.6%205.4%2C0'%2F%3E%3Cpolygon%20points%3D'0%2C2%201%2C3%202.4%2C3%200%2C0.6'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") repeat-x bottom left !important;
+      }
+      .margin-error {
+        background-color: #ff0000 !important;
+        width: 5px !important;
+      }
+      .margin-warning {
+        background-color: #ff9800 !important;
+        width: 5px !important;
+      }
+    `;
+    document.head.appendChild(styleSheet);
+    
+    // Регистрируем обработчик события изменения маркеров
+    window.monaco.editor.onDidChangeMarkers((e: any) => {
+      const editors = window.monaco.editor.getEditors();
+      editors.forEach((editor: any) => {
+        const model = editor.getModel();
+        if (model && e.includes(model.uri)) {
+          window.setupErrorDecorations(editor);
+        }
+      });
+    });
+
+    // Принудительно применяем декорации ко всем существующим редакторам
+    const existingEditors = window.monaco.editor.getEditors();
+    for (const editor of existingEditors) {
+      window.setupErrorDecorations(editor);
+    }
+
+    // Добавляем обработчик события создания редактора
+    window.monaco.editor.onDidCreateEditor((editor: any) => {
+      setTimeout(() => {
+        window.setupErrorDecorations(editor);
+      }, 100);
+    });
+
+    // Также отслеживаем событие смены модели редактора
+    window.monaco.editor.onDidChangeModelContent((e: any) => {
+      const model = e.model;
+      if (model && model.uri.path.endsWith('.py')) {
+        const editors = window.monaco.editor.getEditors().filter(
+          (editor: any) => editor.getModel() && editor.getModel().uri.toString() === model.uri.toString()
+        );
+        
+        editors.forEach((editor: any) => {
+          setTimeout(() => {
+            window.setupErrorDecorations(editor);
+          }, 100);
+        });
+      }
+    });
+
+    // Добавляем функцию для быстрой проверки Python-кода на ошибки синтаксиса без LSP
+    window.validatePythonSyntax = (content: string, modelUri: any): any[] => {
+      if (!content || !window.monaco) return [];
+      
+      const markers: any[] = [];
+      
+      try {
+        // Основные ошибки синтаксиса Python, которые можно обнаружить с помощью регулярных выражений
+        const lines = content.split('\n');
+        
+        lines.forEach((line, lineIndex) => {
+          const trimmedLine = line.trim();
+          
+          // Игнорируем пустые строки и комментарии
+          if (trimmedLine === '' || trimmedLine.startsWith('#')) {
+            return;
+          }
+          
+          // Проверка функции print без скобок (Python 3 требует скобки)
+          if (/^print\s+[^(]/.test(trimmedLine)) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'В Python 3 функция print требует скобки',
+              startLineNumber: lineIndex + 1,
+              startColumn: line.indexOf('print') + 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.indexOf('print') + 6,
+              source: 'python-syntax'
+            });
+          }
+          
+          // Пропущенные ":" после блочных конструкций
+          if (/^(if|elif|else|for|while|def|class|with|try|except|finally)\b.*[^:)]\s*$/.test(trimmedLine)) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Ожидается двоеточие ":" в конце блочной конструкции',
+              startLineNumber: lineIndex + 1,
+              startColumn: line.length,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-syntax'
+            });
+          }
+          
+          // Проверка незакрытых скобок в строке
+          const openParens = (line.match(/\(/g) || []).length;
+          const closeParens = (line.match(/\)/g) || []).length;
+          
+          if (openParens !== closeParens && !line.trim().endsWith('\\')) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Непарные круглые скобки в строке',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-syntax'
+            });
+          }
+          
+          // Проверка незакрытых кавычек
+          const singleQuotes = (line.match(/'/g) || []).length;
+          const doubleQuotes = (line.match(/"/g) || []).length;
+          
+          if ((singleQuotes % 2 !== 0 || doubleQuotes % 2 !== 0) && 
+              !line.includes('"""') && !line.includes("'''")) {
+            markers.push({
+              severity: window.monaco.MarkerSeverity.Error,
+              message: 'Незакрытые строковые литералы',
+              startLineNumber: lineIndex + 1,
+              startColumn: 1,
+              endLineNumber: lineIndex + 1,
+              endColumn: line.length + 1,
+              source: 'python-syntax'
+            });
+          }
+        });
+        
+        // Если найдены маркеры, устанавливаем их для модели
+        if (markers.length > 0) {
+          window.monaco.editor.setModelMarkers(
+            window.monaco.editor.getModel(modelUri), 
+            'python-syntax-check', 
+            markers
+          );
+        }
+        
+        return markers;
+      } catch (error) {
+        console.error('Ошибка при проверке Python синтаксиса:', error);
+        return [];
+      }
+    };
+
+    // Добавляем слушатель изменений моделей для проверки синтаксиса Python на лету
+    window.monaco.editor.onDidCreateModel((model: any) => {
+      const uri = model.uri.toString();
+      
+      // Проверяем, что это Python файл
+      if (uri.endsWith('.py') || getLanguageFromExtension(uri.split('.').pop()) === 'python') {
+        console.log(`Зарегистрирован слушатель изменений для Python файла: ${uri}`);
+        
+        // Начальная проверка синтаксиса
+        if (window.validatePythonSyntax) {
+          window.validatePythonSyntax(model.getValue(), model.uri);
+        }
+        
+        // Слушатель изменений содержимого модели
+        model.onDidChangeContent(() => {
+          console.log(`Изменение содержимого Python модели: ${uri}`);
+          
+          // Запускаем немедленную проверку синтаксиса
+          if (window.validatePythonSyntax) {
+            window.validatePythonSyntax(model.getValue(), model.uri);
+          }
+          
+          // Обновляем декорации во всех редакторах для этой модели
+          if (window.setupErrorDecorations) {
+            const editors = window.monaco.editor.getEditors();
+            editors.forEach((editor: any) => {
+              if (editor.getModel().uri.toString() === uri) {
+                window.setupErrorDecorations(editor);
+              }
+            });
+          }
+          
+          // Запускаем полную Python диагностику с небольшой задержкой
+          if (window.updatePythonDiagnostics) {
+            // Используем объект как хранилище таймаута, добавляя проверку
+            if (!model._pythonDiagnosticsTimeout) {
+              model._pythonDiagnosticsTimeout = null;
+            }
+            
+            clearTimeout(model._pythonDiagnosticsTimeout);
+            model._pythonDiagnosticsTimeout = setTimeout(() => {
+              if (window.updatePythonDiagnostics) {
+                window.updatePythonDiagnostics(uri);
+              }
+            }, 500);
+          }
+        });
       }
     });
   } catch (error) {

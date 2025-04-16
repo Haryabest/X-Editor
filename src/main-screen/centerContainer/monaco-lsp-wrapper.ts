@@ -720,88 +720,11 @@ export class MonacoLSPWrapper {
       lspDocumentManager.addDocument(filePath, fileType, content);
       console.log(`Документ добавлен в LSP: ${filePath} (${fileType})`);
       
-      // Специальная обработка для разных типов файлов
-      if (fileType === 'typescript' || fileType === 'typescriptreact') {
-        // Специальная обработка для TypeScript
-        console.log(`Специальная обработка TypeScript файла ${filePath}`);
-        this.registerTypeScriptDocument(filePath, content);
-      } 
-      // Обработка Python файлов
-      else if (fileType === 'python' || fileExtension === 'py' || fileExtension === 'pyw' || fileExtension === 'pyi') {
-        // Специальная обработка для Python
+      // Специальная обработка для Python файлов
+      if (fileType === 'python') {
         console.log(`Специальная обработка Python файла ${filePath}`);
-        
-        // Регистрируем Python документ
+        // Проверяем наличие специализированного Python обработчика
         this.registerPythonDocument(filePath, content);
-        
-        // Загружаем Python LSP, если еще не загружен
-        import('../../monaco-config/register-python').then(async module => {
-          try {
-            if (typeof (window as any).updatePythonDiagnostics !== 'function') {
-              console.log('Python LSP еще не загружен, запускаем регистрацию...');
-              if (typeof module.registerPython === 'function') {
-                const result = module.registerPython();
-                console.log(`Регистрация Python завершена с результатом: ${result}`);
-              } else {
-                console.warn('Функция registerPython не найдена в импортированном модуле');
-              }
-            }
-            
-            // Принудительно запускаем обновление диагностики через глобальную функцию
-            // Используем увеличенную задержку и несколько повторных попыток
-            const updateDiagnosticsWithRetry = async (retryCount = 0, maxRetries = 3) => {
-              if (retryCount >= maxRetries) {
-                console.warn(`Достигнуто максимальное количество попыток обновления диагностики для ${filePath}`);
-                return;
-              }
-              
-              try {
-                if (typeof (window as any).updatePythonDiagnostics === 'function') {
-                  console.log(`Запуск обновления диагностики для Python файла: ${filePath} (попытка ${retryCount + 1}/${maxRetries})`);
-                  const result = await (window as any).updatePythonDiagnostics(filePath);
-                  console.log(`Результат обновления диагностики: ${result}`);
-                  
-                  // Если обновление не удалось, пробуем еще раз через некоторое время
-                  if (result && result.startsWith('error:')) {
-                    setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 2000);
-                  }
-                } else {
-                  console.warn(`Функция updatePythonDiagnostics недоступна (попытка ${retryCount + 1}/${maxRetries})`);
-                  
-                  // Пробуем снова через 1,5 секунды
-                  setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 1500);
-                }
-              } catch (error) {
-                console.error(`Ошибка при обновлении диагностики (попытка ${retryCount + 1}/${maxRetries}):`, error);
-                
-                // В случае ошибки тоже повторяем
-                setTimeout(() => updateDiagnosticsWithRetry(retryCount + 1, maxRetries), 1500);
-              }
-            };
-            
-            // Запускаем процесс обновления с задержкой 2 секунды
-            setTimeout(() => updateDiagnosticsWithRetry(), 2000);
-          } catch (error) {
-            console.error('Ошибка при обработке Python LSP:', error);
-          }
-        }).catch(error => {
-          console.error('Ошибка при импорте модуля register-python:', error);
-        });
-      }
-      // Общая обработка для других типов файлов
-      else if (serverType) {
-        // Подключаемся к предопределенному серверу для этого типа файла
-        this.connectToPredefinedServer(serverType)
-          .then(success => {
-            if (success) {
-              console.log(`Успешное подключение к серверу ${serverType} для файла ${filePath}`);
-            } else {
-              console.warn(`Не удалось подключиться к серверу ${serverType} для файла ${filePath}`);
-            }
-          })
-          .catch(error => {
-            console.error(`Ошибка при подключении к серверу ${serverType}:`, error);
-          });
       }
       
       // Устанавливаем язык модели, если есть Monaco и модель
@@ -811,13 +734,21 @@ export class MonacoLSPWrapper {
           let model = null;
           const models = window.monaco.editor.getModels();
           
+          // Нормализуем путь к файлу для сравнения
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          
           // Сначала ищем существующую модель
           for (const m of models) {
             try {
-              const modelUri = m.uri.toString();
-              if (modelUri.includes(filePath) || 
-                  filePath.includes(modelUri.replace('file://', ''))) {
+              const modelUri = m.uri.toString().replace(/\\/g, '/');
+              // Убираем file:/// префикс для сравнения
+              const cleanModelUri = modelUri.replace(/^file:\/\/\/?/, '');
+              
+              if (modelUri.includes(normalizedPath) || 
+                  cleanModelUri.includes(normalizedPath) ||
+                  normalizedPath.includes(cleanModelUri)) {
                 model = m;
+                console.log(`Найдена существующая модель для ${filePath}: ${modelUri}`);
                 break;
               }
             } catch (e) {
@@ -828,9 +759,32 @@ export class MonacoLSPWrapper {
           // Если модель не найдена, пытаемся создать новую
           if (!model) {
             try {
-              const uri = window.monaco.Uri.file(filePath);
-              model = window.monaco.editor.createModel(content, fileType, uri);
-              console.log(`Создана новая модель для ${filePath} с языком ${fileType}`);
+              // Удостоверимся, что путь к файлу не содержит проблемных символов
+              const safeFilePath = normalizedPath;
+              
+              // Создаем URI для файла
+              const uri = window.monaco.Uri.file(safeFilePath);
+              
+              // Используем try-catch для обработки возможной ошибки "модель уже существует"
+              try {
+                model = window.monaco.editor.createModel(content, fileType, uri);
+                console.log(`Создана новая модель для ${filePath} с языком ${fileType}, URI: ${uri.toString()}`);
+              } catch (modelError) {
+                if (modelError.message && modelError.message.includes('already exists')) {
+                  // Если модель существует, находим её
+                  console.warn(`Модель для ${filePath} уже существует, ищем существующую...`);
+                  const existingModels = window.monaco.editor.getModels();
+                  for (const existingModel of existingModels) {
+                    if (existingModel.uri.toString() === uri.toString()) {
+                      model = existingModel;
+                      console.log(`Найдена существующая модель для ${filePath}`);
+                      break;
+                    }
+                  }
+                } else {
+                  throw modelError; // Другая ошибка, пробрасываем дальше
+                }
+              }
             } catch (e) {
               console.warn(`Ошибка при создании модели для ${filePath}:`, e);
             }
@@ -843,14 +797,25 @@ export class MonacoLSPWrapper {
               window.monaco.editor.setModelLanguage(model, fileType);
               console.log(`Установлен язык модели ${fileType} для ${filePath}`);
               
-              // Если это Python, дополнительно обновляем модель
+              // Если это Python, дополнительно обновляем модель и регистрируем для Python поддержки
               if (fileType === 'python') {
-                model.setValue(content);
-                console.log(`Обновлено содержимое Python модели для ${filePath}`);
+                // Обновляем содержимое только если оно изменилось, чтобы не терять историю отмены
+                const currentContent = model.getValue();
+                if (currentContent !== content) {
+                  model.setValue(content);
+                  console.log(`Обновлено содержимое Python модели для ${filePath}`);
+                }
+                
+                // Вызываем регистрацию Python, если функция доступна
+                if (window.registerPythonForModel && typeof window.registerPythonForModel === 'function') {
+                  window.registerPythonForModel(model);
+                }
               }
             } catch (e) {
               console.warn(`Ошибка при установке языка модели для ${filePath}:`, e);
             }
+          } else {
+            console.warn(`Модель для файла ${filePath} не найдена, пропускаем обновление`);
           }
         } catch (error) {
           console.error(`Ошибка при установке языка для ${filePath}:`, error);
@@ -1122,6 +1087,13 @@ export class MonacoLSPWrapper {
       } catch (error) {
         console.error(`Ошибка при обработке изменения файла ${filePath}:`, error);
       }
+      
+      // После обновления диагностики обновляем декорации для отображения ошибок
+      setTimeout(() => {
+        if (window.setupErrorDecorations && this.editor) {
+          window.setupErrorDecorations(this.editor);
+        }
+      }, 500);
     } catch (error) {
       console.error(`Необработанная ошибка в handleFileChange: ${error}`);
     }
@@ -1372,6 +1344,11 @@ export class MonacoLSPWrapper {
       
       // Если редактор изменился, обновляем слушатели событий
       this.registerEditorListeners();
+      
+      // Применяем декорации для отображения ошибок, если функция доступна
+      if (window.setupErrorDecorations) {
+        window.setupErrorDecorations(editor);
+      }
       
       // Обновляем модели для всех открытых документов
       if (lspDocumentManager) {

@@ -20,6 +20,9 @@ import CloneRepositoryModal from './CloneRepositoryModal';
 import HtmlPreview from '../preview/HtmlPreview';
 import { writeBinaryFile } from '@tauri-apps/plugin-fs';
 
+// Импортируем и инициализируем обработчики ошибок
+import './errors';
+
 import "./style.css";
 
 declare global {
@@ -644,6 +647,42 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     // Инициализация Monaco
     initializeMonacoEditor(monaco);
     
+    // Применяем декорации для отображения ошибок
+    if (window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+      console.log('🎨 Применяем декорации ошибок при монтировании редактора');
+      window.setupErrorDecorations(editor);
+      
+      // Настраиваем периодическое обновление декораций
+      const errorUpdateInterval = setInterval(() => {
+        if (window.setupErrorDecorations && editor && editor.getModel()) {
+          window.setupErrorDecorations(editor);
+        } else if (!editor || !editor.getModel()) {
+          clearInterval(errorUpdateInterval);
+        }
+      }, 2000); // Каждые 2 секунды
+      
+      // Сохраняем ID интервала в редакторе для очистки
+      editor._errorUpdateInterval = errorUpdateInterval;
+      
+      // Подписываемся на событие изменения модели для обновления декораций
+      editor.onDidChangeModel(() => {
+        if (window.setupErrorDecorations) {
+          setTimeout(() => {
+            window.setupErrorDecorations(editor);
+          }, 500);
+        }
+      });
+      
+      // Очистка при уничтожении редактора
+      editor.onDidDispose(() => {
+        if (editor._errorUpdateInterval) {
+          clearInterval(editor._errorUpdateInterval);
+        }
+      });
+    } else {
+      console.warn('❌ Функция setupErrorDecorations недоступна в window');
+    }
+    
     // Apply current theme immediately to new editor
     try {
       const themeSettings = localStorage.getItem('theme-settings');
@@ -1053,10 +1092,27 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
   // Инициализация LSP клиента
   useEffect(() => {
     // Проверяем, есть ли редактор и Monaco
-    if (editorRef.current && window.monaco) {
-      console.log('Инициализация LSP клиента...');
+    if (editorRef.current && window.monaco && !lspStatus.initialized) {
+      console.log('Инициализация LSP клиента для Python...');
       
       try {
+        // Используем существующий механизм LSP через monacoLSPService
+        const lspInstance = getMonacoLSPInstance();
+        if (lspInstance) {
+          console.log('Используем существующий LSP клиент');
+          
+          // Устанавливаем корневую директорию проекта
+          if (selectedFolder) {
+            lspInstance.setProjectRoot(selectedFolder);
+          }
+          
+          // Открываем текущий файл в LSP
+          if (selectedFile && fileContent !== null) {
+            lspInstance.handleFileOpen(selectedFile, fileContent);
+          }
+        }
+        
+        /*
         // Инициализируем LSP клиент
         if (lspClientRef.current) {
           // Вызываем initialize при первом монтировании
@@ -1079,11 +1135,12 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
             console.error('Ошибка при инициализации LSP клиента:', error);
           });
         }
+        */
       } catch (error) {
         console.error('Ошибка при настройке LSP клиента:', error);
       }
     }
-  }, [editorRef.current, window.monaco]);
+  }, [editorRef.current, window.monaco, selectedFolder, selectedFile, fileContent, lspStatus.initialized]);
 
   // Добавляем функцию для открытия модального окна клонирования репозитория
   const handleOpenCloneModal = () => {

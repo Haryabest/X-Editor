@@ -443,20 +443,37 @@ export function joinPaths(...paths: string[]): string {
   return paths.filter(Boolean).join('/').replace(/\/+/g, '/');
 }
 
+// Добавляем объявление для глобальных функций
+declare global {
+  interface Window {
+    monaco: any;
+    registerPythonForModel?: (model: any) => void;
+  }
+}
+
 /**
  * Корректирует язык для файла на основе его расширения
  */
 export function correctLanguageFromExtension(filePath: string, editor: any): void {
   try {
-    if (!filePath || !editor) return;
+    if (!filePath || !editor) {
+      console.warn('Не указан путь к файлу или редактор в correctLanguageFromExtension');
+      return;
+    }
+    
+    // Проверка на существование метода getModel
+    if (typeof editor.getModel !== 'function') {
+      console.warn('Редактор не имеет метода getModel в correctLanguageFromExtension', editor);
+      return;
+    }
     
     // Получаем расширение файла без преобразования в нижний регистр
     const getExtension = (filename: string): string => {
       const lastDotIndex = filename.lastIndexOf('.');
-      return lastDotIndex === -1 ? '' : filename.substring(lastDotIndex);
+      return lastDotIndex === -1 ? '' : filename.substring(lastDotIndex).toLowerCase();
     };
     
-    const ext = getExtension(filePath).toLowerCase();
+    const ext = getExtension(filePath);
     const model = editor.getModel();
     
     if (!model) {
@@ -492,24 +509,35 @@ export function correctLanguageFromExtension(filePath: string, editor: any): voi
       newLanguage = 'xml';
     } else if (ext === '.sql') {
       newLanguage = 'sql';
-    } else if (ext === '.py') {
+    } else if (ext === '.py' || ext === '.pyw' || ext === '.pyi') {
       newLanguage = 'python';
+      
+      // Явно регистрируем модель как Python если это Python файл
+      if (window.registerPythonForModel && typeof window.registerPythonForModel === 'function') {
+        console.log(`Специальная регистрация Python файла ${filePath} в correctLanguageFromExtension`);
+        window.registerPythonForModel(model);
+        return; // Пропускаем стандартную установку языка, т.к. ее делает registerPythonForModel
+      }
     }
     
     // Если язык не совпадает с текущим, меняем его
     if (newLanguage !== model.getLanguageId()) {
       console.log(`Меняем язык с ${model.getLanguageId()} на ${newLanguage} для файла ${filePath}`);
-      monaco.editor.setModelLanguage(model, newLanguage);
+      try {
+        window.monaco.editor.setModelLanguage(model, newLanguage);
+      } catch (error) {
+        console.error(`Ошибка при установке языка ${newLanguage} для файла ${filePath}:`, error);
+      }
     }
     
     // Для TypeScript/React файлов настраиваем дополнительные параметры
     if (ext === '.ts' || ext === '.tsx') {
       try {
         const compilerOptions = {
-          target: monaco.languages.typescript.ScriptTarget.Latest,
-          module: monaco.languages.typescript.ModuleKind.ESNext,
-          moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-          jsx: monaco.languages.typescript.JsxEmit.React,
+          target: window.monaco.languages.typescript.ScriptTarget.Latest,
+          module: window.monaco.languages.typescript.ModuleKind.ESNext,
+          moduleResolution: window.monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          jsx: window.monaco.languages.typescript.JsxEmit.React,
           allowNonTsExtensions: true,
           allowJs: true,
           checkJs: false,
@@ -527,44 +555,9 @@ export function correctLanguageFromExtension(filePath: string, editor: any): voi
         };
         
         // Применяем опции к TypeScript
-        monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
-        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-          noSemanticValidation: false,
-          noSyntaxValidation: false,
-          noSuggestionDiagnostics: false,
-          diagnosticCodesToIgnore: [
-            // Игнорируем некоторые ошибки, связанные с отсутствующими модулями
-            2307, // Cannot find module
-            2792  // Cannot find module. Did you mean to set the 'moduleResolution' option to 'node'?
-          ]
-        });
-        
-        console.log(`Настроены параметры TypeScript компилятора для ${filePath}`);
-      } catch (e) {
-        console.error('Ошибка при настройке TypeScript:', e);
-      }
-    }
-    
-    // Для JavaScript/React файлов
-    if (ext === '.js' || ext === '.jsx') {
-      try {
-        // Для JavaScript файлов отключаем проверки TypeScript
-        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-          noSemanticValidation: false,
-          noSyntaxValidation: false,
-          diagnosticCodesToIgnore: [
-            // Игнорируем ошибки TypeScript в JavaScript файлах
-            8006, // 'interface' declarations can only be used in TypeScript files
-            8008, // Type aliases can only be used in TypeScript files
-            8009, // The 'readonly' modifier can only be used in TypeScript files
-            8010, // Type annotations can only be used in TypeScript files
-            8013  // Non-null assertions can only be used in TypeScript files
-          ]
-        });
-        
-        console.log(`Настроены параметры JavaScript для ${filePath}`);
-      } catch (e) {
-        console.error('Ошибка при настройке JavaScript:', e);
+        window.monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+      } catch (error) {
+        console.error('Ошибка при настройке TypeScript compiler options:', error);
       }
     }
     
