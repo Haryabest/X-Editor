@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, AlertCircle, AlertTriangle, Info, File } from 'lucide-react';
+// Импортируем стили
+import '../../styles/problem-panel.css';
 
 interface ProblemIssue {
   severity: 'error' | 'warning' | 'info';
@@ -146,34 +148,31 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
     return message.substring(0, maxLength) + '...';
   };
 
+  // Выключаем глобальные стили и используем только встроенные tailwind классы
+  useEffect(() => {
+    // Ждем рендера DOM-элементов
+    setTimeout(() => {
+      try {
+        document.querySelectorAll('.problem-panel .issue-item').forEach(el => {
+          if (el) {
+            const element = el as HTMLElement;
+            if (element.style) {
+              element.style.height = '14px';
+              element.style.maxHeight = '14px';
+              element.style.minHeight = '14px';
+              element.style.lineHeight = '14px';
+              element.style.overflow = 'hidden';
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Ошибка при применении стилей к issue-item:', error);
+      }
+    }, 100);
+  }, [problems, expandedFiles]);
+
   return (
     <div className="problem-panel overflow-auto h-full text-sm">
-      <style jsx>{`
-        .problem-issue {
-          min-height: 10px !important;
-          max-height: 20px !important;
-          line-height: 10px !important;
-          padding-top: 1px !important;
-          padding-bottom: 1px !important;
-        }
-        .problem-message {
-          line-height: 10px !important;
-          max-height: 10px !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          font-size: 10px !important;
-        }
-        .problem-location {
-          font-size: 8px !important;
-          line-height: 8px !important;
-        }
-        .problem-file-header {
-          min-height: 14px !important;
-          max-height: 14px !important;
-          padding-top: 1px !important;
-          padding-bottom: 1px !important;
-        }
-      `}</style>
       <div className="problem-header px-2 py-1 border-b border-gray-700">
         <div className="flex justify-between items-center">
           <div className="font-medium text-xs">Проблемы</div>
@@ -196,20 +195,21 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
 
       <div className="problem-list">
         {problems.length === 0 ? (
-          <div className="py-2 px-2 text-gray-400 italic text-center text-xs">
+          <div className="py-1 px-2 text-gray-400 italic text-center text-xs">
             Нет проблем в текущем рабочем пространстве
           </div>
         ) : (
           problems.map((file) => (
-            <div key={file.filePath} className="problem-file-group mb-1 border-b border-gray-800">
+            <div key={file.filePath} className="problem-file-group mb-0 border-b border-gray-800">
               <div 
-                className="problem-file-header px-2 py-1 flex items-center cursor-pointer hover:bg-gray-700 text-xs bg-gray-800"
+                className="problem-file-header px-2 py-0 flex items-center cursor-pointer hover:bg-gray-700 text-xs bg-gray-800"
                 onClick={() => toggleFileExpand(file.filePath)}
+                style={{ height: '16px', maxHeight: '16px', lineHeight: '16px' }}
               >
-                <span className="mr-1">
+                <span className="mr-1 flex items-center" style={{ height: '16px' }}>
                   {expandedFiles.has(file.filePath) ? 
-                    <ChevronDown size={12} /> : 
-                    <ChevronRight size={12} />
+                    <ChevronDown size={10} /> : 
+                    <ChevronRight size={10} />
                   }
                 </span>
                 <File size={10} className="mr-1 text-blue-400" />
@@ -232,20 +232,32 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
                   {file.issues.map((issue, index) => (
                     <div 
                       key={`${file.filePath}-issue-${index}`}
-                      className="problem-issue px-4 py-1 flex items-center cursor-pointer hover:bg-gray-700 text-xs border-t border-gray-800"
+                      className="issue-item px-2 flex items-center cursor-pointer hover:bg-gray-700 text-xs border-t border-gray-800 overflow-hidden"
                       onClick={() => handleClick(file.filePath, issue.line, issue.column)}
                       title={issue.rawMessage || issue.message}
+                      style={{ 
+                        height: '14px !important', 
+                        maxHeight: '14px !important', 
+                        minHeight: '14px !important', 
+                        lineHeight: '14px !important',
+                        paddingTop: '0px !important',
+                        paddingBottom: '0px !important',
+                        marginTop: '0px !important',
+                        marginBottom: '0px !important',
+                        overflow: 'hidden !important',
+                        display: 'flex !important',
+                        alignItems: 'center !important',
+                      }}
                     >
-                      <span className="mr-2 flex-shrink-0">
+                      <span className="mr-1 flex-shrink-0" style={{ height: '14px !important', lineHeight: '14px !important' }}>
                         {getSeverityIcon(issue.severity)}
                       </span>
-                      <div className="flex flex-col flex-1 overflow-hidden">
-                        <span className="problem-message whitespace-nowrap text-ellipsis overflow-hidden">
+                      <div className="flex flex-row flex-1 overflow-hidden" style={{ height: '14px !important', lineHeight: '14px !important' }}>
+                        <span className="truncate flex-1" style={{ height: '14px !important', lineHeight: '14px !important' }}>
                           {truncateMessage(issue.rawMessage || issue.message, 100)}
                         </span>
-                        <span className="problem-location text-xxs text-gray-400 flex items-center">
-                          <span className="font-bold mr-1">{file.fileName}</span>
-                          <span>[{issue.line}:{issue.column}]</span>
+                        <span className="text-xxs text-gray-400 flex-shrink-0 ml-1" style={{ height: '14px !important', lineHeight: '14px !important' }}>
+                          [{issue.line}:{issue.column}]
                           {issue.source && <span className="ml-1">[{issue.source}]</span>}
                         </span>
                       </div>

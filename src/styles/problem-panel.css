@@ -1,0 +1,102 @@
+/* Стили для компактной панели проблем */
+
+/* Основные стили для контейнера проблем */
+.problem-panel .problem-list,
+div[class*="problem-panel"] div[class*="problem-list"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Заголовок файла */
+.problem-panel .problem-file-header,
+div[class*="problem-panel"] div[class*="problem-file-header"] {
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px !important;
+  line-height: 14px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Элемент сообщения об ошибке */
+.problem-panel .issue-item,
+div[class*="problem-panel"] div[class*="issue-item"],
+.problem-panel [class*="issue-item"],
+div[class*="problem-issues"] div {
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px !important;
+  line-height: 14px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Детали проблемы */
+.problem-panel .issue-details,
+div[class*="problem-panel"] div[class*="issue-details"],
+.problem-panel [class*="issue-item"] > div {
+  height: 14px !important;
+  line-height: 14px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Иконки */
+.problem-panel svg,
+div[class*="problem-panel"] svg {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+/* Текст сообщения */
+.problem-panel .problem-message,
+.problem-panel .truncate,
+div[class*="problem-panel"] div[class*="problem-message"],
+div[class*="problem-panel"] span[class*="truncate"] {
+  line-height: 14px !important;
+  height: 14px !important;
+  max-height: 14px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Специфичные стили для проблем внутри выпадающего списка */
+div[class*="problem-issues"] > div {
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Стили для расширенных файловых групп */
+.problem-panel .problem-file-group,
+div[class*="problem-panel"] div[class*="problem-file-group"] {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Жесткий сброс высоты для строк проблем */
+div[class*="issue-item"],
+div[class*="problem-issue"],
+div[class*="problem-issues"] > div {
+  max-height: 14px !important;
+  height: 14px !important;
+  line-height: 14px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+} 

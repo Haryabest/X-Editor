@@ -750,10 +750,7 @@ const updatePythonDiagnostics = (
                     border-left: 2px solid red !important;
                     margin: 0 !important;
                     padding: 0 !important;
-                    max-height: 10px !important;
-                    min-height: 0 !important;
-                    line-height: 10px !important;
-                    height: auto !important;
+                    max-height: 18px !important;
                   }
                   .python-warning-decoration { 
                     background-color: transparent !important; 
@@ -761,10 +758,7 @@ const updatePythonDiagnostics = (
                     border-left: 2px solid orange !important;
                     margin: 0 !important;
                     padding: 0 !important;
-                    max-height: 10px !important;
-                    min-height: 0 !important;
-                    line-height: 10px !important;
-                    height: auto !important;
+                    max-height: 18px !important;
                   }
                   .python-error-inline { 
                     background-color: transparent !important;
@@ -773,8 +767,6 @@ const updatePythonDiagnostics = (
                     line-height: inherit !important;
                     padding: 0 !important;
                     margin: 0 !important;
-                    max-height: 10px !important;
-                    min-height: 0 !important;
                   }
                   .python-warning-inline { 
                     background-color: transparent !important;
@@ -783,57 +775,46 @@ const updatePythonDiagnostics = (
                     line-height: inherit !important;
                     padding: 0 !important;
                     margin: 0 !important;
-                    max-height: 10px !important;
-                    min-height: 0 !important;
                   }
                   .error-glyph { 
-                    width: 8px !important; 
-                    height: 8px !important; 
+                    width: 12px !important; 
+                    height: 12px !important; 
                     display: inline-block !important;
-                    margin-left: 2px !important;
+                    margin-left: 3px !important;
                     background-color: transparent !important;
                     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="red"/><path d="M8 4v5M8 11v1" stroke="white" stroke-width="1.5" /></svg>') !important; 
-                    background-size: 8px 8px !important;
+                    background-size: 12px 12px !important;
                     background-repeat: no-repeat !important;
                     background-position: center !important;
                   }
                   .warning-glyph { 
-                    width: 8px !important; 
-                    height: 8px !important;
+                    width: 12px !important; 
+                    height: 12px !important;
                     display: inline-block !important;
-                    margin-left: 2px !important;
+                    margin-left: 3px !important;
                     background-color: transparent !important;
                     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M7.5 2L1 13h13L7.5 2z" fill="orange"/><path d="M7.5 6v4M7.5 12v1" stroke="white" stroke-width="1.5" /></svg>') !important;
-                    background-size: 8px 8px !important;
+                    background-size: 12px 12px !important;
                     background-repeat: no-repeat !important;
                     background-position: center !important;
                   }
                   /* Увеличиваем компактность всех линий в редакторе */
                   .monaco-editor .view-lines {
-                    line-height: 1.0 !important;
+                    line-height: 1.3 !important;
                   }
                   .monaco-editor .view-line {
                     padding: 0 !important;
                     margin: 0 !important;
                     min-height: 0 !important;
-                    height: auto !important;
-                    max-height: 10px !important;
                   }
                   /* Компактная версия всплывающих подсказок */
                   .monaco-hover-content {
-                    font-size: 10px !important;
-                    line-height: 1.0 !important;
-                    padding: 2px 4px !important;
+                    font-size: 12px !important;
+                    line-height: 1.2 !important;
+                    padding: 4px 6px !important;
                   }
                   .monaco-editor-hover {
                     max-width: 500px !important;
-                  }
-                  /* Устранение проблемы высоты маркеров ошибок */
-                  .monaco-editor .marker-widget {
-                    height: auto !important;
-                    min-height: 0 !important;
-                    line-height: 10px !important;
-                    max-height: 10px !important;
                   }
                 `;
                 document.head.appendChild(style);

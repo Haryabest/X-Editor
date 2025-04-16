@@ -354,3 +354,40 @@ document.addEventListener('DOMContentLoaded', () => {
   
   checkMonaco();
 });
+
+// Применяем глобальные стили для панели проблем
+function applyProblemPanelStyles() {
+  const style = document.createElement('style');
+  style.id = 'global-problem-panel-styles';
+  style.textContent = `
+    /* Элемент сообщения об ошибке */
+    .problem-panel .issue-item,
+    div[class*="problem-panel"] div[class*="issue-item"],
+    .problem-issues div,
+    .issue-item {
+      height: 14px !important;
+      min-height: 14px !important;
+      max-height: 14px !important;
+      line-height: 14px !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* Иконки */
+    .problem-panel svg,
+    div[class*="problem-panel"] svg {
+      width: 8px !important;
+      height: 8px !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Вызываем функцию сразу
+if (typeof document !== 'undefined') {
+  applyProblemPanelStyles();
+}

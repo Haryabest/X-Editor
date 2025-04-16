@@ -521,6 +521,33 @@
         console.log('[FileProtection] Глобальная защита файлов установлена');
       })();
     </script>
+    <!-- Стили для компактной панели проблем -->
+    <style>
+      /* Элемент сообщения об ошибке */
+      .problem-panel .issue-item,
+      div[class*="problem-panel"] div[class*="issue-item"],
+      .problem-panel [class*="issue-item"],
+      div[class*="problem-issues"] div {
+        height: 14px !important;
+        min-height: 14px !important;
+        max-height: 14px !important;
+        line-height: 14px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        overflow: hidden !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+      
+      /* Иконки */
+      .problem-panel svg,
+      div[class*="problem-panel"] svg {
+        width: 8px !important;
+        height: 8px !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
