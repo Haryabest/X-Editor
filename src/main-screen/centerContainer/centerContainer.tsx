@@ -666,11 +666,26 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       
       // Подписываемся на событие изменения модели для обновления декораций
       editor.onDidChangeModel(() => {
-        if (window.setupErrorDecorations) {
+        // При изменении модели сначала собираем все маркеры
+        if (window.setupAllErrorDecorations) {
+          setTimeout(() => {
+            window.setupAllErrorDecorations();
+          }, 300);
+        } else if (window.setupErrorDecorations) {
           setTimeout(() => {
             window.setupErrorDecorations(editor);
           }, 500);
         }
+        
+        // Также обновляем при получении фокуса
+        editor.onDidFocusEditorWidget(() => {
+          if (window.setupAllErrorDecorations) {
+            // Обновляем глобальное хранилище маркеров и применяем декорации
+            setTimeout(() => {
+              window.setupAllErrorDecorations();
+            }, 300);
+          }
+        });
       });
       
       // Очистка при уничтожении редактора

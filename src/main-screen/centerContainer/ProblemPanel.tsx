@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { ChevronRight, ChevronDown, AlertCircle, AlertTriangle, Info, File } from 'lucide-react';
 
 interface ProblemIssue {
   severity: 'error' | 'warning' | 'info';
   message: string;
+  rawMessage?: string; // Исходное сообщение без имени файла
   line: number;
   column: number;
   endLine: number;
   endColumn: number;
   source?: string;
   code?: string;
+  fileName?: string; // Имя файла для каждой ошибки
 }
 
 interface ProblemFile {
@@ -72,6 +74,15 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
         });
         
         setStats({ errors, warnings, infos });
+        
+        // Автоматически разворачиваем файлы, если их немного
+        if (customEvent.detail.diagnostics.length <= 5) {
+          const newExpandedFiles = new Set<string>();
+          customEvent.detail.diagnostics.forEach((file: ProblemFile) => {
+            newExpandedFiles.add(file.filePath);
+          });
+          setExpandedFiles(newExpandedFiles);
+        }
       }
     };
     
@@ -97,6 +108,15 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
         });
         
         setStats({ errors, warnings, infos });
+        
+        // Автоматически разворачиваем файлы, если их немного
+        if (diagnostics.length <= 5) {
+          const newExpandedFiles = new Set<string>();
+          diagnostics.forEach((file: ProblemFile) => {
+            newExpandedFiles.add(file.filePath);
+          });
+          setExpandedFiles(newExpandedFiles);
+        }
       }
     }
     
@@ -109,16 +129,17 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'error':
-        return <AlertCircle size={10} className="text-red-500" />;
+        return <AlertCircle size={8} className="text-red-500" />;
       case 'warning':
-        return <AlertTriangle size={10} className="text-yellow-500" />;
+        return <AlertTriangle size={8} className="text-yellow-500" />;
       default:
-        return <Info size={10} className="text-blue-500" />;
+        return <Info size={8} className="text-blue-500" />;
     }
   };
 
   // Функция для усечения длинных сообщений
   const truncateMessage = (message: string, maxLength: number = 80) => {
+    if (!message) return '';
     if (message.length <= maxLength) {
       return message;
     }
@@ -127,19 +148,45 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
 
   return (
     <div className="problem-panel overflow-auto h-full text-sm">
+      <style jsx>{`
+        .problem-issue {
+          min-height: 10px !important;
+          max-height: 20px !important;
+          line-height: 10px !important;
+          padding-top: 1px !important;
+          padding-bottom: 1px !important;
+        }
+        .problem-message {
+          line-height: 10px !important;
+          max-height: 10px !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          font-size: 10px !important;
+        }
+        .problem-location {
+          font-size: 8px !important;
+          line-height: 8px !important;
+        }
+        .problem-file-header {
+          min-height: 14px !important;
+          max-height: 14px !important;
+          padding-top: 1px !important;
+          padding-bottom: 1px !important;
+        }
+      `}</style>
       <div className="problem-header px-2 py-1 border-b border-gray-700">
         <div className="flex justify-between items-center">
           <div className="font-medium text-xs">Проблемы</div>
           <div className="flex items-center space-x-2 text-xs">
             {stats.errors > 0 && (
               <span className="flex items-center text-red-500">
-                <AlertCircle size={10} className="mr-1" />
+                <AlertCircle size={8} className="mr-1" />
                 {stats.errors}
               </span>
             )}
             {stats.warnings > 0 && (
               <span className="flex items-center text-yellow-500">
-                <AlertTriangle size={10} className="mr-1" />
+                <AlertTriangle size={8} className="mr-1" />
                 {stats.warnings}
               </span>
             )}
@@ -154,19 +201,20 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
           </div>
         ) : (
           problems.map((file) => (
-            <div key={file.filePath} className="problem-file-group">
+            <div key={file.filePath} className="problem-file-group mb-1 border-b border-gray-800">
               <div 
-                className="problem-file-header px-2 py-0.5 flex items-center cursor-pointer hover:bg-gray-700 text-xs"
+                className="problem-file-header px-2 py-1 flex items-center cursor-pointer hover:bg-gray-700 text-xs bg-gray-800"
                 onClick={() => toggleFileExpand(file.filePath)}
               >
                 <span className="mr-1">
                   {expandedFiles.has(file.filePath) ? 
-                    <ChevronDown size={14} /> : 
-                    <ChevronRight size={14} />
+                    <ChevronDown size={12} /> : 
+                    <ChevronRight size={12} />
                   }
                 </span>
+                <File size={10} className="mr-1 text-blue-400" />
                 <span 
-                  className="truncate cursor-pointer hover:underline"
+                  className="truncate cursor-pointer hover:underline flex-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleClick(file.filePath);
@@ -184,20 +232,21 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
                   {file.issues.map((issue, index) => (
                     <div 
                       key={`${file.filePath}-issue-${index}`}
-                      className="problem-issue px-4 py-0.5 flex items-start cursor-pointer hover:bg-gray-700 text-xs"
+                      className="problem-issue px-4 py-1 flex items-center cursor-pointer hover:bg-gray-700 text-xs border-t border-gray-800"
                       onClick={() => handleClick(file.filePath, issue.line, issue.column)}
-                      title={issue.message}
+                      title={issue.rawMessage || issue.message}
                     >
-                      <span className="mr-1 mt-0.5 flex-shrink-0">
+                      <span className="mr-2 flex-shrink-0">
                         {getSeverityIcon(issue.severity)}
                       </span>
-                      <div className="flex flex-col">
-                        <span className="problem-message truncate max-w-xs">
-                          {truncateMessage(issue.message, 80)}
+                      <div className="flex flex-col flex-1 overflow-hidden">
+                        <span className="problem-message whitespace-nowrap text-ellipsis overflow-hidden">
+                          {truncateMessage(issue.rawMessage || issue.message, 100)}
                         </span>
-                        <span className="problem-location text-xxs text-gray-400">
-                          [{issue.line}:{issue.column}]
-                          {issue.source && ` ${issue.source}`}
+                        <span className="problem-location text-xxs text-gray-400 flex items-center">
+                          <span className="font-bold mr-1">{file.fileName}</span>
+                          <span>[{issue.line}:{issue.column}]</span>
+                          {issue.source && <span className="ml-1">[{issue.source}]</span>}
                         </span>
                       </div>
                     </div>

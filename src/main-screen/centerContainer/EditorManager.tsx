@@ -41,6 +41,13 @@ const EditorManager: React.FC<EditorManagerProps> = (props) => {
         }
       });
       
+      // Инициализация - обновляем декорации для всех файлов один раз при загрузке
+      if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
+        setTimeout(() => {
+          window.setupAllErrorDecorations();
+        }, 1000);
+      }
+      
       // Очистка редактора при размонтировании
       return () => {
         if (localEditorRef.current) {
@@ -79,7 +86,7 @@ const handleEditorDidMount = (
       } else if (!editor || !editor.getModel()) {
         clearInterval(errorUpdateInterval);
       }
-    }, 2000); // Обновляем каждые 2 секунды
+    }, 5000); // Обновляем каждые 5 секунд
     
     // Сохраняем ID интервала для последующей очистки
     editor._errorUpdateInterval = errorUpdateInterval;
@@ -90,45 +97,45 @@ const handleEditorDidMount = (
         clearInterval(editor._errorUpdateInterval);
         editor._errorUpdateInterval = null;
       }
+      if (editor._modelChangeDisposable) {
+        editor._modelChangeDisposable.dispose();
+        editor._modelChangeDisposable = null;
+      }
     });
     
-    // Обновляем декорации при изменении модели
-    editor.onDidChangeModel(() => {
-      if (window.setupErrorDecorations) {
+    // Обработчик смены модели - важно для переключения между файлами
+    editor._modelChangeDisposable = editor.onDidChangeModel(() => {
+      // При смене модели сначала собираем все маркеры
+      if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
         setTimeout(() => {
-          if (window.setupErrorDecorations) {
-            window.setupErrorDecorations(editor);
-          }
+          window.setupAllErrorDecorations();
+        }, 300);
+      } 
+      // Резервный вариант, если функция setupAllErrorDecorations недоступна
+      else if (window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+        setTimeout(() => {
+          window.setupErrorDecorations(editor);
         }, 500);
       }
     });
-    
-    // Также обновляем декорации при изменении содержимого
-    editor.onDidChangeModelContent(() => {
-      if (window.setupErrorDecorations) {
-        setTimeout(() => {
-          if (window.setupErrorDecorations) {
-            window.setupErrorDecorations(editor);
-          }
-        }, 1000); // Более длинная задержка для изменений контента
-      }
-    });
-    
-    // Принудительно обновляем все декорации по интервалу
-    const decorationsUpdateInterval = setInterval(() => {
+  }
+  
+  // Принудительно обновляем все декорации для всех редакторов по интервалу
+  if (window.forceUpdateAllDecorations) {
+    const decorationsInterval = setInterval(() => {
       if (window.forceUpdateAllDecorations) {
         window.forceUpdateAllDecorations();
       }
-    }, 5000); // Каждые 5 секунд обновляем все декорации
+    }, 10000); // Каждые 10 секунд
     
-    // Сохраняем ID интервала для последующей очистки
-    editor._decorationsUpdateInterval = decorationsUpdateInterval;
+    // Сохраняем ID интервала
+    editor._decorationsInterval = decorationsInterval;
     
     // Очищаем интервал при размонтировании редактора
     editor.onDidDispose(() => {
-      if (editor._decorationsUpdateInterval) {
-        clearInterval(editor._decorationsUpdateInterval);
-        editor._decorationsUpdateInterval = null;
+      if (editor._decorationsInterval) {
+        clearInterval(editor._decorationsInterval);
+        editor._decorationsInterval = null;
       }
     });
   }
@@ -137,6 +144,16 @@ const handleEditorDidMount = (
   if (props.onMount) {
     props.onMount(editor, monaco);
   }
+  
+  // Подписываемся на событие активации редактора
+  editor.onDidFocusEditorWidget(() => {
+    // При получении фокуса обновляем все декорации
+    if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
+      window.setupAllErrorDecorations();
+    } else if (window.forceUpdateAllDecorations) {
+      window.forceUpdateAllDecorations();
+    }
+  });
 };
 
 // Добавляем типы для window
@@ -144,6 +161,7 @@ declare global {
   interface Window {
     monaco: any;
     setupErrorDecorations?: (editor: any) => void;
+    setupAllErrorDecorations?: () => void;
     forceUpdateAllDecorations?: () => void;
   }
 }

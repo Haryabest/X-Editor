@@ -44,6 +44,10 @@ enum DiagnosticSeverity {
 let pythonLSPInitialized = false;
 let diagnosticHandlersInitialized = false;
 
+// Переменные для дебаунсинга обновления диагностики
+const diagnosticsUpdateDebounce = new Map<string, NodeJS.Timeout>();
+const diagnosticsUpdateDelay = 1000; // 1 секунда задержки
+
 /**
  * Инициализация Python LSP сервера
  * @returns Успешность инициализации
@@ -429,11 +433,17 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
       if (window.monaco) {
         try {
           const monacoUri = window.monaco.Uri.file(filepath);
-          const markers = window.monaco.editor.getModelMarkers({ resource: monacoUri });
+          const markers = window.monaco.editor.getModelMarkers({ resource: monacoUri }) as MarkerData[];
           
           if (markers && markers.length > 0) {
             console.log(`🐍 Найдено ${markers.length} маркеров для файла ${filepath}`);
             diagnosticsFound = true;
+            
+            // Сохраняем маркеры в глобальном хранилище, если оно доступно
+            if (window.globalMarkersStore) {
+              window.globalMarkersStore.set(monacoUri.toString(), markers);
+              console.log(`🐍 Сохранено ${markers.length} маркеров в глобальном хранилище`);
+            }
             
             // Уведомляем о обновлении маркеров
             document.dispatchEvent(new CustomEvent('markers-updated'));
@@ -466,22 +476,38 @@ export async function updatePythonDiagnosticsForFile(filepath: string): Promise<
       }
       
       // Применяем декорации ошибок к активному редактору
-      if (window.monaco && window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
-        // Находим все редакторы и обновляем декорации
-        const editors = window.monaco.editor.getEditors();
-        if (editors && editors.length > 0) {
-          console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
-          editors.forEach((editor: any) => {
-            try {
-              if (window.setupErrorDecorations) {
-                window.setupErrorDecorations(editor);
-              }
-            } catch (err) {
-              console.warn('Ошибка при обновлении декораций:', err);
+      if (window.monaco) {
+        try {
+          // Обновляем глобальное хранилище маркеров и применяем декорации
+          if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
+            console.log('🐍 Обновление всех декораций после диагностики');
+            window.setupAllErrorDecorations();
+          } 
+          // Запасной вариант - обновляем форсированно все декорации
+          else if (window.forceUpdateAllDecorations && typeof window.forceUpdateAllDecorations === 'function') {
+            console.log('🐍 Форсированное обновление всех декораций после диагностики');
+            window.forceUpdateAllDecorations();
+          }
+          // Запасной вариант - находим все редакторы и обновляем декорации
+          else if (window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
+            const editors = window.monaco.editor.getEditors();
+            if (editors && editors.length > 0) {
+              console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
+              editors.forEach((editor: any) => {
+                try {
+                  if (window.setupErrorDecorations) {
+                    window.setupErrorDecorations(editor);
+                  }
+                } catch (err) {
+                  console.warn('Ошибка при обновлении декораций:', err);
+                }
+              });
+            } else {
+              console.log('Нет активных редакторов для обновления декораций');
             }
-          });
-        } else {
-          console.log('Нет активных редакторов для обновления декораций');
+          }
+        } catch (err) {
+          console.error('Ошибка при обновлении декораций после диагностики:', err);
         }
       }
       
@@ -577,23 +603,14 @@ export async function forcePythonDiagnosticsUpdate(filepath: string) {
         }));
       }
       
-      // Применяем декорации ошибок к активному редактору
-      if (window.monaco && window.setupErrorDecorations && typeof window.setupErrorDecorations === 'function') {
-        // Находим все редакторы и обновляем декорации
-        const editors = window.monaco.editor.getEditors();
-        if (editors && editors.length > 0) {
-          console.log(`🎨 Обновление декораций для ${editors.length} редакторов после диагностики`);
-          editors.forEach((editor: any) => {
-            try {
-              if (window.setupErrorDecorations) {
-                window.setupErrorDecorations(editor);
-              }
-            } catch (err) {
-              console.warn('Ошибка при обновлении декораций:', err);
-            }
-          });
-        } else {
-          console.log('Нет активных редакторов для обновления декораций');
+      // Применяем декорации ошибок ко всем редакторам и обновляем панель проблем
+      if (window.monaco) {
+        if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
+          // Обновляем все декорации для всех редакторов
+          window.setupAllErrorDecorations();
+        } else if (window.forceUpdateAllDecorations && typeof window.forceUpdateAllDecorations === 'function') {
+          // Резервный вариант, если setupAllErrorDecorations не доступна
+          window.forceUpdateAllDecorations();
         }
       }
     } catch (e) {
@@ -679,6 +696,9 @@ const updatePythonDiagnostics = (
         .replace(/\(pyflakes\)/g, '')
         .replace(/(^\s+|\s+$)/g, ''); // Удаляем пробелы в начале и конце
 
+      // Добавляем короткую версию сообщения для компактного отображения
+      const shortMessage = message.length > 50 ? message.substring(0, 47) + '...' : message;
+
       return {
         severity: mapSeverity(diag.severity),
         startLineNumber: startPos.line + 1,
@@ -686,6 +706,7 @@ const updatePythonDiagnostics = (
         endLineNumber: endPos.line + 1,
         endColumn: endPos.character + 1,
         message: message,
+        shortMessage: shortMessage, // Сохраняем короткое сообщение
         code: diag.code,
         source: 'Python', // Унифицируем источник
       };
@@ -719,45 +740,100 @@ const updatePythonDiagnostics = (
               });
               
               // Устанавливаем стили, если их еще нет
-              if (!document.getElementById('python-error-styles')) {
+              if (!document.getElementById('python-error-compact-styles')) {
                 const style = document.createElement('style');
-                style.id = 'python-error-styles';
+                style.id = 'python-error-compact-styles';
                 style.innerHTML = `
                   .python-error-decoration { 
-                    background-color: rgba(255, 0, 0, 0.1) !important; 
-                    border-bottom: 1px wavy red !important; 
+                    background-color: transparent !important; 
+                    border-bottom: 1px wavy red !important;
+                    border-left: 2px solid red !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    max-height: 10px !important;
+                    min-height: 0 !important;
+                    line-height: 10px !important;
+                    height: auto !important;
                   }
                   .python-warning-decoration { 
-                    background-color: rgba(255, 165, 0, 0.1) !important; 
-                    border-bottom: 1px wavy orange !important; 
+                    background-color: transparent !important; 
+                    border-bottom: 1px wavy orange !important;
+                    border-left: 2px solid orange !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    max-height: 10px !important;
+                    min-height: 0 !important;
+                    line-height: 10px !important;
+                    height: auto !important;
                   }
                   .python-error-inline { 
-                    text-decoration: wavy underline red !important; 
+                    background-color: transparent !important;
+                    border-bottom: 1px wavy red !important;
+                    font-size: inherit !important;
+                    line-height: inherit !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    max-height: 10px !important;
+                    min-height: 0 !important;
                   }
                   .python-warning-inline { 
-                    text-decoration: wavy underline orange !important; 
+                    background-color: transparent !important;
+                    border-bottom: 1px wavy orange !important;
+                    font-size: inherit !important;
+                    line-height: inherit !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    max-height: 10px !important;
+                    min-height: 0 !important;
                   }
                   .error-glyph { 
-                    width: 12px !important; 
-                    height: 12px !important; 
+                    width: 8px !important; 
+                    height: 8px !important; 
                     display: inline-block !important;
-                    margin-left: 3px !important;
+                    margin-left: 2px !important;
                     background-color: transparent !important;
                     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="red"/><path d="M8 4v5M8 11v1" stroke="white" stroke-width="1.5" /></svg>') !important; 
-                    background-size: 12px 12px !important;
+                    background-size: 8px 8px !important;
                     background-repeat: no-repeat !important;
                     background-position: center !important;
                   }
                   .warning-glyph { 
-                    width: 12px !important; 
-                    height: 12px !important;
+                    width: 8px !important; 
+                    height: 8px !important;
                     display: inline-block !important;
-                    margin-left: 3px !important;
+                    margin-left: 2px !important;
                     background-color: transparent !important;
                     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M7.5 2L1 13h13L7.5 2z" fill="orange"/><path d="M7.5 6v4M7.5 12v1" stroke="white" stroke-width="1.5" /></svg>') !important;
-                    background-size: 12px 12px !important;
+                    background-size: 8px 8px !important;
                     background-repeat: no-repeat !important;
                     background-position: center !important;
+                  }
+                  /* Увеличиваем компактность всех линий в редакторе */
+                  .monaco-editor .view-lines {
+                    line-height: 1.0 !important;
+                  }
+                  .monaco-editor .view-line {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    min-height: 0 !important;
+                    height: auto !important;
+                    max-height: 10px !important;
+                  }
+                  /* Компактная версия всплывающих подсказок */
+                  .monaco-hover-content {
+                    font-size: 10px !important;
+                    line-height: 1.0 !important;
+                    padding: 2px 4px !important;
+                  }
+                  .monaco-editor-hover {
+                    max-width: 500px !important;
+                  }
+                  /* Устранение проблемы высоты маркеров ошибок */
+                  .monaco-editor .marker-widget {
+                    height: auto !important;
+                    min-height: 0 !important;
+                    line-height: 10px !important;
+                    max-height: 10px !important;
                   }
                 `;
                 document.head.appendChild(style);
@@ -786,6 +862,7 @@ const updatePythonDiagnostics = (
                     hoverMessage: { value: marker.message },
                     inlineClassName: marker.severity === 8 ? 'python-error-inline' : 'python-warning-inline',
                     glyphMarginClassName: marker.severity === 8 ? 'error-glyph' : 'warning-glyph',
+                    isWholeLine: false,
                     overviewRuler: {
                       color: marker.severity === 8 ? 'red' : 'orange',
                       position: window.monaco.editor.OverviewRulerLane.Right
@@ -803,12 +880,6 @@ const updatePythonDiagnostics = (
               
               console.log(`[Python] Удалено ${oldDecorationIds.length} старых декораций`);
               editor.deltaDecorations(oldDecorationIds, errorDecorations);
-              
-              // Принудительно обновляем отображение
-              setTimeout(() => {
-                editor.layout();
-                editor.render(true);
-              }, 100);
             }
           } catch (err) {
             console.error('[Python] Ошибка при обновлении декораций:', err);
@@ -914,5 +985,86 @@ export function refreshPythonDiagnosticsDisplay() {
     }
   } catch (error) {
     console.error('Ошибка при обновлении отображения ошибок Python:', error);
+  }
+}
+
+/**
+ * Обновляет диагностику для указанного файла или всех открытых Python файлов
+ */
+window.updatePythonDiagnostics = async (filePath?: string): Promise<string> => {
+  try {
+    if (!pylspConnection) {
+      console.error('[LSP] Соединение с Python LSP не установлено');
+      return 'Соединение с Python LSP не установлено';
+    }
+
+    // Если указан конкретный файл
+    if (filePath) {
+      const uri = filePath;
+      
+      // Отменяем предыдущий запланированный вызов для этого файла
+      if (diagnosticsUpdateDebounce.has(uri)) {
+        clearTimeout(diagnosticsUpdateDebounce.get(uri));
+      }
+      
+      // Создаем новый отложенный вызов
+      return new Promise((resolve) => {
+        const timerId = setTimeout(async () => {
+          try {
+            // После задержки выполняем фактическое обновление
+            const normalizedPath = normalizePythonPath(uri);
+            const result = await forcePythonDiagnosticsUpdate(normalizedPath);
+            resolve(result);
+          } catch (error) {
+            console.error(`[LSP] Ошибка при отложенном обновлении диагностики для ${uri}:`, error);
+            resolve(`Ошибка: ${error.message || 'Неизвестная ошибка'}`);
+          } finally {
+            // Удаляем ID таймера из Map
+            diagnosticsUpdateDebounce.delete(uri);
+          }
+        }, diagnosticsUpdateDelay);
+        
+        // Сохраняем ID таймера
+        diagnosticsUpdateDebounce.set(uri, timerId);
+      });
+    }
+    
+    // Если путь не указан, обрабатываем все Python-файлы
+    // Для этого случая используем отдельный дебаунсинг
+    const allFilesKey = '_all_files_';
+    if (diagnosticsUpdateDebounce.has(allFilesKey)) {
+      clearTimeout(diagnosticsUpdateDebounce.get(allFilesKey));
+    }
+    
+    return new Promise((resolve) => {
+      const timerId = setTimeout(async () => {
+        try {
+          // После задержки обновляем все файлы
+          const result = await updateAllPythonDiagnostics();
+          resolve(result);
+        } catch (error) {
+          console.error('[LSP] Ошибка при обновлении всех диагностик:', error);
+          resolve(`Ошибка: ${error.message || 'Неизвестная ошибка'}`);
+        } finally {
+          // Удаляем ID таймера
+          diagnosticsUpdateDebounce.delete(allFilesKey);
+        }
+      }, diagnosticsUpdateDelay);
+      
+      // Сохраняем ID таймера
+      diagnosticsUpdateDebounce.set(allFilesKey, timerId);
+    });
+  } catch (error) {
+    console.error('[LSP] Ошибка при обновлении диагностики:', error);
+    return `Ошибка: ${error.message || 'Неизвестная ошибка'}`;
+  }
+};
+
+// Расширяем глобальный интерфейс Window
+declare global {
+  interface Window {
+    setupAllErrorDecorations?: () => void;
+    forceUpdateAllDecorations?: () => void;
+    globalMarkersStore?: Map<string, any[]>;
   }
 }

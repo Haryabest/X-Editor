@@ -441,45 +441,63 @@ export class MonacoLSPDiagnostics {
     try {
       const result: any[] = [];
       
+      // Словарь для более эффективного поиска существующих файлов
+      const fileMap = new Map<string, any>();
+      
       // Получаем маркеры для всех моделей
       const models = window.monaco?.editor.getModels() || [];
       
+      // Сначала собираем все маркеры из Monaco
       for (const model of models) {
         const uri = model.uri.toString();
-        if (uri.endsWith('.py')) {
-          const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
-          if (markers && markers.length > 0) {
-            // Преобразуем путь из URI в обычный путь
-            let filePath = uri;
-            try {
-              if (uri.startsWith('file:///')) {
-                filePath = decodeURIComponent(uri.replace('file:///', ''));
-              }
-            } catch (e) {
-              console.warn('Ошибка преобразования URI в путь:', e);
+        // Используем не только .py, но и другие расширения файлов
+        const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+        
+        if (markers && markers.length > 0) {
+          // Преобразуем путь из URI в обычный путь
+          let filePath = uri;
+          try {
+            if (uri.startsWith('file:///')) {
+              filePath = decodeURIComponent(uri.replace('file:///', ''));
             }
-            
-            const fileName = filePath.split(/[\\/]/).pop() || '';
-            
-            // Добавляем информацию о маркерах для файла
-            result.push({
-              filePath,
-              fileName,
-              issues: markers.map(marker => ({
-                severity: marker.severity === 1 ? 'error' : 
-                         marker.severity === 2 ? 'warning' : 'info',
-                message: marker.message,
-                line: marker.startLineNumber,
-                column: marker.startColumn,
-                endLine: marker.endLineNumber,
-                endColumn: marker.endColumn,
-                source: marker.source || 'python-lsp',
-                code: marker.code
-              }))
-            });
+          } catch (e) {
+            console.warn('Ошибка преобразования URI в путь:', e);
           }
+          
+          // Получаем имя файла из пути
+          const fileName = filePath.split(/[\\/]/).pop() || '';
+          
+          // Добавляем информацию о маркерах для файла
+          const fileData = {
+            filePath,
+            fileName,
+            issues: markers.map(marker => ({
+              severity: marker.severity === 8 ? 'error' : 
+                       marker.severity === 4 ? 'warning' : 'info',
+              message: `[${fileName}] ${marker.message}`,  // Добавляем имя файла в сообщение
+              rawMessage: marker.message,  // Исходное сообщение
+              line: marker.startLineNumber,
+              column: marker.startColumn,
+              endLine: marker.endLineNumber,
+              endColumn: marker.endColumn,
+              source: marker.source || 'python-lsp',
+              code: marker.code,
+              fileName: fileName  // Добавляем имя файла для каждой ошибки
+            }))
+          };
+          
+          // Добавляем файл в словарь
+          fileMap.set(filePath, fileData);
         }
       }
+      
+      // Преобразуем словарь в массив
+      for (const fileData of fileMap.values()) {
+        result.push(fileData);
+      }
+      
+      // Сортируем файлы по имени для удобства
+      result.sort((a, b) => a.fileName.localeCompare(b.fileName));
       
       return result;
     } catch (error) {
