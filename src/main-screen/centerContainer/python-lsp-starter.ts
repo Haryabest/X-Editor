@@ -311,16 +311,16 @@ export async function forcePythonDiagnosticsUpdate(filepath: string) {
       
       if (filepath.startsWith('file://')) {
         fileUri = filepath;
-      } else {
+            } else {
         fileUri = `file://${filepath.replace(/\\/g, '/')}`;
-      }
-      
+            }
+            
       // Преобразуем в URI
       let monacoUri: string;
-      try {
-        if (window.monaco) {
+            try {
+              if (window.monaco) {
           monacoUri = window.monaco.Uri.file(filepath.replace(/\\/g, '/')).toString();
-        } else {
+                } else {
           monacoUri = fileUri;
         }
       } catch (e) {
@@ -719,7 +719,7 @@ const updatePythonDiagnostics = (
                     border-left: 2px solid red !important;
                     margin: 0 !important;
                     padding: 0 !important;
-                    max-height: 18px !important;
+                    max-height: 0px !important;
                   }
                   .python-warning-decoration { 
                     background-color: transparent !important; 
@@ -727,7 +727,7 @@ const updatePythonDiagnostics = (
                     border-left: 2px solid orange !important;
                     margin: 0 !important;
                     padding: 0 !important;
-                    max-height: 18px !important;
+                    max-height: 0px !important;
                   }
                   .python-error-inline { 
                     background-color: transparent !important;
@@ -909,7 +909,7 @@ const updatePythonDiagnostics = (
           detail: { diagnostics: updatedProblems } 
         });
         document.dispatchEvent(problemsEvent);
-      } catch (err) {
+        } catch (err) {
         console.error('[Python] Ошибка при обновлении UI:', err);
       }
     }

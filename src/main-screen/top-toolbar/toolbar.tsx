@@ -10,6 +10,8 @@ import {
   PanelRight,
   PanelTop,
   PanelBottom,
+  PlayCircle, 
+  FastForward
 } from "lucide-react";
 import { MenuItem, FileItem } from './types/types';
 import SearchTrigger from './components/SearchTrigger';
@@ -17,14 +19,8 @@ import SearchDropdown from './components/SearchDropdown';
 import Settings from '../lefttoolbar/settings';
 import './style.css';
 import { FaPython } from "react-icons/fa";
-import { PlayCircle, FastForward } from "lucide-react";
-import { MainContext } from "../MainContext";
-import { Editor } from "../editor/editor";
-import { ContextMenu } from "../../components/ContextMenu/ContextMenuComponent";
-import "./toolbar.css";
-import SettingsModal from "../../components/SettingsModal";
-import ShareModal from "../../components/ShareModal";
 import { updateAllPythonDiagnostics, forcePythonDiagnosticsUpdate } from "../centerContainer/python-lsp-starter";
+import "./toolbar.css";
 
 export interface TopToolbarProps {
   currentFiles: FileItem[];
@@ -505,19 +501,19 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
         switch (option.text) {
           case "Запустить":
             console.log("Running code...");
-            // Add your run code logic here
+            handleRunCode();
             break;
           case "Перезапустить":
             console.log("Restarting code...");
-            // Add your restart code logic here
+            handleRestartCode();
             break;
           case "Остановить":
             console.log("Stopping code...");
-            // Add your stop code logic here
+            handleStopCode();
             break;
           case "Отладка":
             console.log("Debugging code...");
-            // Add your debug code logic here
+            handleDebugCode();
             break;
           case "Диагностика Python":
             console.log("Running Python diagnostics...");
@@ -540,16 +536,149 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
         if (typeof updateAllPythonDiagnostics === 'function') {
           updateAllPythonDiagnostics();
           console.log('Python diagnostics updated successfully');
-        } else if (typeof forcePythonDiagnosticsUpdate === 'function') {
-          // Call with undefined to force update on all files
-          forcePythonDiagnosticsUpdate();
-          console.log('Python diagnostics updated successfully');
         } else {
           console.warn('Python diagnostics functions not available');
         }
       } catch (error) {
         console.error('Error updating Python diagnostics:', error);
       }
+    }
+  };
+
+  // Функция для запуска Python кода в терминале
+  const handleRunCode = async () => {
+    if (!selectedFile) {
+      console.warn('No file selected to run');
+      return;
+    }
+
+    // Проверяем, что файл - Python файл
+    if (!selectedFile.toLowerCase().endsWith('.py')) {
+      console.warn('Selected file is not a Python file');
+      return;
+    }
+
+    try {
+      console.log(`Running Python file: ${selectedFile}`);
+      
+      // Сначала открываем терминал, если он не открыт
+      if (onOpenConsole) {
+        onOpenConsole();
+      }
+      
+      // Создаем событие для отправки команды в терминал
+      setTimeout(() => {
+        // Формируем команду для запуска Python файла
+        const runCommand = `python "${selectedFile}"`;
+        
+        // Отправляем команду в терминал через событие
+        const event = new CustomEvent('terminal-execute-command', { 
+          detail: { command: runCommand }
+        });
+        
+        // Диспатчим событие для терминала
+        document.dispatchEvent(event);
+        console.log('Sent Python run command to terminal:', runCommand);
+      }, 500); // Небольшая задержка, чтобы терминал успел открыться
+    } catch (error) {
+      console.error('Error running Python file:', error);
+    }
+  };
+
+  // Функция для отладки Python кода с использованием pdb
+  const handleDebugCode = async () => {
+    if (!selectedFile) {
+      console.warn('No file selected to debug');
+      return;
+    }
+
+    // Проверяем, что файл - Python файл
+    if (!selectedFile.toLowerCase().endsWith('.py')) {
+      console.warn('Selected file is not a Python file');
+      return;
+    }
+
+    try {
+      console.log(`Debugging Python file: ${selectedFile}`);
+      
+      // Сначала открываем терминал, если он не открыт
+      if (onOpenConsole) {
+        onOpenConsole();
+      }
+      
+      // Создаем событие для отправки команды в терминал
+      setTimeout(() => {
+        // Формируем команду для запуска Python файла с отладчиком pdb
+        const debugCommand = `python -m pdb "${selectedFile}"`;
+        
+        // Отправляем команду в терминал через событие
+        const event = new CustomEvent('terminal-execute-command', { 
+          detail: { command: debugCommand }
+        });
+        
+        // Диспатчим событие для терминала
+        document.dispatchEvent(event);
+        console.log('Sent Python debug command to terminal:', debugCommand);
+        
+        // Добавляем инструкцию по использованию pdb
+        setTimeout(() => {
+          const helpEvent = new CustomEvent('terminal-write-text', { 
+            detail: { 
+              text: "\r\n\x1b[33mPython Debugger (pdb) запущен.\r\n" +
+                    "Основные команды:\r\n" +
+                    "- h/help: справка\r\n" +
+                    "- n/next: выполнить текущую строку и перейти к следующей\r\n" +
+                    "- s/step: зайти внутрь вызываемой функции\r\n" +
+                    "- c/continue: продолжить выполнение до следующей точки останова\r\n" +
+                    "- q/quit: выйти из отладчика\r\n" +
+                    "- b/break [номер_строки]: установить точку останова\r\n" +
+                    "- p выражение: вывести значение выражения\r\n\x1b[0m"
+            }
+          });
+          document.dispatchEvent(helpEvent);
+        }, 1000);
+      }, 500); // Небольшая задержка, чтобы терминал успел открыться
+    } catch (error) {
+      console.error('Error debugging Python file:', error);
+    }
+  };
+
+  // Функция для остановки выполняющегося Python-процесса (Ctrl+C)
+  const handleStopCode = () => {
+    try {
+      console.log('Stopping running process with Ctrl+C');
+      
+      // Создаем событие для отправки команды в терминал
+      const event = new CustomEvent('terminal-send-signal', { 
+        detail: { signal: 'SIGINT' }
+      });
+      
+      // Диспатчим событие для терминала
+      document.dispatchEvent(event);
+    } catch (error) {
+      console.error('Error stopping process:', error);
+    }
+  };
+
+  // Функция для перезапуска терминального процесса
+  const handleRestartCode = () => {
+    try {
+      console.log('Restarting terminal process');
+      
+      // Создаем событие для перезапуска терминала
+      const event = new CustomEvent('terminal-command', { 
+        detail: { command: 'restart' }
+      });
+      
+      // Диспатчим событие для терминала
+      document.dispatchEvent(event);
+      
+      // Открываем терминал, если он закрыт
+      if (onOpenConsole) {
+        onOpenConsole();
+      }
+    } catch (error) {
+      console.error('Error restarting terminal process:', error);
     }
   };
 
@@ -640,54 +769,6 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
 
       <div className="window-controls">
-        <div className="split-controls" ref={splitMenuRef}>
-          {windowWidth > 800 ? (
-            <>
-              <button className="control-btn split-btn" onClick={handleSplitRight} title="Разделить справа">
-                <PanelRight size={14} />
-              </button>
-              <button className="control-btn split-btn" onClick={handleSplitDown} title="Разделить вниз">
-                <PanelBottom size={14} />
-              </button>
-              <button className="control-btn split-btn" onClick={handleSplitLeft} title="Разделить слева">
-                <PanelLeft size={14} className="rotate-180" />
-              </button>
-              <button className="control-btn split-btn" onClick={handleSplitUp} title="Разделить вверх">
-                <PanelTop size={14} className="rotate-180" />
-              </button>
-            </>
-          ) : (
-            <div className="split-menu-container">
-              <button 
-                className="control-btn split-btn" 
-                onClick={() => setShowSplitMenu(!showSplitMenu)}
-                title="Разделить экран"
-              >
-                <MoreHorizontal size={14} />
-              </button>
-              {showSplitMenu && (
-                <div className="split-dropdown-menu">
-                  <button className="split-dropdown-btn" onClick={handleSplitRight}>
-                    <PanelRight size={14} />
-                    <span>Разделить справа</span>
-                  </button>
-                  <button className="split-dropdown-btn" onClick={handleSplitDown}>
-                    <PanelBottom size={14} />
-                    <span>Разделить вниз</span>
-                  </button>
-                  <button className="split-dropdown-btn" onClick={handleSplitLeft}>
-                    <PanelLeft size={14} />
-                    <span>Разделить слева</span>
-                  </button>
-                  <button className="split-dropdown-btn" onClick={handleSplitUp}>
-                    <PanelTop size={14} />
-                    <span>Разделить вверх</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
         <button className="control-btn" onClick={handleMinimize}>
           <Minus size={14} />
         </button>

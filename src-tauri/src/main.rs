@@ -268,6 +268,7 @@ fn main() {
             reading::stream_video,
             commands::terminal::start_process,
             commands::terminal::send_input,
+            commands::terminal::kill_process,
             commands::terminal::resize_pty,
             commands::terminal::change_directory,
             resolve_module_path,

@@ -438,9 +438,21 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
   
   // Добавляем слушатель для обновлений маркеров Python
   useEffect(() => {
-    const handleMarkersUpdated = () => {
-      // Принудительно обновляем компонент
-      setFilterSeverity(current => current);
+    const handleMarkersUpdated = (event: Event) => {
+      console.log('Получено событие markers-updated');
+      
+      // Принудительно получаем новую диагностику
+      try {
+        if (typeof window !== "undefined" && (window as any).getPythonDiagnostics) {
+          const freshDiagnostics = (window as any).getPythonDiagnostics();
+          console.log('Получена свежая диагностика:', freshDiagnostics);
+          
+          // Принудительное обновление компонента
+          setFilterSeverity(current => current === 'all' ? 'all' : 'all');
+        }
+      } catch (e) {
+        console.error('Ошибка при обновлении диагностики:', e);
+      }
     };
     
     document.addEventListener('markers-updated', handleMarkersUpdated);
@@ -591,6 +603,120 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       }
     };
 
+    // Handler for executing commands in the terminal
+    const handleExecuteCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{command: string}>;
+      const command = customEvent.detail.command;
+      
+      console.log(`Executing command in terminal: ${command}`);
+      
+      // Ensure terminal is active
+      if (activeTab !== "terminal") {
+        setActiveTab("terminal");
+        
+        // Give time for terminal tab to activate
+        setTimeout(() => {
+          executeCommandInTerminal(command);
+        }, 300);
+      } else {
+        executeCommandInTerminal(command);
+      }
+    };
+    
+    // Handler for writing text directly to the terminal
+    const handleWriteText = (event: Event) => {
+      const customEvent = event as CustomEvent<{text: string}>;
+      const text = customEvent.detail.text;
+      
+      console.log(`Writing text to terminal`);
+      
+      // Ensure terminal is active
+      if (activeTab !== "terminal") {
+        setActiveTab("terminal");
+        
+        // Give time for terminal tab to activate
+        setTimeout(() => {
+          writeTextToTerminal(text);
+        }, 300);
+      } else {
+        writeTextToTerminal(text);
+      }
+    };
+    
+    // Handler for sending control signals to the terminal
+    const handleSendSignal = (event: Event) => {
+      const customEvent = event as CustomEvent<{signal: string}>;
+      const signal = customEvent.detail.signal;
+      
+      console.log(`Sending signal to terminal: ${signal}`);
+      
+      if (!terminal.current || !isProcessRunning) {
+        console.warn('Terminal not ready to send signal');
+        return;
+      }
+      
+      try {
+        switch (signal) {
+          case 'SIGINT':
+            // Send Ctrl+C to the terminal
+            console.log('Sending Ctrl+C to terminal');
+            invoke("send_input", { input: '\x03' }).catch((err: Error) => {
+              console.error("Failed to send Ctrl+C to terminal:", err);
+            });
+            break;
+          
+          case 'SIGTSTP':
+            // Send Ctrl+Z to the terminal
+            console.log('Sending Ctrl+Z to terminal');
+            invoke("send_input", { input: '\x1A' }).catch((err: Error) => {
+              console.error("Failed to send Ctrl+Z to terminal:", err);
+            });
+            break;
+            
+          default:
+            console.warn(`Unknown signal: ${signal}`);
+            break;
+        }
+      } catch (error) {
+        console.error(`Error sending ${signal} to terminal:`, error);
+      }
+    };
+    
+    // Helper function to write text to the terminal
+    const writeTextToTerminal = (text: string) => {
+      if (!terminal.current) {
+        console.warn('Terminal not ready to write text');
+        return;
+      }
+      
+      try {
+        // Write the text to the terminal
+        terminal.current.write(text);
+      } catch (error) {
+        console.error('Error writing text to terminal:', error);
+      }
+    };
+    
+    // Helper function to execute a command in the terminal
+    const executeCommandInTerminal = async (command: string) => {
+      if (!terminal.current || !isProcessRunning) {
+        console.warn('Terminal not ready to execute command');
+        return;
+      }
+      
+      try {
+        // Write the command visibly in the terminal
+        terminal.current.write(`\r\n${command}\r\n`);
+        
+        // Send the command to the process
+        await invoke("send_input", { input: command + '\r' }).catch((err: Error) => {
+          console.error("Failed to send command to terminal:", err);
+        });
+      } catch (error) {
+        console.error('Error executing command in terminal:', error);
+      }
+    };
+
     // Add event listener for the terminal container
     const terminalContainer = document.querySelector('.terminal-container') as HTMLElement | null;
     if (terminalContainer) {
@@ -599,6 +725,9 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     
     // Also listen at document level (fallback)
     document.addEventListener('terminal-command', handleTerminalCommand);
+    document.addEventListener('terminal-execute-command', handleExecuteCommand);
+    document.addEventListener('terminal-write-text', handleWriteText);
+    document.addEventListener('terminal-send-signal', handleSendSignal);
 
     // Cleanup function
     return () => {
@@ -606,8 +735,11 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         terminalContainer.removeEventListener('terminal-command', handleTerminalCommand);
       }
       document.removeEventListener('terminal-command', handleTerminalCommand);
+      document.removeEventListener('terminal-execute-command', handleExecuteCommand);
+      document.removeEventListener('terminal-write-text', handleWriteText);
+      document.removeEventListener('terminal-send-signal', handleSendSignal);
     };
-  }, []);
+  }, [activeTab, isProcessRunning]);
 
   // Handle closing the terminal panel
   const closeTerminal = () => {
@@ -781,6 +913,35 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     }
   };
 
+  // Добавляем слушатель для принудительного обновления проблем
+  useEffect(() => {
+    const handleForceUpdateProblems = () => {
+      console.log('Получено событие force-update-problems');
+      
+      // Переключаем на вкладку проблем
+      setActiveTab("issues");
+      
+      // Принудительно обновляем диагностику
+      if (typeof window !== "undefined" && (window as any).getPythonDiagnostics) {
+        try {
+          const diagData = (window as any).getPythonDiagnostics();
+          console.log('Принудительное обновление проблем:', diagData);
+          
+          // Обновляем состояние для ререндера компонента
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        } catch (e) {
+          console.error('Ошибка при обновлении проблем:', e);
+        }
+      }
+    };
+    
+    document.addEventListener('force-update-problems', handleForceUpdateProblems);
+    
+    return () => {
+      document.removeEventListener('force-update-problems', handleForceUpdateProblems);
+    };
+  }, []);
+
   return (
     <div className="terminal-container" style={{height: terminalHeight ? `${terminalHeight}px` : '200px', display: 'flex', flexDirection: 'column'}}>
       <div className="vertical-resizer" onMouseDown={handleVerticalDrag}>
@@ -795,7 +956,19 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             Терминал
           </button>
           <button
-            onClick={() => setActiveTab("issues")}
+            onClick={() => {
+              setActiveTab("issues");
+              // При переключении на вкладку проблем, принудительно обновляем диагностику
+              if (typeof window !== "undefined" && (window as any).updatePythonDiagnostics) {
+                console.log("Обновление диагностики при переключении на вкладку проблем");
+                (window as any).updatePythonDiagnostics().then((diagData: any) => {
+                  console.log("Диагностика обновлена:", diagData);
+                  setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+                }).catch((err: any) => {
+                  console.error("Ошибка при обновлении диагностики:", err);
+                });
+              }
+            }}
             className={`tab-button ${activeTab === "issues" ? "active" : ""}`}
           >
             Проблемы

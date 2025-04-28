@@ -41,7 +41,10 @@ pub async fn start_process(state: State<'_, PtyState>, app: AppHandle) -> Result
         .map_err(|e| e.to_string())?;
 
     let mut cmd = CommandBuilder::new("powershell.exe");
-    cmd.args(["-NoExit", "-Command", "chcp 65001; Set-Location C:\\Users; "]); // Устанавливаем начальную директорию
+    
+    // Устанавливаем кодировку UTF-8 без хардкода начальной директории
+    cmd.args(["-NoExit", "-Command", "chcp 65001"]);
+    
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
 
     let master = pair.master;
@@ -102,7 +105,10 @@ pub async fn send_input(state: State<'_, PtyState>, input: String) -> Result<(),
 pub async fn change_directory(state: State<'_, PtyState>, path: String) -> Result<(), String> {
     let mut writer_guard = state.writer.lock().await;
     if let Some(writer) = writer_guard.as_mut() {
-        let command = format!("Set-Location {}\r\n", path.replace("/", "\\")); // PowerShell использует \
+        // Экранируем путь, заключая его в двойные кавычки для правильной обработки пробелов
+        let escaped_path = path.replace("/", "\\"); // Заменяем слеши для Windows
+        let command = format!("Set-Location \"{}\"\r\n", escaped_path);
+        
         writer
             .write_all(command.as_bytes())
             .map_err(|e| format!("Failed to change directory: {}", e))?;
@@ -126,6 +132,35 @@ pub async fn clear_terminal(state: State<'_, PtyState>) -> Result<(), String> {
         writer
             .flush()
             .map_err(|e| format!("Failed to flush PTY: {}", e))?;
+        Ok(())
+    } else {
+        Err("PTY writer not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn kill_process(state: State<'_, PtyState>) -> Result<(), String> {
+    let mut writer_guard = state.writer.lock().await;
+    if let Some(writer) = writer_guard.as_mut() {
+        // Отправляем Ctrl+C для прерывания текущего процесса
+        writer
+            .write_all(&[0x03]) // 0x03 - код Ctrl+C
+            .map_err(|e| format!("Failed to send kill signal: {}", e))?;
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush PTY: {}", e))?;
+        
+        // Небольшая пауза для обработки Ctrl+C
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Отправка Enter для запуска нового приглашения командной строки
+        writer
+            .write_all(b"\r\n")
+            .map_err(|e| format!("Failed to send newline: {}", e))?;
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush PTY: {}", e))?;
+        
         Ok(())
     } else {
         Err("PTY writer not initialized".to_string())

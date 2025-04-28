@@ -9,6 +9,7 @@ declare global {
     refreshAllPythonDiagnostics?: () => Promise<void>;
     getPythonDiagnostics?: () => any[];
     forceUpdateAllDecorations?: () => number;
+    updateEditorStyles?: () => number;
   }
 }
 
@@ -261,6 +262,13 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
     }, 100);
   }, [problems, expandedFiles]);
 
+  // Функция для ручного обновления стилей редактора
+  const handleUpdateStyles = () => {
+    if (window.updateEditorStyles && typeof window.updateEditorStyles === 'function') {
+      window.updateEditorStyles();
+    }
+  };
+
   return (
     <div className="problem-panel overflow-auto h-full text-sm">
       <div className="problem-header px-2 py-1 border-b border-gray-700">
@@ -330,6 +338,15 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
                 <AlertCircle size={10} className="mr-1" />
                 {isScanning ? 'Проверка...' : 'Глубокая проверка'}
               </button>
+              
+              <button 
+                className="flex items-center rounded px-1 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300"
+                onClick={handleUpdateStyles}
+                title="Исправить отображение текста ошибок"
+              >
+                <RefreshCw size={10} className="mr-1" />
+                Исправить текст
+              </button>
             </div>
           </div>
         </div>
@@ -389,13 +406,14 @@ const ProblemPanel: React.FC<ProblemPanelProps> = ({ onFileClick }) => {
                         overflow: 'hidden !important',
                         display: 'flex !important',
                         alignItems: 'center !important',
+                        whiteSpace: 'nowrap !important',
                       }}
                     >
                       <span className="mr-1 flex-shrink-0" style={{ height: '14px !important', lineHeight: '14px !important' }}>
                         {getSeverityIcon(issue.severity)}
                       </span>
-                      <div className="flex flex-row flex-1 overflow-hidden" style={{ height: '14px !important', lineHeight: '14px !important' }}>
-                        <span className="truncate flex-1" style={{ height: '14px !important', lineHeight: '14px !important' }}>
+                      <div className="flex flex-row flex-1 overflow-hidden" style={{ height: '14px !important', lineHeight: '14px !important', whiteSpace: 'nowrap !important' }}>
+                        <span className="truncate flex-1" style={{ height: '14px !important', lineHeight: '14px !important', whiteSpace: 'nowrap !important', textOverflow: 'ellipsis !important' }}>
                           {truncateMessage(issue.rawMessage || issue.message, 100)}
                         </span>
                         <span className="text-xxs text-gray-400 flex-shrink-0 ml-1" style={{ height: '14px !important', lineHeight: '14px !important' }}>
