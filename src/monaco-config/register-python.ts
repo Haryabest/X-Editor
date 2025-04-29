@@ -138,16 +138,94 @@ function findBasicPythonErrors(code: string): ScriptError[] {
   const errors: ScriptError[] = [];
   const lines = code.split('\n');
   
-  // Простая проверка открытых/закрытых скобок
+  // Набор популярных модулей и их функций для проверки
+  const popularModules: Record<string, string[]> = {
+    'math': ['sin', 'cos', 'tan', 'sqrt', 'log', 'exp', 'pow', 'pi', 'e', 'floor', 'ceil', 'fabs'],
+    'random': ['random', 'randint', 'choice', 'shuffle', 'sample', 'uniform'],
+    'os': ['path', 'listdir', 'mkdir', 'remove', 'rename', 'environ'],
+    'sys': ['argv', 'exit', 'path', 'stdout', 'stderr', 'stdin'],
+    'datetime': ['datetime', 'date', 'time', 'timedelta'],
+    'json': ['loads', 'dumps', 'load', 'dump'],
+  };
+  
+  // Отслеживание текущего контекста для проверок, связанных с блоками
+  let inFunction = false;
+  let inClass = false;
+  let inLoop = false;
+  let inIf = false;
+  let inTry = false;
+  let inExcept = false;
+  let indentLevel = 0;
+  let importedModules: string[] = [];
+  
+  // Простая проверка открытых/закрытых скобок и кавычек
   let openParens = 0, openBrackets = 0, openBraces = 0;
   let lastOpenParenLine = 0, lastOpenBracketLine = 0, lastOpenBraceLine = 0;
+  
+  // Отслеживание незакрытых строк
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTripleQuote = false;
+  
+  // Проверка определений функций
+  const functionDefRegex = /^\s*def\s+(\w+)\s*\((.*?)\)\s*:?\s*$/;
+  
+  // Проверка импортов
+  const importRegex = /^\s*import\s+([a-zA-Z0-9_,.]+)\s*$/;
+  const fromImportRegex = /^\s*from\s+([a-zA-Z0-9_.]+)\s+import\s+([a-zA-Z0-9_,*]+)\s*$/;
+  
+  // Проверка try-except блоков
+  const tryRegex = /^\s*try\s*:?\s*$/;
+  const exceptRegex = /^\s*except(\s+\w+)?(\s+as\s+\w+)?\s*:?\s*$/;
+  
+  // Проверка обращения к элементам списка и словаря
+  const listAccessRegex = /\w+\[.*?\]/g;
+  const dictAccessRegex = /\w+\[["'].*?["']\]/g;
+  
+  // Проверка деления на ноль
+  const divisionByZeroRegex = /\/\s*0+(\.\d*[1-9])?\s*/;
+  
+  // Проверка вызова функций модулей
+  const moduleCallRegex = /(\w+)\.(\w+)\(/g;
+  
+  // Проверка сравнения разных типов
+  const mixedComparisonRegex = /(\d+)\s*[<>]=?\s*["'].+["']/;
+  
+  // Проверка списков на наличие двойных запятых
+  const doubleCommaRegex = /\[\s*[\w\d",'\s]+\,\s*\,\s*[\w\d",'\s]+\]/;
+  
+  // Проверка атрибутов строк и других основных типов
+  const stringMethodsRegex = /(['"]).*?\1\.(append|push|pop|shift|unshift)\(/g;
+  const listMethodsRegex = /(\w+)\.(keys|values|items|has[a-zA-Z]+|add|update|intersection|difference|clear)\(/g;
+
+  // Проверка операций с None
+  const noneOperationsRegex = /(None\s*[\+\-\*\/\%])|([+\-*/\%]\s*None)/;
+
+  // Проверка типов при использовании списков
+  const typeMixRegex = /\[\s*[\d]+\s*,\s*['"][^'"]*['"]\s*\]/;
+  
+  // Добавляем дополнительные регулярные выражения для проверки:
+  
+  // Проверка вызова функции без скобок
+  const functionCallWithoutParens = /\b(print|len|sum|min|max|sorted|list|dict|str|int|float|bool|range|enumerate|zip|map|filter)\s+[a-zA-Z0-9_"'[\]]+(\s|$|#|,|;)/;
+
+  // Проверка противоречивых операций сравнения
+  const contradictoryComparison = /\w+\s*[<>=]+\s*\w+\s+and\s+\w+\s*[<>=]+\s*\w+/;
+
+  // Регулярное выражение для обнаружения непарных кавычек
+  const unparedQuotes = /(['"])(?:(?!\1).)*$/;
   
   lines.forEach((line, idx) => {
     const lineNumber = idx + 1;
     const trimmedLine = line.trim();
     
+    // Пропускаем пустые строки и комментарии
+    if (trimmedLine.length === 0 || trimmedLine.startsWith('#')) {
+      return;
+    }
+    
     // Проверка отступов (должны быть кратны 4 пробелам или табам)
-    if (trimmedLine.length > 0 && !trimmedLine.startsWith('#')) {
+    if (!trimmedLine.startsWith('#')) {
       const leadingSpaces = line.length - line.trimStart().length;
       if (leadingSpaces % 4 !== 0 && !line.startsWith('\t')) {
         errors.push({
@@ -182,6 +260,291 @@ function findBasicPythonErrors(code: string): ScriptError[] {
           message: 'Ожидается отступ после двоеточия',
           severity: 'error'
         });
+      }
+    }
+    
+    // Проверка определений функций
+    const funcMatch = trimmedLine.match(functionDefRegex);
+    if (funcMatch) {
+      const hasColon = trimmedLine.trim().endsWith(':');
+      if (!hasColon) {
+        errors.push({
+          lineNumber,
+          message: 'Отсутствует двоеточие в объявлении функции',
+          severity: 'error'
+        });
+      }
+      
+      // Проверка правильности скобок в параметрах
+      const params = funcMatch[2];
+      const openCount = (params.match(/\(/g) || []).length;
+      const closeCount = (params.match(/\)/g) || []).length;
+      if (openCount !== closeCount) {
+        errors.push({
+          lineNumber,
+          message: 'Несбалансированные скобки в параметрах функции',
+          severity: 'error'
+        });
+      }
+      
+      // Вход в блок функции
+      inFunction = true;
+      indentLevel += 1;
+    }
+    
+    // Проверка блоков try-except
+    if (tryRegex.test(trimmedLine)) {
+      const hasColon = trimmedLine.trim().endsWith(':');
+      if (!hasColon) {
+        errors.push({
+          lineNumber,
+          message: 'Отсутствует двоеточие после try',
+          severity: 'error'
+        });
+      }
+      inTry = true;
+      indentLevel += 1;
+    }
+    
+    if (exceptRegex.test(trimmedLine)) {
+      const hasColon = trimmedLine.trim().endsWith(':');
+      if (!hasColon) {
+        errors.push({
+          lineNumber,
+          message: 'Отсутствует двоеточие после except',
+          severity: 'error'
+        });
+      }
+      if (!inTry) {
+        errors.push({
+          lineNumber,
+          message: 'Блок except без предшествующего блока try',
+          severity: 'error'
+        });
+      }
+      inExcept = true;
+    }
+    
+    // Проверка импортов
+    let importMatch = trimmedLine.match(importRegex);
+    if (importMatch) {
+      const moduleName = importMatch[1].split(',')[0].trim();
+      if (!moduleName) {
+        errors.push({
+          lineNumber,
+          message: 'Ошибка в инструкции import',
+          severity: 'error'
+        });
+      } else {
+        // Проверяем на наличие распространенных модулей для предупреждений
+        if (!(moduleName in popularModules) && 
+            !['sys', 'os', 'io', 're', 'time', 'numpy', 'pandas', 'django'].includes(moduleName)) {
+          errors.push({
+            lineNumber,
+            message: `Модуль '${moduleName}' может не существовать или быть недоступен`,
+            severity: 'warning'
+          });
+        } else {
+          importedModules.push(moduleName);
+        }
+      }
+    }
+    
+    importMatch = trimmedLine.match(fromImportRegex);
+    if (importMatch) {
+      const moduleName = importMatch[1];
+      if (!moduleName) {
+        errors.push({
+          lineNumber,
+          message: 'Ошибка в инструкции from-import',
+          severity: 'error'
+        });
+      } else {
+        // Проверяем на наличие распространенных модулей для предупреждений
+        if (!(moduleName in popularModules) && 
+            !['sys', 'os', 'io', 're', 'time', 'numpy', 'pandas', 'django'].includes(moduleName)) {
+          errors.push({
+            lineNumber,
+            message: `Модуль '${moduleName}' может не существовать или быть недоступен`,
+            severity: 'warning'
+          });
+        } else {
+          importedModules.push(moduleName);
+        }
+      }
+    }
+    
+    // Проверка вызовов методов модулей
+    let moduleCall;
+    while ((moduleCall = moduleCallRegex.exec(trimmedLine)) !== null) {
+      const moduleName = moduleCall[1];
+      const functionName = moduleCall[2];
+      
+      // Если это известный модуль, проверяем функцию
+      if (moduleName in popularModules) {
+        if (!popularModules[moduleName].includes(functionName)) {
+          errors.push({
+            lineNumber,
+            message: `Функция '${functionName}' может отсутствовать в модуле '${moduleName}'`,
+            severity: 'warning'
+          });
+        }
+      }
+    }
+    
+    // Проверка деления на ноль
+    if (divisionByZeroRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Возможное деление на ноль',
+        severity: 'warning'
+      });
+    }
+    
+    // Проверка сравнения разных типов
+    if (mixedComparisonRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Сравнение разных типов (число и строка)',
+        severity: 'warning'
+      });
+    }
+    
+    // Проверка списков на наличие двойных запятых
+    if (doubleCommaRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Синтаксическая ошибка: двойная запятая в списке',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка атрибутов строк (методы, которые есть в других языках, но отсутствуют в Python)
+    if (stringMethodsRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Использование метода, который отсутствует у строк в Python (push, append, etc.)',
+        severity: 'error'
+      });
+    }
+
+    // Проверка ошибок в методах коллекций
+    const listMatches = [...trimmedLine.matchAll(listMethodsRegex)];
+    for (const match of listMatches) {
+      const obj = match[1];
+      const method = match[2];
+      
+      // Проверка методов словарей на списках/строках
+      if (['keys', 'values', 'items', 'has'].some(m => method.startsWith(m))) {
+        errors.push({
+          lineNumber,
+          message: `Метод '${method}' может быть недоступен для объекта '${obj}' (это метод словаря)`,
+          severity: 'warning'
+        });
+      }
+      
+      // Проверка методов множеств на списках/строках
+      if (['add', 'update', 'intersection', 'difference'].includes(method)) {
+        errors.push({
+          lineNumber,
+          message: `Метод '${method}' может быть недоступен для объекта '${obj}' (это метод множества)`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    // Проверка операций с None
+    if (noneOperationsRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Математические операции с None не допустимы',
+        severity: 'error'
+      });
+    }
+
+    // Проверка смешивания типов в списке
+    if (typeMixRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Смешивание числовых и строковых типов в списке может привести к ошибкам при дальнейших операциях',
+        severity: 'warning'
+      });
+    }
+    
+    // Проверка вызова функции без скобок
+    if (functionCallWithoutParens.test(trimmedLine) && !trimmedLine.includes('(')) {
+      errors.push({
+        lineNumber,
+        message: 'Вызов функции без скобок. В Python функции вызываются с (), даже если нет аргументов.',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка противоречивых операций сравнения
+    if (contradictoryComparison.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Возможно противоречивое сравнение. Убедитесь, что ваше логическое выражение имеет смысл.',
+        severity: 'warning'
+      });
+    }
+
+    // Проверка непарных кавычек (если не комментарий)
+    if (!trimmedLine.startsWith('#') && unparedQuotes.test(trimmedLine) && 
+        !trimmedLine.includes('"""') && !trimmedLine.includes("'''")) {
+      errors.push({
+        lineNumber,
+        message: 'Непарные кавычки в строке',
+        severity: 'error'
+      });
+    }
+
+    // Если строка кончается на двоеточие, запускаем дополнительную проверку
+    if (trimmedLine.endsWith(':')) {
+      if (idx === lines.length - 1) {
+        errors.push({
+          lineNumber,
+          message: 'Блок определения заканчивается без тела. После двоеточия должен быть блок с отступом.',
+          severity: 'error'
+        });
+      }
+    }
+
+    // Добавляем проверку для break/continue вне цикла
+    if (/^\s*break\b/.test(trimmedLine) && !inLoop) {
+      errors.push({
+        lineNumber,
+        message: 'Инструкция break вне цикла',
+        severity: 'error'
+      });
+    }
+
+    if (/^\s*continue\b/.test(trimmedLine) && !inLoop) {
+      errors.push({
+        lineNumber,
+        message: 'Инструкция continue вне цикла',
+        severity: 'error'
+      });
+    }
+
+    // Добавляем отслеживание контекста для циклов
+    if (/^\s*(for|while)\b.*:/.test(trimmedLine)) {
+      inLoop = true;
+      indentLevel += 1;
+    } else if (indentLevel > 0 && trimmedLine.length > 0) {
+      // Если уменьшился отступ, выходим из текущего блока
+      const currentIndent = line.length - line.trimStart().length;
+      // Этот код будет приблизительным, но позволит отслеживать конец блоков
+      if (currentIndent < indentLevel * 4) {
+        indentLevel = Math.floor(currentIndent / 4);
+        
+        if (indentLevel === 0) {
+          inFunction = false;
+          inLoop = false;
+          inClass = false;
+          inTry = false;
+          inExcept = false;
+        }
       }
     }
     
@@ -287,11 +650,55 @@ async function checkPythonErrors(code: string, model?: monaco.editor.ITextModel)
         message: diag.message,
         severity: diag.severity
       }));
+      
+      // Если с backend получили меньше 1 ошибки, добавляем проверку базовым парсером
+      if (errors.length < 1) {
+        const basicErrors = findBasicPythonErrors(code);
+        // Объединяем ошибки, избегая дубликатов
+        for (const basicError of basicErrors) {
+          if (!errors.some(e => e.lineNumber === basicError.lineNumber && e.message === basicError.message)) {
+            errors.push(basicError);
+          }
+        }
+      }
     } catch (backendError) {
       console.warn('Не удалось вызвать backend для проверки Python:', backendError);
       // Если backend недоступен, используем базовую проверку
       errors = findBasicPythonErrors(code);
+      
+      // Добавляем предупреждение о том, что используется упрощенный анализатор
+      errors.push({
+        lineNumber: 1,
+        message: 'Внимание: работает упрощенный анализатор ошибок Python. Некоторые ошибки могут быть не обнаружены.',
+        severity: 'info'
+      });
     }
+    
+    // Добавляем контекст к сообщениям об ошибках для лучшего понимания пользователем
+    errors = errors.map(error => {
+      let enhancedMessage = error.message;
+      
+      // Улучшаем сообщения для синтаксических ошибок
+      if (error.message.includes('двоеточие') || error.message.includes('скобка')) {
+        enhancedMessage = `🔍 Синтаксическая ошибка: ${error.message}`;
+      } 
+      // Улучшаем сообщения для ошибок импорта
+      else if (error.message.includes('модуль') || error.message.includes('import')) {
+        enhancedMessage = `📦 ${error.message}`;
+      }
+      // Улучшаем сообщения для типовых предупреждений
+      else if (error.message.includes('деление на ноль')) {
+        enhancedMessage = `⚠️ Возможная ошибка времени выполнения: ${error.message}`;
+      }
+      else if (error.message.includes('сравнени') || error.message.includes('типов')) {
+        enhancedMessage = `🔄 Потенциальная ошибка типов: ${error.message}`;
+      }
+      
+      return {
+        ...error,
+        message: enhancedMessage
+      };
+    });
     
     // Если предоставлена модель, устанавливаем маркеры
     if (model) {

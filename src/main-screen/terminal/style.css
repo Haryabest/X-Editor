@@ -486,19 +486,6 @@
   gap: 8px;
 }
 
-.action-button {
-  background: transparent;
-  border: none;
-  color: #cccccc;
-  width: 24px;
-  height: 24px;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
 .action-button:hover {
   background-color: #3c3c3c;
 }
