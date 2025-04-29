@@ -16,7 +16,7 @@ const Modal: React.FC<ModalProps> = ({
   onClose, 
   title, 
   children, 
-  width = '500px',
+  width = '5000px',
   height = 'auto'
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);

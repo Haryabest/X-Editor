@@ -177,21 +177,19 @@ const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, onClose
       width="800px"
       height="600px"
     >
-      <div className="doc-container">
-        <div className="doc-sidebar">
-          {sections.map(section => (
-            <button
-              key={section.id}
-              className={`doc-nav-item ${activeSection === section.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(section.id)}
-            >
-              {section.title}
-            </button>
-          ))}
-        </div>
-        <div className="doc-content">
-          {sections.find(section => section.id === activeSection)?.content}
-        </div>
+      <div className="doc-sidebar">
+        {sections.map(section => (
+          <button
+            key={section.id}
+            className={`doc-nav-item ${activeSection === section.id ? 'active' : ''}`}
+            onClick={() => setActiveSection(section.id)}
+          >
+            {section.title}
+          </button>
+        ))}
+      </div>
+      <div className="doc-content">
+        {sections.find(section => section.id === activeSection)?.content}
       </div>
     </Modal>
   );
