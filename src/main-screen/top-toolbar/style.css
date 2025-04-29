@@ -583,3 +583,12 @@
   color: #888;
   text-align: center;
 }
+
+.toolbar-action-buttons {
+  display: flex;
+  align-items: center;
+  margin-left: 10px;
+  height: 30px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 10px;
+}

@@ -1,7 +1,23 @@
-import React, { useState, FormEvent, useEffect } from 'react';
+import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import './CloneRepositoryModal.css';
+import { 
+  GitFork, 
+  FolderSearch, 
+  X, 
+  Terminal, 
+  GitBranch, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  Download, 
+  FileCode,
+  Clock,
+  Github,
+  GitCommit
+} from 'lucide-react';
 
 interface CloneResponse {
   success: boolean;
@@ -39,6 +55,14 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
   const [logs, setLogs] = useState<string[]>([]);
   const [cloneStarted, setCloneStarted] = useState<boolean>(false);
   const [useSimulation, setUseSimulation] = useState<boolean>(true);
+  const logContentRef = useRef<HTMLDivElement>(null);
+
+  // Эффект для автоскролла логов
+  useEffect(() => {
+    if (logContentRef.current && logs.length > 0) {
+      logContentRef.current.scrollTop = logContentRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   // Слушаем события прогресса от Tauri
   useEffect(() => {
@@ -262,60 +286,80 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
 
   // Компонент прогресс-бара
   const ProgressBar = ({ percentage }: { percentage: number }) => (
-    <div style={{ 
-      width: '100%', 
-      height: '10px', 
-      backgroundColor: '#e0e0e0', 
-      borderRadius: '5px',
-      marginBottom: '10px',
-      overflow: 'hidden'
-    }}>
-      <div style={{ 
-        width: `${percentage}%`, 
-        height: '100%', 
-        backgroundColor: '#4caf50',
-        transition: 'width 0.3s ease-in-out'
-      }} />
+    <div className="progress-bar-container">
+      <div 
+        className="progress-bar-fill"
+        style={{ width: `${percentage}%` }}
+      />
     </div>
   );
 
+  // Функция для определения, является ли репозиторий GitHub репозиторием
+  const isGithubRepo = (url: string): boolean => {
+    return url.toLowerCase().includes('github.com');
+  };
+
+  // Форматирование URL репозитория для отображения
+  const formatRepoUrl = (url: string): string => {
+    if (!url.trim()) return '';
+    
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname + urlObj.pathname;
+    } catch {
+      return url;
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title">Клонировать Git репозиторий</h3>
-          <button className="modal-close" onClick={onClose}>&times;</button>
+          <h3 className="modal-title">
+            <GitFork size={18} />
+            Клонировать Git репозиторий
+          </h3>
+          <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
         
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="repo-url" className="form-label">URL репозитория</label>
-            <input
-              id="repo-url"
-              type="text"
-              className="form-input"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/username/repository.git"
-              disabled={isLoading}
-            />
+            <div className="input-with-icon">
+              <input
+                id="repo-url"
+                type="text"
+                className="form-input with-icon"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/username/repository.git"
+                disabled={isLoading}
+              />
+              {isGithubRepo(repoUrl) ? (
+                <Github size={16} className="input-icon" />
+              ) : (
+                <GitBranch size={16} className="input-icon" />
+              )}
+            </div>
             <div className="form-hint">Например: https://github.com/username/repository.git</div>
           </div>
           
           <div className="form-group">
             <label htmlFor="target-dir" className="form-label">Директория для клонирования</label>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <input
-                id="target-dir"
-                type="text"
-                className="form-input"
-                value={targetDir}
-                onChange={(e) => setTargetDir(e.target.value)}
-                placeholder="Выберите директорию..."
-                disabled={isLoading}
-                style={{ flex: 1 }}
-                readOnly
-              />
+              <div className="input-with-icon" style={{ flex: 1 }}>
+                <input
+                  id="target-dir"
+                  type="text"
+                  className="form-input with-icon"
+                  value={targetDir}
+                  onChange={(e) => setTargetDir(e.target.value)}
+                  placeholder="Выберите директорию..."
+                  disabled={isLoading}
+                  readOnly
+                />
+                <FolderSearch size={16} className="input-icon" />
+              </div>
               <button
                 type="button"
                 className="form-button"
@@ -326,61 +370,68 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               </button>
             </div>
             {targetDir && repoUrl && (
-              <div className="form-hint" style={{ marginTop: '5px', color: '#4caf50' }}>
-                Репозиторий будет клонирован в: {getFullTargetPath().replace(/\//g, '\\')}
+              <div className="form-hint success-hint">
+                <CheckCircle2 size={14} />
+                <span>
+                  Репозиторий будет клонирован в: <strong>{getFullTargetPath().replace(/\//g, '\\')}</strong>
+                </span>
               </div>
             )}
           </div>
           
           {error && (
-            <div style={{ color: '#e74c3c', marginBottom: '10px', fontSize: '14px' }}>
+            <div className="error-message">
+              <AlertCircle size={16} />
               {error}
             </div>
           )}
           
           {cloneStarted && progress && (
-            <div className="progress-container" style={{ marginBottom: '15px' }}>
+            <div className="progress-container">
               <ProgressBar percentage={progress.percentage} />
               
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                <span style={{ fontSize: '14px' }}>{progress.stage}</span>
-                <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{progress.percentage}%</span>
+              <div className="progress-info">
+                <span className="progress-stage">
+                  <GitCommit size={14} style={{ marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                  {progress.stage}
+                </span>
+                <span className="progress-percentage">{progress.percentage}%</span>
               </div>
               
               {progress.currentFile && (
-                <div style={{ fontSize: '13px', marginBottom: '3px' }}>
-                  Файл: {progress.currentFile}
+                <div className="progress-file">
+                  <FileCode size={14} />
+                  <span>{progress.currentFile}</span>
                 </div>
               )}
               
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                <span>Файлы: {progress.filesProcessed}/{progress.totalFiles}</span>
-                <span>Скорость: {progress.speed}</span>
-                <span>Осталось: {progress.estimatedTimeLeft}</span>
+              <div className="progress-stats">
+                <span>
+                  <Download size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
+                  Файлы: {progress.filesProcessed}/{progress.totalFiles}
+                </span>
+                <span>
+                  <ArrowRight size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
+                  Скорость: {progress.speed}
+                </span>
+                <span>
+                  <Clock size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
+                  Осталось: {progress.estimatedTimeLeft}
+                </span>
               </div>
               
-              <div 
-                style={{
-                  marginTop: '10px',
-                  padding: '8px',
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: '4px',
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                  color: '#333'
-                }}
-              >
-                {logs.map((log, index) => (
-                  <div key={index} style={{ marginBottom: '2px' }}>
-                    {log.includes('[Error]') ? (
-                      <span style={{ color: '#e74c3c' }}>{log}</span>
-                    ) : (
-                      <span>{log}</span>
-                    )}
-                  </div>
-                ))}
+              <div className="log-container">
+                <div className="log-header">
+                  <Terminal size={14} />
+                  <span>Лог процесса клонирования</span>
+                </div>
+                <div className="log-content" ref={logContentRef}>
+                  {logs.map((log, index) => (
+                    <div key={index} className={log.includes('[Error]') ? 'log-entry error' : 'log-entry'}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -399,7 +450,22 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               className="form-button"
               disabled={isLoading}
             >
-              {isLoading ? 'Клонирование...' : 'Клонировать'}
+              {isLoading ? (
+                <>
+                  <span className="spinner" style={{ marginRight: '8px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spinning">
+                      <circle cx="12" cy="12" r="10" opacity="0.25" />
+                      <path d="M12 2C6.5 2 2 6.5 2 12" />
+                    </svg>
+                  </span>
+                  Клонирование...
+                </>
+              ) : (
+                <>
+                  <GitFork size={14} style={{ marginRight: '8px' }} />
+                  Клонировать
+                </>
+              )}
             </button>
           </div>
         </form>

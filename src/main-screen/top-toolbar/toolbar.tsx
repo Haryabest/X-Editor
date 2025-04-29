@@ -11,7 +11,9 @@ import {
   PanelTop,
   PanelBottom,
   PlayCircle, 
-  FastForward
+  FastForward,
+  Shuffle,
+  MousePointer
 } from "lucide-react";
 import { MenuItem, FileItem } from './types/types';
 import SearchTrigger from './components/SearchTrigger';
@@ -38,6 +40,7 @@ export interface TopToolbarProps {
   onSelectAll?: () => void;
   onDeselect?: () => void;
   onInvertSelection?: () => void;
+  onSelectParagraph?: () => void;
   onExpandSelection?: () => void;
   // New console command handlers
   onOpenConsole?: () => void;
@@ -67,8 +70,8 @@ const menuData: Record<string, MenuItem[]> = {
   "Выделение": [
     { text: "Выбрать всё", shortcut: "Ctrl + A" },
     { text: "Отменить выбор", shortcut: "Esc" },
-    { text: "Инвертировать", shortcut: "Shift + I" },
-    { text: "Расширенное выделение", shortcut: "Alt + E" }
+    { text: "Выделить параграф", shortcut: "Ctrl + P" },
+    { text: "Инвертировать", shortcut: "Shift + I" }
   ],
   "Вид": [
     { text: "Полноэкранный режим", shortcut: "F11" },
@@ -110,6 +113,7 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
   onSelectAll,
   onDeselect,
   onInvertSelection,
+  onSelectParagraph,
   onExpandSelection,
   // New console command handlers
   onOpenConsole,
@@ -418,11 +422,14 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
           case "Отменить выбор":
             onDeselect?.();
             break;
+          case "Выделить параграф":
+            if (typeof onSelectParagraph === 'function') {
+              console.log('Выделяем текущий параграф');
+              onSelectParagraph();
+            }
+            break;
           case "Инвертировать":
             onInvertSelection?.();
-            break;
-          case "Расширенное выделение":
-            onExpandSelection?.();
             break;
           default:
             break;

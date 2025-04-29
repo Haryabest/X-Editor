@@ -1,0 +1,468 @@
+/* Стили для модального окна клонирования репозитория */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+}
+
+.modal-content {
+  background-color: #0f0f0f;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: #e6e6e6;
+  width: 100%;
+  max-width: 500px;
+  animation: modal-appear 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes modal-appear {
+  from {
+    transform: translateY(-30px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background-color: #131313;
+  position: relative;
+}
+
+.modal-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title svg {
+  color: #0078d4;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+form {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 22px;
+  position: relative;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #aaa;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  color: #555;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background-color: #151515;
+  color: #fff;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.form-input.with-icon {
+  padding-left: 38px;
+}
+
+.form-input:focus {
+  border-color: #0078d4;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.15);
+  background-color: #1a1a1a;
+}
+
+.form-input:focus + .input-icon,
+.input-with-icon:hover .input-icon {
+  color: #0078d4;
+}
+
+.form-input:hover:not(:disabled):not(:focus) {
+  border-color: #444;
+  background-color: #1a1a1a;
+}
+
+.form-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.form-hint {
+  margin-top: 7px;
+  font-size: 11px;
+  color: #777;
+  padding-left: 2px;
+}
+
+.success-hint {
+  color: #4caf50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  background-color: rgba(76, 175, 80, 0.08);
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.success-hint svg {
+  color: #4caf50;
+  flex-shrink: 0;
+}
+
+.success-hint strong {
+  color: #66bb6a;
+  font-weight: 500;
+}
+
+.error-message {
+  padding: 12px 14px;
+  background-color: rgba(231, 76, 60, 0.08);
+  border-left: 3px solid #e74c3c;
+  color: #e74c3c;
+  border-radius: 6px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  background-color: #0078d4;
+  color: white;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-button:hover:not(:disabled) {
+  background-color: #106ebe;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.form-button:active:not(:disabled) {
+  background-color: #005a9e;
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.form-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.form-button-secondary {
+  background-color: transparent;
+  border: 1px solid #333;
+  color: #ccc;
+}
+
+.form-button-secondary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: #444;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.progress-container {
+  padding: 18px;
+  background-color: #151515;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid #333;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.progress-stage {
+  font-size: 14px;
+  color: #ddd;
+  display: flex;
+  align-items: center;
+}
+
+.progress-percentage {
+  font-size: 14px;
+  font-weight: bold;
+  color: #0078d4;
+  padding: 4px 10px;
+  background-color: rgba(0, 120, 212, 0.1);
+  border-radius: 12px;
+}
+
+.progress-file {
+  font-size: 13px;
+  margin-bottom: 10px;
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-file svg {
+  flex-shrink: 0;
+  color: #999;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 16px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.progress-stats span {
+  display: flex;
+  align-items: center;
+}
+
+.progress-stats svg {
+  flex-shrink: 0;
+}
+
+.log-container {
+  background-color: #0a0a0a;
+  border-radius: 8px;
+  border: 1px solid #222;
+  overflow: hidden;
+  margin-top: 16px;
+}
+
+.log-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background-color: #131313;
+  border-bottom: 1px solid #222;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.log-content {
+  max-height: 140px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #ddd;
+  padding: 8px 0;
+  scroll-behavior: smooth;
+}
+
+.log-entry {
+  padding: 3px 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s ease;
+}
+
+.log-entry:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.error {
+  color: #e74c3c;
+}
+
+/* Стили для индикатора прогресса */
+.spinning {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Стилизованный спиннер */
+.spinner {
+  display: inline-block;
+  line-height: 0;
+}
+
+/* Стили для прогресс-бара */
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0078d4, #2ba0ff);
+  border-radius: 6px;
+  transition: width 0.3s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 1.5s infinite;
+  opacity: 0.5;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Настраиваем скроллбар для лога */
+.log-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.log-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.log-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Адаптивные стили для маленьких экранов */
+@media (max-width: 480px) {
+  .modal-content {
+    width: 95%;
+    max-width: none;
+    margin: 0 10px;
+  }
+  
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .form-button {
+    width: 100%;
+  }
+  
+  .progress-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+} 

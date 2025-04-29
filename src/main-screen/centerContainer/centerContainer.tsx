@@ -45,6 +45,8 @@ interface MarkerData {
 export interface CenterContainerHandle {
   selectAll: () => void;
   deselect: () => void;
+  invertSelection: () => void;
+  selectParagraph: () => void;
   saveCurrentFile: () => void;
   saveFileAs: () => void;
   getModifiedFiles: () => string[];
@@ -1281,6 +1283,104 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         }
       }
     },
+    invertSelection: () => {
+      if (editorInstance && monacoInstance) {
+        editorInstance.focus();
+        const model = editorInstance.getModel();
+        if (model) {
+          const selection = editorInstance.getSelection();
+          const totalLines = model.getLineCount();
+          const lastLineLength = model.getLineMaxColumn(totalLines);
+          
+          // Если нет выделения, выходим
+          if (!selection || selection.isEmpty()) {
+            console.log('Нет выделения для инвертирования');
+            return;
+          }
+          
+          // Инвертируем выделение - создаем две новые области выделения:
+          // 1. От начала документа до начала текущего выделения
+          // 2. От конца текущего выделения до конца документа
+          
+          const newSelections = [];
+          
+          // Если текущее выделение не с самого начала документа, добавляем первую область
+          if (selection.startLineNumber > 1 || selection.startColumn > 1) {
+            newSelections.push(
+              new monacoInstance.Selection(
+                1, 1,
+                selection.startLineNumber, selection.startColumn
+              )
+            );
+          }
+          
+          // Если текущее выделение не до самого конца документа, добавляем вторую область
+          if (selection.endLineNumber < totalLines || selection.endColumn < lastLineLength) {
+            newSelections.push(
+              new monacoInstance.Selection(
+                selection.endLineNumber, selection.endColumn,
+                totalLines, lastLineLength
+              )
+            );
+          }
+          
+          // Устанавливаем новые выделения
+          if (newSelections.length > 0) {
+            editorInstance.setSelections(newSelections);
+          }
+          
+          console.log('Инвертированное выделение применено');
+        }
+      }
+    },
+    selectParagraph: () => {
+      if (editorInstance && monacoInstance) {
+        editorInstance.focus();
+        const model = editorInstance.getModel();
+        if (model) {
+          const position = editorInstance.getPosition();
+          if (!position) return;
+          
+          const lineNumber = position.lineNumber;
+          const lineCount = model.getLineCount();
+          
+          // Найдем начало параграфа (первая пустая строка перед текущей или начало файла)
+          let startLine = lineNumber;
+          while (startLine > 1) {
+            const prevLineContent = model.getLineContent(startLine - 1).trim();
+            if (prevLineContent === '') {
+              break; // Нашли пустую строку
+            }
+            startLine--;
+          }
+          
+          // Найдем конец параграфа (первая пустая строка после текущей или конец файла)
+          let endLine = lineNumber;
+          while (endLine < lineCount) {
+            const lineContent = model.getLineContent(endLine).trim();
+            if (lineContent === '' && endLine !== startLine) {
+              break; // Нашли пустую строку
+            }
+            endLine++;
+          }
+          
+          // Определяем начальный и конечный столбцы для выделения
+          const startColumn = 1;
+          const endColumn = model.getLineMaxColumn(endLine);
+          
+          // Создаем выделение
+          const selection = new monacoInstance.Range(
+            startLine, startColumn,
+            endLine, endColumn
+          );
+          
+          // Применяем выделение
+          editorInstance.setSelection(selection);
+          
+          console.log(`Выделен параграф с ${startLine} по ${endLine} строку`);
+        }
+      }
+    },
     // Добавим методы для управления состоянием файлов
     saveCurrentFile: () => handleSaveFile(false),
     saveFileAs: () => handleSaveFile(true),
@@ -1480,6 +1580,37 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       window.removeEventListener('monaco-theme-changed', handleThemeChange as EventListener);
     };
   }, []);
+
+  // Слушаем события для действий редактора
+  useEffect(() => {
+    const handleEditorAction = (event: CustomEvent) => {
+      const { command } = event.detail;
+      console.log('Получено действие редактора:', command);
+      
+      // Проверяем, есть ли доступ к функциям редактора
+      if (!editorRef?.current) {
+        console.warn('Ссылка на редактор недоступна');
+        return;
+      }
+      
+      // Вызываем соответствующую функцию в зависимости от команды
+      switch (command) {
+        case 'selectParagraph':
+          editorRef.current.selectParagraph();
+          break;
+        default:
+          console.warn('Неизвестная команда редактора:', command);
+      }
+    };
+    
+    // Добавляем слушатель события
+    document.addEventListener('editor-action', handleEditorAction as EventListener);
+    
+    // Очищаем слушатель при размонтировании
+    return () => {
+      document.removeEventListener('editor-action', handleEditorAction as EventListener);
+    };
+  }, [editorRef]);
 
   return (
     <div className="center-container" style={style}>

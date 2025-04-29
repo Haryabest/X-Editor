@@ -134,6 +134,7 @@ function App() {
     selectAll: () => void; 
     deselect: () => void;
     invertSelection: () => void;
+    selectParagraph: () => void;
     expandSelection: () => void;
   }>(null);
 
@@ -282,6 +283,16 @@ function App() {
         } else if (e.key === '0') {
           e.preventDefault();
           handleResetZoom();
+        } else if (e.key === 'p' || e.key === 'P') {
+          if (!e.altKey && !e.shiftKey) {  // Не перехватываем Ctrl+Shift+P или другие комбинации
+            e.preventDefault();
+            editorRef.current?.selectParagraph();
+          }
+        } else if (e.key === 'i' || e.key === 'I') {
+          if (e.shiftKey) {  // Для комбинации Shift+Ctrl+I
+            e.preventDefault();
+            editorRef.current?.invertSelection();
+          }
         }
       }
     };
@@ -760,6 +771,7 @@ function App() {
           onSelectAll={() => editorRef.current?.selectAll()}
           onDeselect={() => editorRef.current?.deselect()}
           onInvertSelection={() => editorRef.current?.invertSelection()}
+          onSelectParagraph={() => editorRef.current?.selectParagraph()}
           onExpandSelection={() => editorRef.current?.expandSelection()}
           onOpenConsole={openTerminal}
           onClearConsole={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'clear' } }))}
@@ -837,6 +849,9 @@ function App() {
                     handleFileSelect={setSelectedFile}
                     onSelectAll={() => editorRef.current?.selectAll()}
                     onDeselect={() => editorRef.current?.deselect()}
+                    onInvertSelection={() => editorRef.current?.invertSelection()}
+                    onSelectParagraph={() => editorRef.current?.selectParagraph()}
+                    onExpandSelection={() => editorRef.current?.expandSelection()}
                   />
                 </div>
                 {isTerminalVisible && (
