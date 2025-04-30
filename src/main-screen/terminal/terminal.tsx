@@ -38,10 +38,58 @@ interface XTermTerminalProps {
   terminalCommand?: string | null;
   selectedFolder?: string | null;
   onResize?: (newHeight: number) => void;
+  selectedFile?: string;
 }
 
+// Обновляем объявление глобальных интерфейсов
+declare global {
+  interface Window {
+    pythonDiagnostics?: Map<string, IssueInfo>;
+    problemCollector?: {
+      scan: () => void;
+    };
+    lastKnownMarkers: Record<string, any[]>;
+    forceDiagnosticsRefresh: () => void;
+    monaco: typeof import("monaco-editor");
+    pythonDiagnosticsStore?: any;
+  }
+}
+
+// Добавлю константу для отладки
+const DEBUG_PROBLEMS = true;
+  
+// Добавлю функцию логирования проблем для улучшенной отладки
+function logProblems(message: string, data?: any) {
+  if (DEBUG_PROBLEMS) {
+    console.log(`⚠️ [Problems] ${message}`, data || '');
+  }
+}
+
+// Добавлю компонент для явной отладки проблем, который будет отображаться в режиме разработки
+const ProblemDebugger: React.FC<{ issues: IssueInfo[] }> = ({ issues }) => {
+  if (!DEBUG_PROBLEMS) return null;
+  
+  const totalIssues = issues.reduce((acc, issue) => acc + issue.issues.length, 0);
+  const hasErrors = issues.some(issue => issue.issues.some(i => i.severity === 'error'));
+  
+  return (
+    <div style={{ 
+      position: 'absolute', 
+      bottom: '5px', 
+      right: '5px',
+      background: hasErrors ? '#FF000050' : '#00FF0050',
+      padding: '2px 5px',
+      borderRadius: '3px',
+      fontSize: '10px',
+      zIndex: 1000
+    }}>
+      {totalIssues} проблем ({issues.length} файлов)
+    </div>
+  );
+};
+
 const Terminal: React.FC<XTermTerminalProps> = (props) => {
-  const { terminalHeight, issues, onIssueClick, terminalCommand, selectedFolder, onResize } = props;
+  const { terminalHeight, issues, onIssueClick, terminalCommand, selectedFolder, onResize, selectedFile } = props;
   const [activeTab, setActiveTab] = useState<"terminal" | "issues">("terminal");
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<XTerm | null>(null);
@@ -436,10 +484,76 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       .filter((fileIssue: IssueInfo) => fileIssue.issues && fileIssue.issues.length > 0);
   };
   
-  // Добавляем слушатель для обновлений маркеров Python
+  // Улучшенная обработка изменений в проблемах и директориях
+  useEffect(() => {
+    // Функция для отслеживания текущего активного файла
+    const handleActiveFileChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{filePath: string}>;
+      const currentFilePath = customEvent.detail.filePath;
+      
+      console.log(`Активный файл изменен: ${currentFilePath}`);
+      
+      // Обновляем проблемы для нового активного файла
+      if (typeof window !== "undefined" && (window as any).updatePythonDiagnostics) {
+        (window as any).updatePythonDiagnostics().then((diagData: any) => {
+          console.log("Диагностика обновлена после смены файла:", diagData);
+          
+          // Принудительно перерисовываем компонент при смене файла
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        }).catch((err: any) => {
+          console.error("Ошибка при обновлении диагностики:", err);
+        });
+      }
+    };
+    
+    // Функция для отслеживания изменения директории
+    const handleDirectoryChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{path: string}>;
+      const newDirectory = customEvent.detail.path;
+      
+      console.log(`Директория изменена: ${newDirectory}`);
+      
+      // Очищаем проблемы при смене директории
+      if (typeof window !== "undefined" && (window as any).updatePythonDiagnostics) {
+        // Очищаем хранилище диагностик Python перед обновлением
+        if (window.pythonDiagnostics) {
+          window.pythonDiagnostics.clear();
+        }
+        
+        (window as any).updatePythonDiagnostics().then((diagData: any) => {
+          console.log("Диагностика обновлена после смены директории:", diagData);
+          
+          // Принудительно перерисовываем компонент
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        }).catch((err: any) => {
+          console.error("Ошибка при обновлении диагностики:", err);
+        });
+      }
+    };
+    
+    // Слушаем события изменения файла и директории
+    document.addEventListener('active-file-changed', handleActiveFileChange);
+    document.addEventListener('directory-changed', handleDirectoryChange);
+    
+    return () => {
+      document.removeEventListener('active-file-changed', handleActiveFileChange);
+      document.removeEventListener('directory-changed', handleDirectoryChange);
+    };
+  }, []);
+
+  // Обновляем существующий обработчик markers-updated
   useEffect(() => {
     const handleMarkersUpdated = (event: Event) => {
       console.log('Получено событие markers-updated');
+      
+      // Получаем данные события, если они есть
+      const customEvent = event as CustomEvent;
+      const filePath = customEvent.detail?.filePath || null;
+      
+      // Если есть specific filePath, обновляем только его
+      if (filePath) {
+        console.log(`Обновление маркеров для конкретного файла: ${filePath}`);
+      }
       
       // Принудительно получаем новую диагностику
       try {
@@ -448,19 +562,223 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
           console.log('Получена свежая диагностика:', freshDiagnostics);
           
           // Принудительное обновление компонента
-          setFilterSeverity(current => current === 'all' ? 'all' : 'all');
+          setFilterSeverity(current => current === 'all' ? 'error' : 'all');
         }
       } catch (e) {
         console.error('Ошибка при обновлении диагностики:', e);
       }
     };
+
+    const handleDiagnosticsUpdated = (event: Event) => {
+      console.log('Получено событие diagnostics-updated');
+      
+      // Получаем данные события, если они есть
+      const customEvent = event as CustomEvent<{uri: string, markers: any[]}>;
+      const { uri, markers } = customEvent.detail;
+      
+      console.log(`Обновление диагностики для файла: ${uri}, маркеров: ${markers.length}`);
+      
+      // Переключаем вкладку на проблемы если есть маркеры
+      if (markers && markers.length > 0 && activeTab !== "issues") {
+        console.log("Есть проблемы, переключаем на вкладку проблем");
+        setActiveTab("issues");
+      }
+      
+      // Обновляем компонент для отображения новых проблем
+      setTimeout(() => {
+        // Принудительное обновление компонента
+        setFilterSeverity(current => current === 'all' ? 'error' : 'all');
+      }, 100);
+    };
     
     document.addEventListener('markers-updated', handleMarkersUpdated);
+    document.addEventListener('diagnostics-updated', handleDiagnosticsUpdated);
     
     return () => {
       document.removeEventListener('markers-updated', handleMarkersUpdated);
+      document.removeEventListener('diagnostics-updated', handleDiagnosticsUpdated);
+    };
+  }, [activeTab]);
+
+  // Модифицируем функцию getAllPythonDiagnostics в window для очистки устаревших проблем
+  useEffect(() => {
+    // Сохраняем оригинальную функцию
+    const originalGetPythonDiagnostics = (window as any).getPythonDiagnostics;
+    
+    if (originalGetPythonDiagnostics) {
+      // Переопределяем функцию для фильтрации проблем
+      (window as any).getPythonDiagnostics = () => {
+        // Получаем все диагностики из оригинальной функции
+        const allDiagnostics = originalGetPythonDiagnostics();
+        
+        if (!Array.isArray(allDiagnostics) || allDiagnostics.length === 0) {
+          return [];
+        }
+        
+        console.log(`Получено ${allDiagnostics.length} файлов с диагностикой`);
+        
+        // Проверяем, существуют ли еще файлы с проблемами
+        const filteredDiagnostics = allDiagnostics.filter((diag: IssueInfo) => {
+          if (!diag || !diag.filePath) return false;
+          
+          // Проверяем, существует ли модель для этого URI
+          if (window.monaco && window.monaco.editor) {
+            const models = window.monaco.editor.getModels();
+            
+            // Проверяем, совпадает ли путь с какой-либо моделью
+            const modelExists = models.some((model: any) => {
+              if (!model || !model.uri) return false;
+              
+              const modelUri = model.uri.toString();
+              const normalizedModelUri = modelUri.replace(/\\/g, '/');
+              const normalizedDiagPath = diag.filePath.replace(/\\/g, '/');
+              
+              return normalizedModelUri === normalizedDiagPath || 
+                    normalizedModelUri.endsWith(normalizedDiagPath) || 
+                    normalizedDiagPath.endsWith(normalizedModelUri);
+            });
+            
+            if (modelExists) {
+              console.log(`Найдена активная модель для файла: ${diag.fileName}`);
+              return true;
+            }
+          }
+          
+          // Если нет активных моделей, но есть проблемы - сохраняем их
+          if (diag.issues && diag.issues.length > 0) {
+            console.log(`Сохраняем проблемы для файла ${diag.fileName} без активной модели`);
+            return true;
+          }
+          
+          return false;
+        });
+        
+        console.log(`Отфильтровано ${filteredDiagnostics.length} из ${allDiagnostics.length} файлов с проблемами`);
+        return filteredDiagnostics;
+      };
+    }
+    
+    return () => {
+      // Восстанавливаем оригинальную функцию при размонтировании
+      if (originalGetPythonDiagnostics) {
+        (window as any).getPythonDiagnostics = originalGetPythonDiagnostics;
+      }
     };
   }, []);
+
+  // Улучшаем обработчик событий обновления маркеров
+  useEffect(() => {
+    const handleMonacoMarkersChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{filePath: string, markers: any[], owner: string}>;
+      const { filePath, markers, owner } = customEvent.detail;
+      
+      console.log(`Получено событие monaco-markers-changed для ${filePath}, маркеров: ${markers?.length || 0}`);
+      
+      // Форсируем обновление проблем после изменения маркеров
+      setTimeout(() => {
+        if (typeof window !== "undefined" && (window as any).getPythonDiagnostics) {
+          try {
+            const diagData = (window as any).getPythonDiagnostics();
+            console.log('Обновление проблем после изменения маркеров:', diagData?.length || 0);
+            
+            // Обновляем состояние для ререндера компонента
+            setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          } catch (e) {
+            console.error('Ошибка при обновлении проблем:', e);
+          }
+        }
+      }, 100);
+    };
+    
+    // Подписываемся на событие изменения маркеров Monaco
+    document.addEventListener('monaco-markers-changed', handleMonacoMarkersChanged);
+    
+    return () => {
+      document.removeEventListener('monaco-markers-changed', handleMonacoMarkersChanged);
+    };
+  }, []);
+
+  // Прослушивание события смены модели в Monaco
+  useEffect(() => {
+    // Обработчик события смены модели
+    const handleModelChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{filePath: string}>;
+      const filePath = customEvent.detail.filePath;
+      
+      // Сохраняем путь к последнему активному файлу
+      window.lastActiveFilePath = filePath;
+      
+      // Отправляем событие изменения активного файла
+      const fileChangedEvent = new CustomEvent('active-file-changed', {
+        detail: { filePath }
+      });
+      document.dispatchEvent(fileChangedEvent);
+    };
+    
+    // Подписка на событие смены модели
+    document.addEventListener('monaco-model-changed', handleModelChanged);
+    
+    return () => {
+      document.removeEventListener('monaco-model-changed', handleModelChanged);
+    };
+  }, []);
+
+  // Функция для проверки всех открытых редакторов на наличие ошибок
+  useEffect(() => {
+    const checkAllEditorsForErrors = () => {
+      if (!window.monaco || !window.monaco.editor) return;
+      
+      console.log('Проверка всех редакторов на наличие ошибок...');
+      
+      try {
+        // Получаем все модели
+        const models = window.monaco.editor.getModels();
+        console.log(`Найдено ${models.length} моделей редактора`);
+        
+        // Для каждой модели получаем маркеры
+        let totalErrors = 0;
+        
+        models.forEach((model: any) => {
+          if (!model || model.isDisposed()) return;
+          
+          const uri = model.uri.toString();
+          const allMarkers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+          
+          if (allMarkers && allMarkers.length > 0) {
+            console.log(`Модель ${uri} имеет ${allMarkers.length} маркеров`);
+            totalErrors += allMarkers.length;
+          }
+        });
+        
+        console.log(`Всего найдено ${totalErrors} ошибок/предупреждений в редакторе`);
+        
+        if (totalErrors > 0) {
+          // Обновляем отображение вкладки проблем
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        }
+      } catch (error) {
+        console.error('Ошибка при проверке редакторов:', error);
+      }
+    };
+    
+    // Запускаем проверку при первой загрузке и периодически
+    const intervalId = setInterval(checkAllEditorsForErrors, 5000);
+    
+    // Также запускаем при переключении на вкладку проблем
+    const handleDocumentClick = () => {
+      if (activeTab === 'issues') {
+        checkAllEditorsForErrors();
+      }
+    };
+    
+    document.addEventListener('click', handleDocumentClick);
+    
+    // Очистка при размонтировании
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('click', handleDocumentClick);
+    };
+  }, [activeTab]);
 
   // Функция для получения иконки по типу проблемы
   const getSeverityIcon = (severity: 'error' | 'warning' | 'info') => {
@@ -474,9 +792,288 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     }
   };
 
-  // Функция для отображения проблем
+  // Измененяю useEffect для отображения проблем сразу при запуске
+  useEffect(() => {
+    // Объявляем функцию для тестовой инициализации проблем
+    function initializeProblemsFromMonaco() {
+      logProblems('Инициализация проблем из Monaco');
+      
+      if (!window.monaco || !window.monaco.editor) {
+        logProblems('Monaco не доступен, пропускаем инициализацию проблем');
+        return;
+      }
+      
+      try {
+        // Получаем все модели
+        const models = window.monaco.editor.getModels();
+        logProblems(`Найдено ${models.length} моделей Monaco`);
+        
+        // Проверяем есть ли маркеры для моделей
+        let anyIssues = false;
+        
+        models.forEach((model: any) => {
+          if (model && model.uri) {
+            const uri = model.uri.toString();
+            const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+            
+            if (markers && markers.length > 0) {
+              anyIssues = true;
+              logProblems(`Найдено ${markers.length} маркеров для ${uri}`, markers);
+              
+              // Автоматически разворачиваем файлы с ошибками
+              setExpandedFiles(prev => {
+                const newSet = new Set(prev);
+                newSet.add(uri);
+                return newSet;
+              });
+            }
+          }
+        });
+        
+        // Если найдены проблемы, переключаемся на вкладку проблем
+        if (anyIssues && activeTab !== 'issues') {
+          logProblems('Переключаемся на вкладку проблем, так как найдены маркеры');
+          setActiveTab('issues');
+        }
+      } catch (error) {
+        console.error('Ошибка при инициализации проблем из Monaco:', error);
+      }
+    }
+    
+    // Запускаем инициализацию проблем
+    setTimeout(initializeProblemsFromMonaco, 1000);
+    
+    // Запускаем функцию повторно через 5 секунд для надежности
+    setTimeout(initializeProblemsFromMonaco, 5000);
+    
+    // Интервал для регулярной проверки проблем
+    const intervalId = setInterval(initializeProblemsFromMonaco, 10000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // Функция для отображения проблем с улучшенным кешированием 
   const renderIssues = () => {
-    const filteredIssues = getFilteredIssues();
+    logProblems('Вызов renderIssues для отображения проблем');
+    
+    // Принудительно получаем все проблемы из Monaco прямо перед отрисовкой
+    let freshIssues: IssueInfo[] = [];
+    
+    try {
+      // Проверяем, есть ли проблемы в pythonDiagnosticsStore
+      if (window.pythonDiagnosticsStore) {
+        logProblems('Проверяем проблемы в pythonDiagnosticsStore напрямую');
+        
+        Object.entries(window.pythonDiagnosticsStore).forEach(([uri, markers]) => {
+          if (Array.isArray(markers) && markers.length > 0) {
+            logProblems(`Найдено ${markers.length} маркеров в pythonDiagnosticsStore для ${uri}`);
+            
+            const fileName = uri.split(/[\\/]/).pop() || uri;
+            
+            freshIssues.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any) => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: 'python'
+              }))
+            });
+          }
+        });
+        
+        logProblems(`Найдено ${freshIssues.length} файлов с проблемами в pythonDiagnosticsStore`);
+      }
+      
+      // Если не нашли проблемы в pythonDiagnosticsStore, проверяем lastKnownMarkers
+      if (freshIssues.length === 0 && window.lastKnownMarkers && Object.keys(window.lastKnownMarkers).length > 0) {
+        logProblems('Получаем проблемы из lastKnownMarkers');
+        
+        Object.entries(window.lastKnownMarkers).forEach(([uri, markers]) => {
+          if (markers && markers.length > 0) {
+            const fileName = uri.split(/[\\/]/).pop() || uri;
+            
+            freshIssues.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any) => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'monaco-editor'
+              }))
+            });
+          }
+        });
+        
+        logProblems(`Найдено ${freshIssues.length} файлов с проблемами в lastKnownMarkers`);
+      }
+      
+      // Если не нашли проблемы в кешах, пробуем получить напрямую из Monaco
+      if (freshIssues.length === 0 && window.monaco && window.monaco.editor) {
+        logProblems('Получаем проблемы напрямую из Monaco');
+        
+        // Проверяем все маркеры, включая inmemory модели
+        const allMarkers = window.monaco.editor.getModelMarkers();
+        logProblems(`Получено ${allMarkers.length} маркеров напрямую из Monaco`, allMarkers);
+        
+        // Специальная обработка для inmemory моделей
+        const inMemoryMarkers = allMarkers.filter((m: any) => m.resource.toString().includes('inmemory'));
+        if (inMemoryMarkers.length > 0) {
+          logProblems(`Найдено ${inMemoryMarkers.length} маркеров для inmemory моделей`);
+          
+          // Группируем маркеры по URI
+          const markersMap = new Map<string, any[]>();
+          inMemoryMarkers.forEach((marker: any) => {
+            const uri = marker.resource.toString();
+            if (!markersMap.has(uri)) {
+              markersMap.set(uri, []);
+            }
+            markersMap.get(uri)?.push(marker);
+            
+            // Сохраняем маркеры в lastKnownMarkers для будущего использования
+            if (!window.lastKnownMarkers) {
+              window.lastKnownMarkers = {};
+            }
+            if (!window.lastKnownMarkers[uri]) {
+              window.lastKnownMarkers[uri] = [];
+            }
+            window.lastKnownMarkers[uri].push(marker);
+          });
+          
+          // Добавляем inmemory маркеры в результаты
+          markersMap.forEach((markers, uri) => {
+            const fileName = uri.split(/[\\/]/).pop() || uri;
+            freshIssues.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any) => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: 'monaco-editor'
+              }))
+            });
+          });
+        }
+        
+        // Обработка обычных файловых моделей
+        const models = window.monaco.editor.getModels();
+        models.forEach((model: any) => {
+          if (!model || !model.uri) return;
+          
+          const uri = model.uri.toString();
+          
+          // Пропускаем inmemory модели, так как они уже обработаны выше
+          if (uri.includes('inmemory')) return;
+          
+          const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+          if (markers && markers.length > 0) {
+            logProblems(`Найдено ${markers.length} маркеров для ${uri}`);
+            
+            const fileName = uri.split(/[\\/]/).pop() || uri;
+            freshIssues.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any) => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'monaco-editor'
+              }))
+            });
+            
+            // Сохраняем маркеры в lastKnownMarkers
+            if (!window.lastKnownMarkers) {
+              window.lastKnownMarkers = {};
+            }
+            window.lastKnownMarkers[uri] = markers;
+          }
+        });
+      }
+      
+      // Пробуем получить диагностики через getPythonDiagnostics
+      if (freshIssues.length === 0 && window.getPythonDiagnostics) {
+        logProblems('Получаем диагностики через getPythonDiagnostics');
+        
+        try {
+          const pythonDiagnostics = window.getPythonDiagnostics();
+          if (Array.isArray(pythonDiagnostics) && pythonDiagnostics.length > 0) {
+            logProblems(`Получено ${pythonDiagnostics.length} файлов с диагностикой из getPythonDiagnostics`);
+            
+            // Добавляем Python диагностики в результаты
+            freshIssues = [...freshIssues, ...pythonDiagnostics];
+          }
+        } catch (error) {
+          logProblems('Ошибка при получении Python диагностик:', error);
+        }
+      }
+      
+      // Если проблемы всё ещё не найдены, используем проблемы из пропсов
+      if (freshIssues.length === 0 && props.issues && props.issues.length > 0) {
+        logProblems('Используем проблемы из пропсов', props.issues);
+        freshIssues = props.issues;
+      }
+      
+      // Логируем итоговое количество найденных проблем
+      const totalIssueCount = freshIssues.reduce((total, file) => total + file.issues.length, 0);
+      logProblems(`Итоговое количество проблем: ${totalIssueCount} в ${freshIssues.length} файлах`);
+      
+      // Если нашли проблемы, принудительно обновляем глобальное состояние
+      if (freshIssues.length > 0 && window.forceDiagnosticsRefresh) {
+        logProblems('Принудительное обновление диагностики через глобальную функцию');
+        window.forceDiagnosticsRefresh();
+      }
+    } catch (error) {
+      console.error('Ошибка при получении маркеров:', error);
+    }
+    
+    // Фильтруем проблемы по настройкам отображения
+    const filteredIssues = freshIssues.length > 0 ? 
+      freshIssues.filter(i => {
+        // Проверяем что массив issues существует и не пустой
+        if (!i.issues || i.issues.length === 0) return false;
+        
+        // Фильтруем проблемы по настройкам отображения
+        const filteredFileIssues = i.issues.filter(issue => {
+          // Проверяем соответствие поисковому запросу
+          const matchesSearch = issueSearch === "" ||
+            (issue.message && issue.message.toLowerCase().includes(issueSearch.toLowerCase())) ||
+            (i.fileName && i.fileName.toLowerCase().includes(issueSearch.toLowerCase()));
+          
+          // Проверяем фильтры по типу проблемы
+          const matchesFilter = (
+            (issue.severity === 'error' && filters.errors) ||
+            (issue.severity === 'warning' && filters.warnings) ||
+            (issue.severity === 'info' && filters.info)
+          );
+          
+          return matchesSearch && matchesFilter;
+        });
+        
+        // Возвращаем true только если остались проблемы после фильтрации
+        return filteredFileIssues.length > 0;
+      }) : 
+      getFilteredIssues();
     
     if (filteredIssues.length === 0) {
       return (
@@ -486,6 +1083,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               <Check size={24} color="#4caf50" />
             </div>
             <span>Нет обнаруженных проблем</span>
+            <ProblemDebugger issues={freshIssues} />
           </div>
         </div>
       );
@@ -550,295 +1148,16 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             )}
           </div>
         ))}
+        <ProblemDebugger issues={freshIssues} />
       </div>
     );
   };
 
-  // Add a new useEffect to listen for custom terminal command events
-  useEffect(() => {
-    // Handler for custom terminal commands
-    const handleTerminalCommand = (event: Event) => {
-      const customEvent = event as CustomEvent<{command: string}>;
-      const { command } = customEvent.detail;
-      
-      console.log(`Received terminal command: ${command}`);
-      
-      switch (command) {
-        case 'clear':
-          console.log('Clearing terminal');
-          clearTerminal();
-          break;
-        case 'settings':
-          console.log('Opening terminal settings');
-          // Open settings through the left toolbar settings button
-          const settingsButton = document.querySelector('.left-toolbar .bottom-buttons button:last-child');
-          if (settingsButton) {
-            console.log('Clicking settings button');
-            (settingsButton as HTMLButtonElement).click();
-            
-            // After a short delay, switch to the Terminal tab
-            setTimeout(() => {
-              console.log('Switching to Terminal tab');
-              // Look for the terminal tab by text content
-              const terminalTabs = Array.from(document.querySelectorAll('.settings-sidebar .sidebar-item'));
-              const terminalTab = terminalTabs.find(tab => tab.textContent?.trim() === 'Терминал');
-              
-              if (terminalTab) {
-                (terminalTab as HTMLDivElement).click();
-              } else {
-                console.log('Terminal tab not found');
-              }
-            }, 100);
-          } else {
-            console.log('Settings button not found');
-          }
-          break;
-        case 'restart':
-          console.log('Restarting terminal process');
-          restartTerminalProcess();
-          break;
-        default:
-          console.log(`Unknown terminal command: ${command}`);
-          break;
-      }
-    };
-
-    // Handler for executing commands in the terminal
-    const handleExecuteCommand = (event: Event) => {
-      const customEvent = event as CustomEvent<{command: string}>;
-      const command = customEvent.detail.command;
-      
-      console.log(`Executing command in terminal: ${command}`);
-      
-      // Ensure terminal is active
-      if (activeTab !== "terminal") {
-        setActiveTab("terminal");
-        
-        // Give time for terminal tab to activate
-        setTimeout(() => {
-          executeCommandInTerminal(command);
-        }, 300);
-      } else {
-        executeCommandInTerminal(command);
-      }
-    };
-    
-    // Handler for writing text directly to the terminal
-    const handleWriteText = (event: Event) => {
-      const customEvent = event as CustomEvent<{text: string}>;
-      const text = customEvent.detail.text;
-      
-      console.log(`Writing text to terminal`);
-      
-      // Ensure terminal is active
-      if (activeTab !== "terminal") {
-        setActiveTab("terminal");
-        
-        // Give time for terminal tab to activate
-        setTimeout(() => {
-          writeTextToTerminal(text);
-        }, 300);
-      } else {
-        writeTextToTerminal(text);
-      }
-    };
-    
-    // Handler for sending control signals to the terminal
-    const handleSendSignal = (event: Event) => {
-      const customEvent = event as CustomEvent<{signal: string}>;
-      const signal = customEvent.detail.signal;
-      
-      console.log(`Sending signal to terminal: ${signal}`);
-      
-      if (!terminal.current || !isProcessRunning) {
-        console.warn('Terminal not ready to send signal');
-        return;
-      }
-      
-      try {
-        switch (signal) {
-          case 'SIGINT':
-            // Send Ctrl+C to the terminal
-            console.log('Sending Ctrl+C to terminal');
-            invoke("send_input", { input: '\x03' }).catch((err: Error) => {
-              console.error("Failed to send Ctrl+C to terminal:", err);
-            });
-            break;
-          
-          case 'SIGTSTP':
-            // Send Ctrl+Z to the terminal
-            console.log('Sending Ctrl+Z to terminal');
-            invoke("send_input", { input: '\x1A' }).catch((err: Error) => {
-              console.error("Failed to send Ctrl+Z to terminal:", err);
-            });
-            break;
-            
-          default:
-            console.warn(`Unknown signal: ${signal}`);
-            break;
-        }
-      } catch (error) {
-        console.error(`Error sending ${signal} to terminal:`, error);
-      }
-    };
-    
-    // Helper function to write text to the terminal
-    const writeTextToTerminal = (text: string) => {
-      if (!terminal.current) {
-        console.warn('Terminal not ready to write text');
-        return;
-      }
-      
-      try {
-        // Write the text to the terminal
-        terminal.current.write(text);
-      } catch (error) {
-        console.error('Error writing text to terminal:', error);
-      }
-    };
-    
-    // Helper function to execute a command in the terminal
-    const executeCommandInTerminal = async (command: string) => {
-      if (!terminal.current || !isProcessRunning) {
-        console.warn('Terminal not ready to execute command');
-        return;
-      }
-      
-      try {
-        // Write the command visibly in the terminal
-        terminal.current.write(`\r\n${command}\r\n`);
-        
-        // Send the command to the process
-        await invoke("send_input", { input: command + '\r' }).catch((err: Error) => {
-          console.error("Failed to send command to terminal:", err);
-        });
-      } catch (error) {
-        console.error('Error executing command in terminal:', error);
-      }
-    };
-
-    // Add event listener for the terminal container
-    const terminalContainer = document.querySelector('.terminal-container') as HTMLElement | null;
-    if (terminalContainer) {
-      terminalContainer.addEventListener('terminal-command', handleTerminalCommand);
-    }
-    
-    // Also listen at document level (fallback)
-    document.addEventListener('terminal-command', handleTerminalCommand);
-    document.addEventListener('terminal-execute-command', handleExecuteCommand);
-    document.addEventListener('terminal-write-text', handleWriteText);
-    document.addEventListener('terminal-send-signal', handleSendSignal);
-
-    // Cleanup function
-    return () => {
-      if (terminalContainer) {
-        terminalContainer.removeEventListener('terminal-command', handleTerminalCommand);
-      }
-      document.removeEventListener('terminal-command', handleTerminalCommand);
-      document.removeEventListener('terminal-execute-command', handleExecuteCommand);
-      document.removeEventListener('terminal-write-text', handleWriteText);
-      document.removeEventListener('terminal-send-signal', handleSendSignal);
-    };
-  }, [activeTab, isProcessRunning]);
-
-  // Handle closing the terminal panel
+  // Функция для закрытия панели терминала
   const closeTerminal = () => {
     console.log("Closing terminal panel");
     document.dispatchEvent(new Event('terminal-close'));
   };
-
-  // Следим за изменением выбранной директории и меняем текущую директорию терминала
-  useEffect(() => {
-    if (selectedFolder && isProcessRunning) {
-      (async () => {
-        try {
-          console.log(`Changing terminal directory to: ${selectedFolder}`);
-          
-          // Вызываем функцию change_directory из Rust
-          await invoke('change_directory', { path: selectedFolder });
-          
-          // Отображаем сообщение в терминале
-          if (terminal.current) {
-            terminal.current.write(`\r\n\x1b[32mDirectory changed to: \x1b[33m${selectedFolder}\x1b[0m\r\n`);
-            
-            // Обновляем приглашение командной строки
-            await invoke('send_input', { input: '\r' });
-          }
-        } catch (error) {
-          console.error('Error changing directory:', error);
-          if (terminal.current) {
-            terminal.current.write(`\r\n\x1b[31mFailed to change directory: ${error}\x1b[0m\r\n`);
-          }
-        }
-      })();
-    }
-  }, [selectedFolder, isProcessRunning]);
-
-  // Функция для обновления настроек уже открытого терминала
-  const updateTerminalSettings = useCallback(() => {
-    if (terminal.current) {
-      // Обновляем настройки существующего терминала
-      const options = {
-        fontSize: terminalSettings.fontSize,
-        fontFamily: terminalSettings.fontFamily,
-        cursorStyle: terminalSettings.cursorStyle,
-        cursorBlink: terminalSettings.cursorBlink
-      };
-      
-      // Применяем новые настройки
-      terminal.current.options.fontSize = options.fontSize;
-      terminal.current.options.fontFamily = options.fontFamily;
-      terminal.current.options.cursorBlink = options.cursorBlink;
-      terminal.current.options.cursorStyle = options.cursorStyle as any;
-      
-      // Перерисовываем терминал с новыми настройками
-      terminal.current.refresh(0, terminal.current.rows - 1);
-      
-      // Обновляем размер после изменения шрифта
-      setTimeout(() => {
-        if (fitAddon.current) {
-          fitAddon.current.fit();
-          // Информируем Rust о новом размере
-          const { rows, cols } = terminal.current!;
-          invoke("resize_pty", { rows, cols }).catch(err => {
-            console.error("Failed to resize PTY after settings change:", err);
-          });
-        }
-      }, 100);
-    }
-  }, [terminalSettings]);
-
-  // Слушаем событие изменения настроек терминала
-  useEffect(() => {
-    const handleTerminalSettingsChange = () => {
-      try {
-        const savedTerminalSettings = localStorage.getItem('terminal-settings');
-        if (savedTerminalSettings) {
-          const parsedSettings = JSON.parse(savedTerminalSettings);
-          
-          // Обновляем локальное состояние
-          setTerminalSettings(prevSettings => ({
-            ...prevSettings,
-            ...parsedSettings
-          }));
-        }
-      } catch (error) {
-        console.error('Ошибка при обновлении настроек терминала:', error);
-      }
-    };
-
-    // Событие, которое будет вызвано при сохранении настроек
-    window.addEventListener('terminal-settings-changed', handleTerminalSettingsChange);
-    
-    return () => {
-      window.removeEventListener('terminal-settings-changed', handleTerminalSettingsChange);
-    };
-  }, []);
-  
-  // Применяем настройки при их изменении
-  useEffect(() => {
-    updateTerminalSettings();
-  }, [terminalSettings, updateTerminalSettings]);
 
   // Обновляем UI компонент фильтров
   const renderFilterControls = () => (
@@ -885,7 +1204,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         console.log("Результат диагностики:", result);
         
         // Обновляем список проблем
-        setFilterSeverity(current => current);
+        setFilterSeverity(current => current === 'all' ? 'error' : 'all');
       } else {
         console.error("Функция updatePythonDiagnostics недоступна");
         
@@ -900,7 +1219,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               if ((window as any).updatePythonDiagnostics) {
                 const result = await (window as any).updatePythonDiagnostics();
                 console.log("Результат диагностики после регистрации:", result);
-                setFilterSeverity(current => current);
+                setFilterSeverity(current => current === 'all' ? 'error' : 'all');
               }
             }, 1000);
           }
@@ -913,128 +1232,453 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     }
   };
 
-  // Добавляем слушатель для принудительного обновления проблем
+  // Добавляем дополнительный обработчик для обработки force-update-problems
   useEffect(() => {
     const handleForceUpdateProblems = () => {
       console.log('Получено событие force-update-problems');
       
-      // Переключаем на вкладку проблем
+      // Переключаем на вкладку проблем, если есть проблемы
+      const hasIssues = (window.pythonDiagnosticsStore && Object.values(window.pythonDiagnosticsStore).some(
+        markers => Array.isArray(markers) && markers.length > 0
+      ));
+      
+      if (hasIssues && activeTab !== "issues") {
+        console.log('Обнаружены проблемы, переключаем на вкладку проблем');
       setActiveTab("issues");
+      }
       
       // Принудительно обновляем диагностику
-      if (typeof window !== "undefined" && (window as any).getPythonDiagnostics) {
+      if (typeof window !== "undefined") {
         try {
-          const diagData = (window as any).getPythonDiagnostics();
-          console.log('Принудительное обновление проблем:', diagData);
-          
           // Обновляем состояние для ререндера компонента
           setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          
+          // Разворачиваем все файлы с ошибками
+          if (window.pythonDiagnosticsStore) {
+            const newExpandedFiles = new Set(expandedFiles);
+            Object.keys(window.pythonDiagnosticsStore).forEach(uri => {
+              const markers = window.pythonDiagnosticsStore[uri];
+              if (Array.isArray(markers) && markers.some(m => m && typeof m === 'object' && m.severity === 1)) { // 1 = error
+                newExpandedFiles.add(uri);
+              }
+            });
+            setExpandedFiles(newExpandedFiles);
+          }
         } catch (e) {
           console.error('Ошибка при обновлении проблем:', e);
         }
       }
     };
     
+    // Реагируем на общее событие обновления проблем
+    const handleProblemsUpdated = () => {
+      console.log('Получено событие problems-updated');
+      
+      // Запускаем обновление через небольшую задержку
+      setTimeout(() => {
+        if (typeof window !== "undefined" && window.pythonDiagnosticsStore) {
+          // Считаем общее количество проблем
+          let totalProblems = 0;
+          
+          Object.values(window.pythonDiagnosticsStore).forEach((markers: any) => {
+            if (Array.isArray(markers)) {
+              totalProblems += markers.length;
+            }
+          });
+          
+          console.log(`Общее количество обновленных проблем: ${totalProblems}`);
+          
+          // Перерисовываем компонент
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        }
+      }, 300);
+    };
+    
     document.addEventListener('force-update-problems', handleForceUpdateProblems);
+    document.addEventListener('problems-updated', handleProblemsUpdated);
     
     return () => {
       document.removeEventListener('force-update-problems', handleForceUpdateProblems);
+      document.removeEventListener('problems-updated', handleProblemsUpdated);
+    };
+  }, [activeTab, expandedFiles]);
+
+  // Добавляем первичное получение проблем при загрузке компонента
+  useEffect(() => {
+    const initialLoadIssues = async () => {
+      console.log('Первичная загрузка проблем...');
+      
+      // Проверяем наличие проблем в Monaco Editor
+      if (window.monaco && window.monaco.editor) {
+        try {
+          const models = window.monaco.editor.getModels();
+          
+          if (models.length > 0) {
+            console.log(`Найдено ${models.length} моделей с потенциальными проблемами`);
+            
+            // Проверяем каждую модель на наличие маркеров
+            let totalMarkers = 0;
+            
+            models.forEach((model: any) => {
+              if (model && model.uri) {
+                const uri = model.uri.toString();
+                const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+                
+                if (markers && markers.length > 0) {
+                  console.log(`Модель ${uri} имеет ${markers.length} маркеров`);
+                  totalMarkers += markers.length;
+                  
+                  // Сохраняем маркеры в хранилище
+                  if (!window.pythonDiagnosticsStore) {
+                    window.pythonDiagnosticsStore = {};
+                  }
+                  window.pythonDiagnosticsStore[uri] = markers;
+                  
+                  // Разворачиваем файл с ошибками
+                  if (markers.some((m: any) => m && typeof m === 'object' && m.severity === 1)) { // 1 = error
+                    setExpandedFiles(prev => {
+                      const newSet = new Set(prev);
+                      newSet.add(uri);
+                      return newSet;
+                    });
+                  }
+                }
+              }
+            });
+            
+            if (totalMarkers > 0) {
+              console.log(`Всего найдено ${totalMarkers} маркеров`);
+              
+              // Если есть ошибки, переключаемся на вкладку проблем
+              setTimeout(() => {
+                setActiveTab("issues");
+                
+                // Принудительно перерисовываем компонент
+                setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+              }, 500);
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при получении начальных проблем:', error);
+        }
+      }
+    };
+    
+    // Запускаем с небольшой задержкой после загрузки компонента
+    setTimeout(initialLoadIssues, 1000);
+  }, []);
+
+  // Утилитарные функции для проверки ошибок и логирования
+  const logProblemMessage = (message: string) => {
+    console.log(`[Problems Panel] ${message}`);
+  }
+
+  const checkAllModelsForMarkers = () => {
+    const models = window.monaco?.editor.getModels() || [];
+    logProblemMessage(`Найдено ${models.length} моделей Monaco`);
+    
+    models.forEach((model: any) => {
+      const uri = model.uri.toString();
+      const markers = window.monaco?.editor.getModelMarkers({ resource: model.uri }) || [];
+      logProblemMessage(`Модель ${uri}: ${markers.length} маркеров`);
+    });
+  }
+
+  const checkAllEditorsForErrors = () => {
+    const editors = document.querySelectorAll('.monaco-editor');
+    logProblemMessage(`Найдено ${editors.length} редакторов на странице`);
+    
+    // Проверяем текущие открытые редакторы
+    if (window.problemCollector && typeof window.problemCollector.scan === 'function') {
+      logProblemMessage('Запуск сканирования проблем через problemCollector');
+      window.problemCollector.scan();
+    }
+  }
+
+  // Добавляем слушатель события show-problems-tab
+  useEffect(() => {
+    const handleShowProblemsTab = () => {
+      console.log('Получено событие show-problems-tab, переключаемся на вкладку проблем');
+      // Переключаемся на вкладку проблем
+      setActiveTab('issues');
+    };
+    
+    document.addEventListener('show-problems-tab', handleShowProblemsTab);
+    
+    return () => {
+      document.removeEventListener('show-problems-tab', handleShowProblemsTab);
     };
   }, []);
 
+  // Чтобы обновлять панель проблем при открытии файла с ошибками, 
+  // добавляем эффект следящий за selectedFile в пропсах
+  useEffect(() => {
+    if (selectedFile) {
+      // Если есть проблемы для текущего файла, переключаемся на вкладку проблем
+      setTimeout(() => {
+        if (window.pythonDiagnosticsStore && window.monaco && window.monaco.editor) {
+          try {
+            // Проверяем наличие маркеров для текущего файла
+            const fileUri = window.monaco.Uri.file(selectedFile).toString();
+            const markers = window.monaco.editor.getModelMarkers().filter(
+              (marker: any) => marker.resource.toString() === fileUri
+            );
+            
+            if (markers && markers.length > 0) {
+              console.log(`В файле ${selectedFile} найдено ${markers.length} проблем`);
+              
+              // Если есть ошибки (не только предупреждения), автоматически 
+              // переключаемся на вкладку проблем
+              if (markers.some((m: any) => m.severity === 1)) {
+                console.log('Найдены ошибки, переключаемся на вкладку проблем');
+                setActiveTab('issues');
+              }
+            }
+          } catch (error) {
+            console.error('Ошибка при проверке маркеров для файла:', error);
+          }
+        }
+      }, 300);
+    }
+  }, [selectedFile]);
+  
+  // Регулярная проверка маркеров для всех файлов
+  useEffect(() => {
+    // Функция для проверки маркеров
+    const checkMarkers = () => {
+      if (activeTab === 'issues' && window.monaco && window.monaco.editor) {
+        try {
+          // Получаем все маркеры
+          const markers = window.monaco.editor.getModelMarkers();
+          if (markers && markers.length > 0) {
+            console.log(`Найдено ${markers.length} маркеров в редакторе`);
+            // Триггерим перерисовку компонента
+            setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          }
+        } catch (error) {
+          console.error('Ошибка при проверке маркеров:', error);
+        }
+      }
+    };
+    
+    // Проверяем маркеры каждые 2 секунды
+    const intervalId = setInterval(checkMarkers, 2000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [activeTab]);
+
+  // Добавляем обработчик события refresh-problems-panel
+  useEffect(() => {
+    const handleRefreshProblemsPanel = (event: Event) => {
+      logProblemMessage('Получено событие refresh-problems-panel');
+      
+      // Принудительно получаем все маркеры из Monaco
+      const collectAllMarkers = () => {
+      if (!window.monaco || !window.monaco.editor) return;
+        
+        try {
+          // Получаем все маркеры из Monaco
+          const allMarkers = window.monaco.editor.getModelMarkers();
+          logProblemMessage(`Получено ${allMarkers.length} маркеров из Monaco`);
+          
+          // Группируем маркеры по URI
+          const markersMap = new Map<string, any[]>();
+          allMarkers.forEach((marker: any) => {
+            if (marker && marker.resource) {
+              const uri = marker.resource.toString();
+              if (!markersMap.has(uri)) {
+                markersMap.set(uri, []);
+              }
+              markersMap.get(uri)?.push(marker);
+            }
+          });
+          
+          // Обновляем lastKnownMarkers
+          if (!window.lastKnownMarkers) {
+            window.lastKnownMarkers = {};
+          }
+          
+          // Записываем маркеры в глобальное хранилище
+          markersMap.forEach((markers, uri) => {
+            window.lastKnownMarkers[uri] = markers;
+          });
+          
+          // Проверяем, есть ли ошибки
+          const hasErrors = allMarkers.some((m: any) => m.severity === 1);
+          
+          // Если есть ошибки и активна не вкладка проблем, переключаемся на нее
+          if (hasErrors && activeTab !== 'issues') {
+            logProblemMessage('Обнаружены ошибки, переключаемся на вкладку проблем');
+            setActiveTab('issues');
+          }
+          
+          // Обновляем интерфейс
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          
+          return hasErrors;
+      } catch (error) {
+          console.error('Ошибка при получении маркеров:', error);
+          return false;
+      }
+    };
+    
+      // Запускаем сбор маркеров
+      collectAllMarkers();
+    
+      // Если активна вкладка проблем, обновляем её содержимое
+      if (activeTab === 'issues') {
+        // Принудительно обновляем маркеры через глобальную функцию
+        if (window.forceDiagnosticsRefresh) {
+          window.forceDiagnosticsRefresh();
+        }
+      }
+      
+      // Запускаем повторный сбор маркеров с задержкой для надежности
+      setTimeout(() => {
+        collectAllMarkers();
+      }, 300);
+    };
+    
+    document.addEventListener('refresh-problems-panel', handleRefreshProblemsPanel);
+    
+    return () => {
+      document.removeEventListener('refresh-problems-panel', handleRefreshProblemsPanel);
+    };
+  }, [activeTab]);
+
+  // Добавляем функцию handleTabClick
+  const handleTabClick = (tab: "issues" | "terminal") => {
+    setActiveTab(tab);
+    
+    // При переключении на вкладку проблем, обновляем диагностику
+    if (tab === 'issues') {
+      logProblemMessage('Переключение на вкладку проблем');
+      
+      // Принудительно проверяем все редакторы на наличие ошибок
+      logProblemMessage('Запуск проверки всех редакторов на ошибки');
+      checkAllEditorsForErrors();
+      
+      // Проверяем наличие маркеров в Monaco
+      logProblemMessage('Проверка наличия маркеров в Monaco');
+      checkAllModelsForMarkers();
+      
+      // Запускаем обновление диагностики
+      if (window.forceDiagnosticsRefresh) {
+        logProblemMessage('Запуск принудительного обновления диагностики');
+        window.forceDiagnosticsRefresh();
+      }
+      
+      // Небольшая задержка для уверенности в получении актуальных данных
+      setTimeout(() => {
+        // Заставляем компонент перерисоваться после получения данных
+        setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+        
+        // Отправляем событие обновления проблем для компонентов, подписанных на него
+        document.dispatchEvent(new CustomEvent('force-update-problems'));
+        
+        // Автоматически разворачиваем файлы с ошибками
+        if (window.lastKnownMarkers) {
+          Object.entries(window.lastKnownMarkers).forEach(([uri, markers]) => {
+            if (Array.isArray(markers) && markers.length > 0 && markers.some((m: any) => m.severity === 1)) {
+              if (!expandedFiles.has(uri)) {
+                setExpandedFiles(prev => {
+                  const newSet = new Set(prev);
+                  newSet.add(uri);
+                  return newSet;
+                });
+              }
+            }
+          });
+        }
+      }, 300);
+    }
+  };
+
   return (
-    <div className="terminal-container" style={{height: terminalHeight ? `${terminalHeight}px` : '200px', display: 'flex', flexDirection: 'column'}}>
-      <div className="vertical-resizer" onMouseDown={handleVerticalDrag}>
-        <GripHorizontal size={16} color="#666" style={{ margin: '0 auto', display: 'block' }} />
+    <div className="terminal-container" style={{ height: terminalHeight || 200 }}>
+      <div className="terminal-resizer" onMouseDown={handleVerticalDrag}>
+        <GripHorizontal size={16} />
       </div>
-      <div className="tab-buttons">
-        <div className="left-tabs">
+
+      <div className="tab-header">
           <button
-            onClick={() => setActiveTab("terminal")}
-            className={`tab-button ${activeTab === "terminal" ? "active" : ""}`}
+          className={`tab ${activeTab === "terminal" ? "active" : ""}`}
+          onClick={() => handleTabClick('terminal')}
           >
             Терминал
           </button>
           <button
+          className={`tab ${activeTab === "issues" ? "active" : ""}`}
+          onClick={() => handleTabClick('issues')}
+        >
+          Проблемы
+        </button>
+        {activeTab === "issues" && (
+          <button 
+            className="refresh-button" 
+            title="Обновить проблемы"
             onClick={() => {
-              setActiveTab("issues");
-              // При переключении на вкладку проблем, принудительно обновляем диагностику
-              if (typeof window !== "undefined" && (window as any).updatePythonDiagnostics) {
-                console.log("Обновление диагностики при переключении на вкладку проблем");
-                (window as any).updatePythonDiagnostics().then((diagData: any) => {
-                  console.log("Диагностика обновлена:", diagData);
+              logProblemMessage('Нажата кнопка обновления проблем');
+              if (window.forceDiagnosticsRefresh) {
+                window.forceDiagnosticsRefresh();
+                // Заставляем компонент перерисоваться
                   setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
-                }).catch((err: any) => {
-                  console.error("Ошибка при обновлении диагностики:", err);
-                });
               }
             }}
-            className={`tab-button ${activeTab === "issues" ? "active" : ""}`}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              marginLeft: '5px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
-            Проблемы
+            <RefreshCw size={14} color="#888" />
           </button>
-        </div>
+        )}
         
-        <div className="right-actions">
-          {activeTab === "terminal" ? (
+        <div className="tab-controls">
+          {activeTab === "issues" ? (
             <>
               <button
-                className="action-button"
-                onClick={clearTerminal}
-                title="Очистить терминал"
+                className={`filter-toggle ${showIssueFilters ? "active" : ""}`}
+                onClick={() => setShowIssueFilters(!showIssueFilters)}
+                title="Показать/скрыть фильтры"
               >
-                <AiOutlineClear size={16} />
+                <FaFilter size={14} />
               </button>
               <button
-                className="action-button"
-                onClick={restartTerminalProcess}
-                title="Перезапустить процесс"
+                title="Проверить ошибки Python"
+                onClick={() => {
+                  logProblemMessage('Нажата кнопка проверки Python');
+                  if (typeof window !== "undefined" && window.forceDiagnosticsRefresh) {
+                    window.forceDiagnosticsRefresh();
+                  }
+                }}
               >
-                <RefreshCw size={16} />
-              </button>
-              <button
-                className="action-button"
-                onClick={closeTerminal}
-                title="Скрыть панель"
-              >
-                <X size={16} />
+                <FaPython size={14} />
               </button>
             </>
           ) : (
             <>
-              <div className="search-input-wrapper">
-                <Search size={16} className="search-icon" />
-                <input 
-                  type="text" 
-                  className="issues-search-input" 
-                  placeholder="Поиск проблем..." 
-                  value={issueSearch}
-                  onChange={(e) => setIssueSearch(e.target.value)}
-                />
-              </div>
               <button
-                className="action-button"
-                onClick={() => setShowIssueFilters(!showIssueFilters)}
-                title="Фильтры проблем"
+                title="Очистить терминал"
+                onClick={clearTerminal}
               >
-                <FaFilter size={16} />
-              </button>
-              <button
-                className="action-button"
-                onClick={handleForcePythonDiagnostics}
-                title="Обновить диагностику Python"
-              >
-                <FaPython size={14} />
-              </button>
-              <button
-                className="action-button"
-                onClick={closeTerminal}
-                title="Скрыть панель"
-              >
-                <X size={16} />
+                <AiOutlineClear size={16} />
               </button>
             </>
           )}
+              <button
+                title="Скрыть панель"
+            onClick={closeTerminal}
+              >
+            <X size={16} />
+              </button>
         </div>
       </div>
 

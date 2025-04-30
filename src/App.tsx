@@ -555,6 +555,135 @@ function App() {
     };
   }, []);
 
+  // Добавим useEffect для прямого получения маркеров из Monaco при запуске
+  useEffect(() => {
+    // Функция для обнаружения и отображения всех проблем в редакторе
+    const discoverAndDisplayProblems = () => {
+      console.log("Сканирование проблем в редакторе...");
+      
+      if (!window.monaco || !window.monaco.editor) {
+        console.warn("Monaco не доступен, пропускаем сканирование проблем");
+        return;
+      }
+      
+      try {
+        // Получаем все модели (открытые файлы в редакторе)
+        const models = window.monaco.editor.getModels();
+        console.log(`Найдено ${models.length} моделей редактора`);
+        
+        // Проверяем модели на наличие маркеров
+        let newIssues: IssueInfo[] = [];
+        let anyErrors = false;
+        
+        // Проходим по всем моделям и собираем маркеры
+        models.forEach(model => {
+          if (!model || !model.uri) return;
+          
+          const uri = model.uri.toString();
+          const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+          
+          if (markers && markers.length > 0) {
+            const fileName = uri.split(/[\\/]/).pop() || '';
+            console.log(`Файл ${fileName} имеет ${markers.length} маркеров`);
+            
+            // Создаем объект с проблемами для этого файла
+            const fileIssues: IssueInfo = {
+              filePath: uri,
+              fileName,
+              issues: markers.map(marker => ({
+                severity: marker.severity === 1 ? 'error' : 
+                         marker.severity === 2 ? 'warning' : 'info',
+                message: marker.message,
+                line: marker.startLineNumber,
+                column: marker.startColumn,
+                endLine: marker.endLineNumber,
+                endColumn: marker.endColumn,
+                source: marker.source || 'monaco-editor',
+                code: marker.code?.toString()
+              }))
+            };
+            
+            newIssues.push(fileIssues);
+            
+            // Проверяем наличие ошибок (не только предупреждений)
+            if (markers.some(m => m.severity === 1)) {
+              anyErrors = true;
+            }
+            
+            // Сохраняем маркеры в глобальное хранилище для доступа из компонента Terminal
+            if (!window.pythonDiagnosticsStore) {
+              window.pythonDiagnosticsStore = {};
+            }
+            window.pythonDiagnosticsStore[uri] = markers;
+          }
+        });
+        
+        // Обновляем состояние issues только если действительно нашли проблемы
+        if (newIssues.length > 0) {
+          console.log(`Всего найдено ${newIssues.length} файлов с проблемами`);
+          setIssues(newIssues);
+          
+          // Если есть ошибки, показываем терминал и переключаем на вкладку проблем
+          if (anyErrors && !isTerminalVisible) {
+            console.log("Обнаружены ошибки, показываем терминал");
+            handleRestoreTerminal();
+            
+            // Отправляем событие для переключения на вкладку проблем
+            setTimeout(() => {
+              document.dispatchEvent(new CustomEvent('show-problems-tab'));
+            }, 500);
+          }
+          
+          // Отправляем событие обновления проблем
+          document.dispatchEvent(new CustomEvent('problems-updated'));
+        }
+      } catch (error) {
+        console.error("Ошибка при сканировании проблем:", error);
+      }
+    };
+    
+    // Сканируем проблемы при первом запуске
+    setTimeout(discoverAndDisplayProblems, 1000);
+    
+    // Периодически проверяем на наличие новых проблем
+    const intervalId = setInterval(discoverAndDisplayProblems, 3000);
+    
+    // Также проверяем проблемы при изменениях в файлах
+    const handleModelContentChanged = () => {
+      // Используем debounce, чтобы не проверять слишком часто
+      setTimeout(discoverAndDisplayProblems, 500);
+    };
+    
+    // Подписываемся на события изменения содержимого редактора
+    if (window.monaco && window.monaco.editor) {
+      // Правильный способ подписки на изменения контента моделей
+      // onDidChangeModelContent - это не функция, а событие у конкретных моделей
+      const setupModelListeners = () => {
+        const models = window.monaco.editor.getModels();
+        models.forEach(model => {
+          // Подписываемся на события изменения контента для каждой модели
+          model.onDidChangeContent(() => {
+            setTimeout(discoverAndDisplayProblems, 500);
+          });
+        });
+      };
+      
+      // Первоначальная настройка для существующих моделей
+      setupModelListeners();
+      
+      // Также подписываемся на создание новых моделей
+      window.monaco.editor.onDidCreateModel(model => {
+        model.onDidChangeContent(() => {
+          setTimeout(discoverAndDisplayProblems, 500);
+        });
+      });
+    }
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isTerminalVisible]);
+
   // Listen for open-folder events
   useEffect(() => {
     const handleOpenFolder = (event: CustomEvent) => {
@@ -858,6 +987,7 @@ function App() {
                   <Terminal 
                     terminalHeight={terminalHeight}
                     selectedFolder={selectedFolder}
+                    selectedFile={selectedFile}
                     issues={issues}
                     onIssueClick={handleIssueClick}
                     onResize={(newHeight) => setTerminalHeight(newHeight)}

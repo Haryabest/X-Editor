@@ -63,14 +63,19 @@ declare global {
   interface Window {
     setupErrorDecorations?: (editor: any) => void;
     setupAllErrorDecorations?: () => void;
-    monaco?: any; // Используем any для избежания конфликтов
+    monaco: any; // Используем any для избежания конфликтов
     pythonCheckErrors?: (code: string, model?: monaco.editor.ITextModel) => Promise<ScriptError[]>;
     pythonAddErrorListener?: (callback: ErrorCallbackFunction) => void;
     pythonShowProblemsInEditor?: (editor: MonacoEditor, errors: ScriptError[]) => void;
     pythonForceValidateEditor?: (editor: MonacoEditor) => void;
     // Функции для интеграции с Terminal.tsx
-    getPythonDiagnostics?: () => IssueInfo[];
-    updatePythonDiagnostics?: () => Promise<IssueInfo[]>;
+    getPythonDiagnostics?: () => any[];
+    updatePythonDiagnostics?: () => Promise<any>;
+    clearPythonFileDiagnostics?: (filePath: string) => void;
+    clearAllPythonDiagnostics?: () => void;
+    pythonDiagnostics?: Map<string, IssueInfo>;
+    pythonDiagnosticsStore: Record<string, any[]>;
+    lastKnownMarkers: Record<string, any[]>;
   }
 }
 
@@ -736,49 +741,76 @@ async function checkPythonErrors(code: string, model?: monaco.editor.ITextModel)
  * Получает все текущие диагностики Python
  */
 function getAllPythonDiagnostics(): IssueInfo[] {
+  // Сначала получаем сохраненные диагностики
   const diagValues = Array.from(pythonDiagnostics.values());
+  console.log(`[Python] getAllPythonDiagnostics: найдено ${diagValues.length} файлов с проблемами в хранилище`);
+  
+  // Хранилище для файлов, которые уже получены из pythonDiagnostics
+  const processedFiles = new Set<string>();
+  diagValues.forEach(diag => {
+    if (diag.filePath) {
+      processedFiles.add(diag.filePath.replace(/\\/g, '/'));
+    }
+  });
   
   // Дополнительно проверим все актуальные маркеры из Monaco
   if (window.monaco && window.monaco.editor) {
     try {
+      // Получаем все модели
       const models = window.monaco.editor.getModels();
+      console.log(`[Python] getAllPythonDiagnostics: проверка ${models.length} моделей редактора`);
+      
       for (const model of models) {
-        if (!model || model.isDisposed() || model.getLanguageId() !== 'python') continue;
+        if (!model || model.isDisposed()) continue;
         
+        // Получаем маркеры для этой модели
         const uri = model.uri.toString();
-        const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+        const normalizedUri = uri.replace(/\\/g, '/');
         
-        if (markers && markers.length > 0) {
-          // Проверяем, есть ли уже этот файл в диагностике
-          const existingIndex = diagValues.findIndex(d => d.filePath === uri);
-          const fileName = uri.split('/').pop() || uri.split('\\').pop() || 'unknown.py';
+        // Пропускаем уже обработанные файлы
+        if (processedFiles.has(normalizedUri)) {
+          console.log(`[Python] Пропускаем уже обработанный файл: ${uri}`);
+          continue;
+        }
+        
+        // Получаем все маркеры для данной модели
+        const allMarkers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+        console.log(`[Python] Найдено ${allMarkers.length} маркеров для модели ${uri}`);
+        
+        if (allMarkers && allMarkers.length > 0) {
+          // Получаем имя файла из URI
+          const fileName = normalizedUri.split('/').pop() || 'unknown';
           
-          if (existingIndex === -1) {
-            // Если файла нет, добавляем его с маркерами
+          // Создаем информацию о проблемах для этого файла
+          const fileIssues: Issue[] = allMarkers.map((marker: monaco.editor.IMarkerData) => ({
+            severity: marker.severity === 1 ? 'error' : 
+                     marker.severity === 2 ? 'warning' : 'info',
+            message: marker.message,
+            line: marker.startLineNumber,
+            column: marker.startColumn,
+            endLine: marker.endLineNumber,
+            endColumn: marker.endColumn,
+            source: marker.source || 'monaco-editor',
+            code: marker.code?.toString()
+          }));
+          
+          // Если есть проблемы для этого файла, добавляем их
+          if (fileIssues.length > 0) {
             diagValues.push({
               filePath: uri,
               fileName,
-              issues: markers.map((marker: monaco.editor.IMarkerData) => ({
-                severity: marker.severity === 1 ? 'error' : 
-                         marker.severity === 2 ? 'warning' : 'info',
-                message: marker.message,
-                line: marker.startLineNumber - 1,
-                column: marker.startColumn - 1,
-                endLine: marker.endLineNumber - 1,
-                endColumn: marker.endColumn - 1,
-                source: 'monaco-python',
-                code: marker.code?.toString()
-              }))
+              issues: fileIssues
             });
+            console.log(`[Python] Добавлены ${fileIssues.length} проблем для файла ${fileName}`);
           }
         }
       }
     } catch (e) {
-      console.error('Ошибка при получении маркеров:', e);
+      console.error('[Python] Ошибка при получении маркеров:', e);
     }
   }
   
-  console.log(`[Python] getAllPythonDiagnostics: найдено ${diagValues.length} файлов с проблемами`);
+  console.log(`[Python] getAllPythonDiagnostics: всего найдено ${diagValues.length} файлов с проблемами`);
   return diagValues;
 }
 
@@ -786,22 +818,45 @@ function getAllPythonDiagnostics(): IssueInfo[] {
  * Обновляет диагностику для всех Python моделей
  */
 async function updateAllPythonDiagnostics(): Promise<IssueInfo[]> {
+  console.log('[Python] Запуск обновления всех диагностик Python');
+  
   // Очищаем предыдущие диагностики
   pythonDiagnostics.clear();
   
-  // Проверяем все модели Python
+  // Проверяем, есть ли открытые Python модели
   const models = monaco.editor.getModels();
-  for (const model of models) {
-    if (model.getLanguageId() === 'python') {
+  const pythonModels = models.filter(model => model.getLanguageId() === 'python');
+  
+  console.log(`[Python] Найдено ${pythonModels.length} Python моделей для проверки`);
+  
+  // Если нет открытых Python файлов, сразу возвращаем пустой массив
+  if (pythonModels.length === 0) {
+    console.log('[Python] Нет открытых Python файлов, очищаем все диагностики');
+    // Отправляем событие обновления маркеров для очистки интерфейса
+    document.dispatchEvent(new Event('markers-updated'));
+    return [];
+  }
+  
+  // Проверяем каждую модель Python
+  for (const model of pythonModels) {
+    try {
       const code = model.getValue();
+      const filePath = model.uri.toString();
+      console.log(`[Python] Проверка модели ${filePath}`);
+      
       await checkPythonErrors(code, model);
+        } catch (error) {
+      console.error(`[Python] Ошибка при проверке модели: ${error}`);
     }
   }
   
   // Отправляем событие обновления маркеров
   document.dispatchEvent(new Event('markers-updated'));
   
-  return getAllPythonDiagnostics();
+  // Возвращаем обновленный список диагностик
+  const result = getAllPythonDiagnostics();
+  console.log(`[Python] Обновление диагностик завершено, найдено ${result.length} файлов с проблемами`);
+  return result;
 }
 
 /**
@@ -841,13 +896,61 @@ function setErrorMarkers(model: monaco.editor.ITextModel, errors: ScriptError[])
       issues
     });
     
+    // Сохраняем в lastKnownMarkers для быстрого доступа
+    if (!window.lastKnownMarkers) {
+      window.lastKnownMarkers = {};
+    }
+    window.lastKnownMarkers[filePath] = markers;
+    
+    // Сохраняем в pythonDiagnosticsStore для доступа из других компонентов
+    if (!window.pythonDiagnosticsStore) {
+      window.pythonDiagnosticsStore = {};
+    }
+    window.pythonDiagnosticsStore[filePath] = markers;
+    
+    console.log(`[Python] Установлено ${markers.length} маркеров для ${filePath} (${issues.length})`, issues);
+    
     // Отправляем событие обновления маркеров с данными
     const markersEvent = new CustomEvent('markers-updated', {
       detail: { filePath, markers: issues }
     });
     document.dispatchEvent(markersEvent);
     
-    console.log(`[Python] Установлено ${markers.length} маркеров для ${fileName}`, issues);
+    // Отправляем событие monaco-markers-changed для терминала
+    const monacoMarkersEvent = new CustomEvent('monaco-markers-changed', {
+      detail: { 
+        filePath, 
+        markers, 
+        owner: PYTHON_MARKER_OWNER,
+        hasErrors: markers.some(m => m.severity === monaco.MarkerSeverity.Error)
+      }
+    });
+    document.dispatchEvent(monacoMarkersEvent);
+    
+    // Отправляем дополнительные события для обновления панели проблем
+    document.dispatchEvent(new CustomEvent('force-update-problems'));
+    document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+    
+    // При каждом обновлении маркеров обновляем также хранилище 'inmemory://model/1'
+    // что позволит панели проблем видеть маркеры для этого специального файла
+    if (window.lastKnownMarkers && markers.length > 0) {
+      const inmemoryPath = 'inmemory://model/1';
+      window.lastKnownMarkers[inmemoryPath] = [...markers];
+      
+      if (window.pythonDiagnosticsStore) {
+        window.pythonDiagnosticsStore[inmemoryPath] = [...markers];
+      }
+      
+      // Также добавляем запись в pythonDiagnostics
+      pythonDiagnostics.set(inmemoryPath, {
+        filePath: inmemoryPath,
+        fileName: 'Python Errors',
+        issues: [...issues]
+      });
+      
+      console.log(`[Python] Добавлены маркеры в inmemory модель для отображения в панели проблем:`, 
+        window.lastKnownMarkers[inmemoryPath]);
+    }
   }
 }
 
@@ -909,6 +1012,64 @@ function forceValidateEditor(editor: MonacoEditor): void {
   checkPythonErrors(code, model).then(errors => {
     showProblemsInEditor(editor, errors);
   });
+}
+
+/**
+ * Очищает все диагностики для указанного файла
+ */
+function clearFileDiagnostics(filePath: string): void {
+  console.log(`[Python] Очистка диагностики для файла: ${filePath}`);
+  
+  // Удаляем из хранилища диагностик
+  if (pythonDiagnostics.has(filePath)) {
+    pythonDiagnostics.delete(filePath);
+    console.log(`[Python] Диагностика для файла ${filePath} удалена`);
+  }
+  
+  // Очищаем маркеры в модели, если она существует
+  try {
+    const models = monaco.editor.getModels();
+    for (const model of models) {
+      const modelUri = model.uri.toString();
+      if (modelUri === filePath || modelUri.replace(/\\/g, '/') === filePath.replace(/\\/g, '/')) {
+        monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, []);
+        console.log(`[Python] Маркеры для модели ${modelUri} очищены`);
+        break;
+      }
+        }
+      } catch (error) {
+    console.error(`[Python] Ошибка при очистке маркеров: ${error}`);
+  }
+  
+  // Отправляем событие обновления маркеров
+  document.dispatchEvent(new CustomEvent('markers-updated', {
+    detail: { filePath, cleared: true }
+  }));
+}
+
+/**
+ * Очищает все диагностики
+ */
+function clearAllDiagnostics(): void {
+  console.log('[Python] Очистка всех диагностик Python');
+  
+  // Очищаем хранилище диагностик
+  pythonDiagnostics.clear();
+  
+  // Очищаем маркеры для всех моделей Python
+  try {
+    const models = monaco.editor.getModels();
+    for (const model of models) {
+      if (model.getLanguageId() === 'python') {
+        monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, []);
+      }
+    }
+  } catch (error) {
+    console.error(`[Python] Ошибка при очистке всех маркеров: ${error}`);
+  }
+  
+  // Отправляем событие обновления маркеров
+  document.dispatchEvent(new Event('markers-updated'));
 }
 
 /**
@@ -1010,7 +1171,10 @@ export function registerPython(): boolean {
     // Добавляем функции для интеграции с Terminal.tsx
     window.getPythonDiagnostics = getAllPythonDiagnostics;
     window.updatePythonDiagnostics = updateAllPythonDiagnostics;
-
+    window.clearPythonFileDiagnostics = clearFileDiagnostics;
+    window.clearAllPythonDiagnostics = clearAllDiagnostics;
+    window.pythonDiagnostics = pythonDiagnostics;
+    
     /**
      * Функция для применения тонких подчеркиваний вместо красных линий
      */
@@ -1272,10 +1436,76 @@ export function registerPython(): boolean {
       }, 500);
     }
 
-    // Экспортируем функцию регистрации
+    // Добавим обработку событий изменения файла и директории
+    const handleActiveFileChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{filePath: string}>;
+      const filePath = customEvent.detail.filePath;
+      
+      // Обновляем диагностику при смене активного файла
+      if (filePath && filePath.endsWith('.py')) {
+        console.log(`[Python] Обновление диагностики для нового активного файла: ${filePath}`);
+        
+        // Ищем модель для этого файла
+        const models = monaco.editor.getModels();
+        const pythonModel = models.find(model => 
+          model.uri.toString() === filePath || 
+          model.uri.toString().replace(/\\/g, '/') === filePath.replace(/\\/g, '/')
+        );
+        
+        if (pythonModel) {
+          const code = pythonModel.getValue();
+          checkPythonErrors(code, pythonModel).catch(err => {
+            console.error(`[Python] Ошибка при проверке активного файла: ${err}`);
+          });
+        }
+      }
+    };
+    
+    const handleDirectoryChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{path: string}>;
+      const directoryPath = customEvent.detail.path;
+      
+      console.log(`[Python] Директория изменена: ${directoryPath}, очищаем все диагностики`);
+      clearAllDiagnostics();
+    };
+    
+    document.addEventListener('active-file-changed', handleActiveFileChanged);
+    document.addEventListener('directory-changed', handleDirectoryChanged);
+
+    // Инициализируем хранилища для диагностик, если они не существуют
+    if (!window.pythonDiagnostics) {
+      window.pythonDiagnostics = pythonDiagnostics;
+    }
+    
+    if (!window.pythonDiagnosticsStore) {
+      window.pythonDiagnosticsStore = {};
+    }
+    
+    if (!window.lastKnownMarkers) {
+      window.lastKnownMarkers = {};
+    }
+    
+    // Отправляем события инициализации, чтобы другие компоненты могли реагировать
+    setTimeout(() => {
+      document.dispatchEvent(new CustomEvent('python-initialized'));
+      document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+    }, 500);
+    
+    console.log('[Python] Поддержка Python успешно инициализирована');
+    
+    // Запускаем начальную проверку для всех открытых Python файлов
+    setTimeout(() => {
+      updateAllPythonDiagnostics().then(diagnostics => {
+        console.log(`[Python] Начальная проверка завершена: найдено ${diagnostics.length} файлов с проблемами`);
+        
+        // Принудительно обновляем панель проблем после инициализации
+        document.dispatchEvent(new CustomEvent('markers-updated'));
+      });
+    }, 1000);
+
     return true;
   } catch (error) {
-    console.error('Ошибка при регистрации поддержки Python:', error);
+    console.error(`[Python] Ошибка инициализации Python: ${error}`);
     return false;
   }
 }

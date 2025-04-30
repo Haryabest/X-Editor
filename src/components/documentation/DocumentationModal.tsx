@@ -330,7 +330,7 @@ const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, onClose
                 <li>Одновременное редактирование нескольких мест</li>
                 <li>Быстрый рефакторинг повторяющегося кода</li>
                 <li>Умное выделение похожих фрагментов (Ctrl+D)</li>
-              </ul>
+          </ul>
             </div>
           </div>
           

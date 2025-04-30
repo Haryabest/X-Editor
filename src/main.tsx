@@ -15,17 +15,38 @@ import { registerImportCompletionProvider } from './monaco-config/import-complet
 import * as monaco from 'monaco-editor';
 import { registerMonacoThemes, initializeSettings } from './utils/settingsManager';
 
+// Добавим явную принудительную регистрацию поддержки Python и инициализацию диагностики
+import { registerPython } from './monaco-config/register-python';
+
+// Конфигурация глобальных переменных
 declare global {
   interface Window {
-    monaco: any;
+    monaco: typeof monaco;
     terminalInstance?: {
       clear: () => void;
-      restart: () => void;
-      showSettings: () => void;
+      write: (content: string) => void;
+      focus: () => void;
     };
-    logMonacoDiagnostics?: () => { markers: any[], errorCounts: Record<string, number> };
-    updatePythonDiagnostics?: () => string;
+    clearTerminal?: () => void;
+    customSendMessage?: (message: string) => void;
+    toggleTerminal?: () => void;
+    showTerminal?: () => void;
+    hideTerminal?: () => void;
+    restartTerminal?: () => void;
+    executeInTerminal?: (command: string) => void;
+    pythonCheckErrors?: (code: string, model?: any) => Promise<any[]>;
+    pythonAddErrorListener?: (callback: (errors: any[]) => void) => void;
+    pythonShowProblemsInEditor?: (editor: any, errors: any[]) => void;
+    pythonForceValidateEditor?: (editor: any) => void;
+    setupErrorDecorations?: (editor: any) => void;
+    setupAllErrorDecorations?: () => void;
+    validatePythonSyntax?: (content: string, modelUri: any) => any[];
+    getPythonDiagnostics: () => any[];
+    updatePythonDiagnostics: () => Promise<any[]>;
     lastActiveFilePath?: string; // Путь к последнему активному файлу
+    pythonDiagnostics: Map<string, any>;
+    lastKnownMarkers: Record<string, any[]>;
+    forceDiagnosticsRefresh: () => void;
   }
 }
 
@@ -391,3 +412,58 @@ function applyProblemPanelStyles() {
 if (typeof document !== 'undefined') {
   applyProblemPanelStyles();
 }
+
+// Добавим код для принудительной регистрации Python и инициализации диагностики
+window.addEventListener('load', () => {
+  // Вызываем проверку ошибок Python немедленно и повторно через интервалы
+  setTimeout(() => {
+    try {
+      console.log('🔄 Запуск принудительной проверки ошибок Python...');
+      
+      // Принудительно запускаем функцию checkPythonErrorsInFile для обнаружения ошибок
+      if (window.monaco && window.monaco.editor) {
+        // Явно импортируем модуль с функцией checkPythonErrorsInFile
+        import('./monaco-config/fixMarker').then(module => {
+          console.log('📊 Модуль fixMarker загружен, проверяем ошибки...');
+          // Запускаем функцию из модуля
+          if (typeof module.initPeriodicDiagnosticChecks === 'function') {
+            module.initPeriodicDiagnosticChecks();
+          }
+          
+          // Обновляем маркеры и проблемы
+          setTimeout(() => {
+            document.dispatchEvent(new CustomEvent('markers-updated'));
+            document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+          }, 1000);
+        });
+      }
+      
+      // Регистрируем обработчик для проверки ошибок при изменении активного файла
+      document.addEventListener('active-file-changed', () => {
+        setTimeout(() => {
+          if (window.forceDiagnosticsRefresh) {
+            window.forceDiagnosticsRefresh();
+          }
+          document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+        }, 300);
+      });
+      
+      // Запускаем проверку повторно через 3 и 5 секунд для надежности
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+        if (window.forceDiagnosticsRefresh) {
+          window.forceDiagnosticsRefresh();
+        }
+      }, 3000);
+      
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+        if (window.forceDiagnosticsRefresh) {
+          window.forceDiagnosticsRefresh();
+        }
+      }, 5000);
+    } catch (error) {
+      console.error('❌ Ошибка при инициализации проверки ошибок Python:', error);
+    }
+  }, 2000);
+});

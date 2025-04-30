@@ -20,17 +20,19 @@
 
 .left-tabs {
   display: flex;
-  height: 100%;
+  height: 100% !important;
+  overflow: hidden;
 }
 
 .tab-buttons {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0px 10px;
   background-color: #252526;
-  border-bottom: 1px solid #444;
-  height: 38px;
+  border-bottom: 1px solid #3c3c3c;
+  height: 56px !important;
+  align-items: center;
+  padding: 0 18px;
+  justify-content: space-between;
+  overflow: hidden;
 }
 
 .spacer {
@@ -40,54 +42,86 @@
 .right-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .tab-button {
-  background: none;
+  background: #2d2d2d;
   border: none;
-  color: #cccccc;
-  padding: 6px 16px;
+  color: #b8b8b8;
+  padding: 0 24px !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
   cursor: pointer;
-  font-size: 14px;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px !important;
+  min-width: 150px !important;
+  border-radius: 6px 6px 0 0;
+  margin-right: 6px;
   transition: all 0.2s ease;
-  height: 100%;
-  display: flex;
-  align-items: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .tab-button.active {
-  background-color: transparent;
+  background-color: #1565C0;
   color: #ffffff;
-  border: none;
-  border-bottom: 2px solid #0078d4;
+  font-weight: 700;
+  box-shadow: 0 -3px 6px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
 }
 
+.tab-button:hover:not(.active) {
+  background-color: #3d3d3d;
+  color: #f0f0f0;
+  transform: translateY(-1px);
+}
 
 .action-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
+  background: #333333;
   border: none;
   color: #d4d4d4;
-  padding: 4px 8px;
+  padding: 10px !important;
   cursor: pointer;
-  border-radius: 3px;
-  margin-left: 4px;
+  border-radius: 6px;
+  margin-left: 10px;
+  transition: all 0.2s ease;
+  height: 46px !important;
+  width: 46px !important;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.action-button svg {
+  width: 30px !important;
+  height: 30px !important;
+  display: block !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 .action-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background-color: #1976D2;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .action-button:active {
-  background-color: #2b2b2b;
-  box-shadow: none;
-  color: #10b981;
+  background-color: #0D47A1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  transform: translateY(0);
 }
 
 .tab-content {
@@ -291,27 +325,41 @@
   position: relative;
   display: flex;
   align-items: center;
+  max-width: 180px;
+  flex-shrink: 1;
+  height: 26px;
+  border-radius: 4px;
+  background-color: #333333;
+  transition: all 0.2s ease;
+}
+
+.search-input-wrapper:hover {
+  background-color: #3d3d3d;
 }
 
 .search-icon {
   position: absolute;
   left: 8px;
   color: #888;
+  z-index: 1;
 }
 
 .issues-search-input {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: transparent;
+  border: none;
   border-radius: 4px;
   padding: 4px 8px 4px 30px;
   color: #ddd;
   font-size: 13px;
-  width: 180px;
+  width: 100%;
+  min-width: 100px;
+  max-width: 180px;
+  height: 100%;
 }
 
 .issues-search-input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.2);
+  background-color: #3d3d3d;
 }
 
 .terminal-tabs {
@@ -414,22 +462,20 @@
 
 .status-indicator {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: 5px;
+  right: 5px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  z-index: 10;
+  z-index: 100;
 }
 
 .status-indicator.running {
-  background-color: #4caf50;
-  box-shadow: 0 0 5px rgba(76, 175, 80, 0.7);
+  background-color: #3ad900;
 }
 
 .status-indicator.stopped {
-  background-color: #f44336;
-  box-shadow: 0 0 5px rgba(244, 67, 54, 0.7);
+  background-color: #ff4343;
 }
 
 .xterm {
@@ -449,74 +495,35 @@
   flex-direction: column;
 }
 
-.tab-buttons {
-  display: flex;
-  background-color: #252526;
-  border-bottom: 1px solid #3c3c3c;
-  height: 36px;
-  align-items: center;
-  padding: 0 8px;
-  justify-content: space-between;
+.terminal-container .tab-buttons {
+  height: 56px !important;
 }
 
-.left-tabs {
-  display: flex;
-}
-
-.tab-button {
-  background: transparent;
-  border: none;
-  color: #cccccc;
-  padding: 0 12px;
-  height: 36px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-}
-
-.tab-button.active {
-  background-color: #1e1e1e;
-  border-top: 1px solid #1e8ad2;
-  color: #ffffff;
-}
-
-.right-actions {
+.terminal-container .tab-buttons .left-tabs {
+  height: 100% !important;
   display: flex;
   align-items: center;
-  gap: 8px;
+  padding: 0 6px;
 }
 
-.action-button:hover {
-  background-color: #3c3c3c;
+.terminal-container .tab-buttons .left-tabs .tab-button {
+  height: 42px !important;
+  line-height: 42px !important;
+  padding: 0 24px !important;
+  min-width: 150px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  margin-right: 6px;
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.tab-content {
-  flex: 1;
-  position: relative;
-}
-
-.terminal {
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-
-.status-indicator {
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  z-index: 100;
-}
-
-.status-indicator.running {
-  background-color: #3ad900;
-}
-
-.status-indicator.stopped {
-  background-color: #ff4343;
+.action-button svg {
+  width: 30px !important;
+  height: 30px !important;
+  display: block !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 /* Стилизация для вкладки с проблемами */
@@ -883,41 +890,63 @@
   align-items: center;
 }
 
-/* Terminal filters styling */
+/* Новые стили для фильтров на вкладке Проблемы */
 .terminal-filters {
-  padding: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px;
+  border-bottom: 1px solid #3d3d3d;
+  background-color: #252526;
 }
 
 .issue-search {
   width: 100%;
-  padding: 6px 8px;
-  margin-bottom: 8px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background-color: #333333;
+  border: none;
   border-radius: 4px;
   color: #fff;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.issue-search:focus {
+  outline: none;
+  background-color: #3d3d3d;
+  box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.3);
 }
 
 .filter-buttons {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .filter-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 6px;
+  padding: 6px 14px;
+  background-color: #333333;
+  border: none;
   border-radius: 4px;
-  color: #ccc;
+  color: #ddd;
   cursor: pointer;
-  font-size: 0.8em;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+  min-width: 90px;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.filter-btn:hover {
+  background-color: #1976D2;
+  color: white;
+  transform: translateY(-1px);
 }
 
 .filter-btn.active {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background-color: #1565C0;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  font-weight: 500;
 }
