@@ -290,7 +290,7 @@
   top: 120%;
   left: 50%;
   transform: translateX(-50%);
-  width: 600px;
+  width: 800px;
   background: #2d2d2d;
   border: 1px solid #444;
   border-radius: 8px;
@@ -338,11 +338,17 @@
 .file-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 12px 12px;
   cursor: pointer;
   transition: background-color 0.3s;
   border-radius: 6px;
   gap: 8px;
+  width: 100%;
+  min-height: 50px;
+}
+
+.file-item.selected {
+  background-color: #575757; /* Фон для выделенного элемента */
 }
 
 .file-item:hover {
@@ -353,10 +359,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  margin-right: 10px;
+  margin-right: 8px;
   color: #aaa;
 }
 
@@ -370,17 +376,29 @@
 .file-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+  min-width: 0; /* Разрешаем контейнеру сжиматься */
+  flex: 1; /* Позволяем занимать все доступное пространство */
+  width: calc(100% - 30px); /* Увеличиваем доступное пространство */
+  max-width: 750px; /* Ограничиваем максимальную ширину */
 }
 
 .file-name {
   color: #fff;
   font-size: 13px;
+  white-space: nowrap; /* Запрещаем перенос строки */
+  overflow: hidden; /* Скрываем выходящий за пределы текст */
+  text-overflow: ellipsis; /* Добавляем многоточие */
+  max-width: 100%; /* Используем всю доступную ширину */
 }
 
 .file-path {
   color: #858585;
   font-size: 12px;
+  white-space: nowrap; /* Запрещаем перенос строки */
+  overflow: hidden; /* Скрываем выходящий за пределы текст */
+  text-overflow: ellipsis; /* Добавляем многоточие */
+  max-width: 100%; /* Используем всю доступную ширину */
 }
 
 /* Кастомный скроллбар */

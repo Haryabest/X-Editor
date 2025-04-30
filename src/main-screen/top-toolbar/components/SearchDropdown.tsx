@@ -282,13 +282,13 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
               >
                 <div className="file-icon">
                   {getIcon(file.name)}
+                </div>
+                <div className="file-info">
+                  <span className="file-name">{file.name}</span>
+                  <span className="file-path">{file.path.replace(/\\/g, '/')}</span>
+                </div>
               </div>
-              <div className="file-info">
-                <span className="file-name">{file.name}</span>
-                <span className="file-path">{file.path}</span>
-              </div>
-            </div>
-          ))}
+            ))}
             
             {/* Индикатор для загрузки дополнительных результатов */}
             {displayedFiles.length < filteredFiles.length && (

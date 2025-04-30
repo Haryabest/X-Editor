@@ -632,6 +632,78 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   };
 
+  // Функция для создания нового файла через проводник
+  const handleCreateFileWithExplorer = async () => {
+    try {
+      // Определяем базовую директорию для создания файла
+      let baseDir = selectedFolder;
+      
+      // Если нет выбранной директории, предлагаем выбрать
+      if (!baseDir) {
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: 'Выберите директорию для создания файла',
+        });
+        
+        if (selected) {
+          baseDir = selected;
+          setSelectedFolder(selected);
+        } else {
+          return; // Пользователь отменил выбор
+        }
+      }
+      
+      // Открываем диалог сохранения файла
+      const filePath = await save({
+        title: 'Создать новый файл',
+        defaultPath: baseDir,
+        filters: [
+          { name: 'Текстовые файлы', extensions: ['txt', 'md'] },
+          { name: 'Веб-файлы', extensions: ['html', 'css', 'js'] },
+          { name: 'Скрипты', extensions: ['py', 'ts', 'jsx', 'tsx'] },
+          { name: 'Все файлы', extensions: ['*'] }
+        ]
+      });
+      
+      if (filePath) {
+        // Создаем пустой файл на диске
+        await invoke('save_file', {
+          path: filePath,
+          content: '' // Создаем пустой файл
+        });
+        
+        console.log(`Создан новый файл: ${filePath}`);
+        
+        // Получаем имя файла из пути
+        const fileName = pathUtils.basename(filePath);
+        
+        // Добавляем файл в список открытых
+        setOpenedFiles(prev => {
+          // Проверяем, не открыт ли уже файл
+          if (prev.some(file => file.path === filePath)) {
+            return prev;
+          }
+          return [...prev, { name: fileName, path: filePath, isFolder: false }];
+        });
+        
+        // Устанавливаем созданный файл как текущий
+        if (handleFileSelect) {
+          handleFileSelect(filePath);
+        }
+        
+        // Добавляем пустое содержимое в Map оригинальных содержимых
+        setOriginalFileContents(prev => {
+          const newMap = new Map(prev);
+          newMap.set(filePath, '');
+          return newMap;
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка создания файла:', error);
+    }
+  };
+
   const handleEditorDidMount = (editor: any, monaco: any) => {
     console.log('Monaco editor mounted successfully');
     
@@ -904,6 +976,25 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     }
   }, [openedFiles]);
 
+  // Переопределяем обработчик создания файла
+  useEffect(() => {
+    // При первом рендере заменяем обработчик createFile на наш собственный
+    if (typeof handleCreateFile === 'function') {
+      // Создаем обработчик события для перехвата
+      const handleCreateFileEvent = (e: Event) => {
+        e.preventDefault();
+        handleCreateFileWithExplorer();
+      };
+
+      // Создаем кастомное событие для создания файла
+      document.addEventListener('create-file', handleCreateFileEvent);
+
+      return () => {
+        document.removeEventListener('create-file', handleCreateFileEvent);
+      };
+    }
+  }, [handleCreateFile, selectedFolder]);
+
   // Add global keyboard shortcuts for file operations
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -915,7 +1006,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       // Create new file (Ctrl+N)
       else if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
         e.preventDefault();
-        handleCreateFile();
+        handleCreateFileWithExplorer();
+        console.log('Вызван обработчик создания файла по Ctrl+N');
       }
       // Copy path (Ctrl+Shift+C)
       else if (e.ctrlKey && e.shiftKey && e.key === 'c') {
@@ -941,7 +1033,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedFile, handleSaveFile, handleCreateFile, handleOpenFolder]);
+  }, [selectedFile, handleSaveFile, handleCreateFileWithExplorer, handleOpenFolder]);
 
   // Добавляем эффект для обновления модифицированных файлов при изменении кода
   useEffect(() => {
@@ -1524,25 +1616,6 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     prevSelectedFileRef.current = selectedFile;
   }, [selectedFile, originalFileContents, modifiedFiles]);
 
-  // Add keyboard shortcuts for global operations
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+S to save current file
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        if (selectedFile) {
-          console.log('Saving file with Ctrl+S:', selectedFile);
-          handleSaveFile(false);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedFile, handleSaveFile]);
-
   // Listen for monaco theme changes
   useEffect(() => {
     const handleThemeChange = (event: CustomEvent) => {
@@ -1619,7 +1692,7 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
           <h2>X-Editor</h2>
           <p>Выберите файл для редактирования или создайте новый.</p>
           <div className="welcome-buttons">
-            <button onClick={handleCreateFile} className="welcome-button">
+            <button onClick={handleCreateFileWithExplorer} className="welcome-button">
               <div className="welcome-button-text">
               Создать файл
               </div>
