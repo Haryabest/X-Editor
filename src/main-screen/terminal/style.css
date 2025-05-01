@@ -221,86 +221,88 @@
 }
 
 .issues-list {
-  padding: 10px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: calc(100% - 120px);
 }
 
 .file-issues {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .file-header {
   display: flex;
   align-items: center;
-  padding: 5px;
+  padding: 8px 12px;
+  background-color: #2a2d2e;
   cursor: pointer;
-  border-radius: 4px;
-  gap: 8px;
+  border-bottom: 1px solid #1e1e1e;
 }
 
 .file-header:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: #333638;
 }
 
 .file-name {
-  flex: 1;
+  flex-grow: 1;
 }
 
 .issues-count {
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
+  background-color: #3c3c3c;
   border-radius: 10px;
-  font-size: 12px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: #ffffff;
 }
 
 .issue-items {
-  margin-left: 20px;
-  margin-top: 5px;
+  border-left: 1px solid #3c3c3c;
+  margin-left: 15px;
+  padding-left: 15px;
 }
 
 .issue-item {
-  display: flex;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  gap: 8px;
-  align-items: flex-start;
+  padding: 8px 12px 8px 28px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .issue-item:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-.severity-icon {
-  margin-top: 2px;
-}
-
-.severity-icon.error {
-  color: #ff5252;
-}
-
-.severity-icon.warning {
-  color: #ffab40;
-}
-
-.severity-icon.info {
-  color: #42a5f5;
-}
-
-.issue-details {
-  flex: 1;
+.issue-item:last-child {
+  border-bottom: none;
 }
 
 .issue-message {
   margin-bottom: 4px;
+  font-weight: 500;
+  color: #e2e2e2;
 }
 
-.issue-location {
+.issue-position {
   font-size: 12px;
-  color: #888;
+  color: #a0a0a0;
 }
 
 .issue-source {
-  color: #666;
+  margin-left: 8px;
+  padding: 2px 4px;
+  background-color: #3a3a3a;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.issue-item .severity-icon {
+  position: absolute;
+  left: 8px;
+  top: 10px;
 }
 
 .no-issues {
@@ -1311,4 +1313,31 @@
   background-color: #1e1e1e;
   color: #ffffff;
   border-bottom: 2px solid #0078d4;
+}
+
+/* Стили для элементов с разными уровнями серьезности */
+.issue-item.error-item {
+  border-left: 3px solid #f44336;
+  background-color: rgba(244, 67, 54, 0.05);
+}
+
+.issue-item.warning-item {
+  border-left: 3px solid #ff9800;
+  background-color: rgba(255, 152, 0, 0.05);
+}
+
+.issue-item.info-item {
+  border-left: 3px solid #2196f3;
+  background-color: rgba(33, 150, 243, 0.05);
+}
+
+/* Улучшаем видимость иконок ошибок */
+.issue-item .error-icon svg {
+  fill: #f44336;
+  stroke: #f44336;
+}
+
+.issue-item .warning-icon svg {
+  fill: #ff9800;
+  stroke: #ff9800;
 }
