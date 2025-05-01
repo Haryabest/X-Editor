@@ -739,15 +739,6 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       
       const modelId = fileNameMatch[1];
       
-      // Получаем текущую директорию или путь к текущему файлу
-      const currentPath = window.lastActiveFilePath || props.selectedFile || '';
-      
-      // Получаем базовый путь директории (удаляем имя файла из пути)
-      const basePath = currentPath.replace(/[\/\\][^\/\\]+$/, '');
-      
-      // Формируем базовый URI директории
-      const baseFileUri = basePath ? `file://${basePath.replace(/\\/g, '/')}` : 'file:///';
-      
       // Ищем соответствующую модель по ID
       if (window.monaco && window.monaco.editor) {
         const models = window.monaco.editor.getModels();
@@ -775,69 +766,61 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
                 return realModel.uri.toString();
               }
               
-              // Ищем в названии первой строки других подсказок о возможном пути
-              const projectPathMatch = firstLine.match(/[\\/]((?:[^\\/]+[\\/])+[^\\/]+\.py)\b/);
-              if (projectPathMatch) {
-                // Используем реальный базовый путь вместо /workspace/
-                return `${baseFileUri}/${projectPathMatch[1].replace(/\\/g, '/')}`;
-              }
-              
-              // Если не нашли точное соответствие, возвращаем предполагаемый путь на основе текущей директории
-              return `${baseFileUri}/${fileName}`;
+              // Если не нашли точное соответствие, создаем путь на основе имени файла
+              return `file:///workspace/${fileName}`;
             }
             
             // Если не смогли извлечь имя файла из комментария, используем содержимое модели
             // для определения типа файла
             const content = model.getValue();
             if (content.includes('def ') || content.includes('import ') || content.includes('class ')) {
-              // Если есть упоминание имени файла в первых строках, пробуем его использовать
-              const pythonFileNameMatch = content.match(/['"]([\w\/\\]+\.py)['"]/);
-              if (pythonFileNameMatch) {
-                return `${baseFileUri}/${pythonFileNameMatch[1].replace(/\\/g, '/')}`;
-              }
               // Похоже на Python файл
-              return `${baseFileUri}/python_file_${modelId}.py`;
+              return `file:///workspace/python_file_${modelId}.py`;
             } else if (content.includes('<html') || content.includes('<div')) {
               // Похоже на HTML
-              return `${baseFileUri}/html_file_${modelId}.html`;
+              return `file:///workspace/html_file_${modelId}.html`;
             } else if (content.includes('function') || content.includes('const ') || content.includes('let ')) {
               // Похоже на JavaScript/TypeScript
-              return `${baseFileUri}/js_file_${modelId}.js`;
+              return `file:///workspace/js_file_${modelId}.js`;
             }
           }
         }
       }
       
-      // Если у нас есть активный файл, используем его директорию
-      if (currentPath) {
-        // Запасной вариант - генерируем имя файла на основе ID модели в текущей директории
-        return `${baseFileUri}/file_${modelId}.txt`;
-      }
-      
-      // Самый крайний случай - используем основной диск
-      return `file:///C:/file_${modelId}.txt`;
+      // Запасной вариант - генерируем имя файла на основе ID модели
+      return `file:///workspace/file_${modelId}.txt`;
     } catch (error) {
       console.error('Ошибка при преобразовании inmemory пути:', error);
       return uri;
     }
   };
+  
+  // Вспомогательная функция для создания хеша строки
+  const stringToHash = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
+  };
 
-  // Функция для преобразования имени файла из inmemory формата в удобочитаемый формат
-  const convertInmemoryFileName = (fileName: string): string => {
-    if (!fileName.includes('inmemory://')) return fileName;
-    
+  // Новая функция для получения имени файла для inmemory-файла
+  const getInmemoryFileName = (uri: string): string => {
     try {
+      if (!uri.includes('inmemory://')) return 'unknown.txt';
+      
       // Извлекаем ID модели из inmemory пути
-      const modelIdMatch = fileName.match(/inmemory:\/\/model\/(\d+)/);
-      if (!modelIdMatch) return fileName;
+      const modelIdMatch = uri.match(/inmemory:\/\/model\/(\d+)/);
+      if (!modelIdMatch) return 'unknown.txt';
       
       const modelId = modelIdMatch[1];
       
       // Находим соответствующую модель по URI
       if (window.monaco && window.monaco.editor) {
-        const inmemoryUri = `inmemory://model/${modelId}`;
         const models = window.monaco.editor.getModels();
-        const model = models.find((m: any) => m.uri.toString() === inmemoryUri || m.uri.toString().startsWith(inmemoryUri));
+        const model = models.find((m: any) => m.uri.toString() === uri);
         
         if (model) {
           // Первая строка часто содержит комментарий с оригинальным именем файла
@@ -850,23 +833,9 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               return fileNameMatch[1]; // Возвращаем только имя файла
             }
             
-            // Пробуем найти более полный путь
-            const pathMatch = firstLine.match(/[\\/]((?:[^\\/]+[\\/])+[^\\/]+\.\w+)\b/);
-            if (pathMatch) {
-              // Возвращаем небольшую часть пути для лучшей читаемости
-              const parts = pathMatch[1].split(/[\/\\]/);
-              return parts.length > 2 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : parts.join('/');
-            }
-            
             // Определяем тип файла по содержимому
             const content = model.getValue();
             if (content.includes('def ') || content.includes('import ') || content.includes('class ')) {
-              // Ищем возможное имя файла в первых строках Python кода
-              const pythonFileNameMatch = content.match(/['"]([\w\/\\]+\.py)['"]/);
-              if (pythonFileNameMatch) {
-                const parts = pythonFileNameMatch[1].split(/[\/\\]/);
-                return parts[parts.length - 1];
-              }
               return `python_file_${modelId}.py`;
             } else if (content.includes('<html') || content.includes('<div')) {
               return `html_file_${modelId}.html`;
@@ -881,155 +850,242 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       
       return `file_${modelId}.txt`;
     } catch (error) {
-      console.error('Ошибка при преобразовании имени inmemory файла:', error);
-      return fileName;
+      console.error('Ошибка при получении имени файла для inmemory:', error);
+      // Создаем хеш строки в случае ошибки
+      return `file_${stringToHash(uri)}.txt`;
     }
   };
-
+  
   // Полностью переработанная функция получения всех маркеров без фильтрации
   const getMonacoAllMarkersWithoutFilter = (): IssueInfo[] => {
-    let result: IssueInfo[] = [];
+    let results: IssueInfo[] = [];
     
     try {
-      logProblems('Запущен сбор маркеров из inmemory файлов...');
+      logProblems('Запущен сбор ошибок из всех источников...');
       
-      // Обрабатываем только inmemory файлы
+      // 1. Сначала собираем все маркеры напрямую из Monaco Editor
       if (window.monaco && window.monaco.editor) {
-        const allModels = window.monaco.editor.getModels();
-        const inmemoryModels = allModels.filter((model: any) => {
-          const uri = model.uri.toString();
-          return uri.includes('inmemory://');
-        });
+        const allMarkers = window.monaco.editor.getModelMarkers({});
+        logProblems(`Получено ${allMarkers.length} маркеров из Monaco Editor`);
         
-        logProblems(`Найдено ${inmemoryModels.length} inmemory моделей из ${allModels.length} моделей в Monaco Editor`);
-        
-        // 1. Получаем маркеры Monaco для inmemory файлов
-        const allMonacoMarkers = window.monaco.editor.getModelMarkers({});
-        const inmemoryMarkers = allMonacoMarkers.filter((marker: any) => 
-          marker && marker.resource && marker.resource.toString().includes('inmemory://')
-        );
-        
-        logProblems(`Получено ${inmemoryMarkers.length} маркеров из inmemory файлов (всего: ${allMonacoMarkers.length})`);
-        
-        // Создаем карту для хранения маркеров по URI файлов
+        // Группируем маркеры по URI (не преобразуем inmemory в real)
         const markersByUri = new Map<string, any[]>();
-        
-        // Обрабатываем все маркеры из inmemory файлов
-        inmemoryMarkers.forEach((marker: any) => {
+        allMarkers.forEach((marker: any) => {
           if (!marker || !marker.resource) return;
           
           const uri = marker.resource.toString();
           
-          // Преобразуем inmemory URI в реальный путь файла
-          const targetUri = convertInmemoryToRealPath(uri);
-          logProblems(`Преобразован inmemory путь: ${uri} -> ${targetUri}`);
-          
-          // Группируем маркеры по преобразованным URI
-          if (!markersByUri.has(targetUri)) {
-            markersByUri.set(targetUri, []);
+          if (!markersByUri.has(uri)) {
+            markersByUri.set(uri, []);
           }
           
-          // Добавляем маркер к соответствующей группе
-          markersByUri.get(targetUri)?.push({
-            ...marker,
-            originalResource: marker.resource, // Сохраняем оригинальный ресурс
-            resource: { toString: () => targetUri } // Заменяем на преобразованный URI
-          });
+          markersByUri.get(uri)?.push(marker);
         });
         
-        logProblems(`Сгруппировано маркеров по ${markersByUri.size} файлам`);
-        
-        // 2. Добавляем маркеры из pythonDiagnosticsStore для inmemory файлов
-        if (window.pythonDiagnosticsStore) {
-          logProblems('Проверяем pythonDiagnosticsStore на наличие маркеров inmemory файлов');
+        // Преобразуем маркеры в формат IssueInfo
+        markersByUri.forEach((markers, uri) => {
+          const isInmemory = uri.includes('inmemory://');
           
-          Object.entries(window.pythonDiagnosticsStore).forEach(([uri, markers]) => {
-            if (!Array.isArray(markers) || markers.length === 0 || !uri.includes('inmemory://')) return;
-            
-            // Преобразуем inmemory URI в реальный путь файла
-            const targetUri = convertInmemoryToRealPath(uri);
-            logProblems(`Преобразован inmemory путь из pythonDiagnosticsStore: ${uri} -> ${targetUri}`);
-            
-            // Проверяем, есть ли уже маркеры для этого URI
-            if (!markersByUri.has(targetUri)) {
-              markersByUri.set(targetUri, []);
-            }
-            
-            // Добавляем маркеры, избегая дубликатов
-            const existingMarkers = markersByUri.get(targetUri) || [];
+          // Определяем имя файла
+          const fileName = isInmemory ? 
+            getInmemoryFileName(uri) : 
+            getReadableFileName(uri);
+          
+          results.push({
+            filePath: uri,
+            fileName,
+            issues: markers.map((marker: any): Issue => ({
+              severity: marker.severity === 1 ? 'error' as const : 
+                       marker.severity === 2 ? 'warning' as const : 'info' as const,
+              message: marker.message || 'Неизвестная ошибка',
+              line: marker.startLineNumber || 0,
+              column: marker.startColumn || 0,
+              endLine: marker.endLineNumber || 0,
+              endColumn: marker.endColumn || 0,
+              source: marker.source || 'monaco-editor'
+            }))
+          });
+        });
+      }
+      
+      // 2. Добавляем маркеры из pythonDiagnosticsStore
+      if (window.pythonDiagnosticsStore) {
+        logProblems('Проверяем pythonDiagnosticsStore на наличие дополнительных маркеров');
+        
+        Object.entries(window.pythonDiagnosticsStore).forEach(([uri, markers]) => {
+          if (!Array.isArray(markers) || markers.length === 0) return;
+          
+          // Проверяем, если файл уже есть в результатах
+          const existingIndex = results.findIndex(item => item.filePath === uri);
+          
+          if (existingIndex !== -1) {
+            // Объединяем маркеры, избегая дубликатов
+            const existingMarkers = results[existingIndex].issues;
             
             markers.forEach((marker: any) => {
-              // Проверяем, есть ли уже такой маркер
-              const isDuplicate = existingMarkers.some((existing: any) => 
-                existing.startLineNumber === marker.startLineNumber && 
-                existing.startColumn === marker.startColumn && 
-                existing.message === marker.message
+              if (!marker) return;
+              
+              const newIssue: Issue = {
+                severity: marker.severity === 1 ? 'error' as const : 
+                         marker.severity === 2 ? 'warning' as const : 'info' as const,
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'python'
+              };
+              
+              // Проверяем на дубликаты
+              const isDuplicate = existingMarkers.some(issue => 
+                issue.line === newIssue.line && 
+                issue.column === newIssue.column && 
+                issue.message === newIssue.message
               );
               
               if (!isDuplicate) {
-                logProblems(`Добавляем новый маркер из pythonDiagnosticsStore для ${targetUri}: ${marker.message}`);
-                existingMarkers.push({
-                  ...marker,
-                  resource: { toString: () => targetUri }
-                });
+                existingMarkers.push(newIssue);
               }
             });
+          } else {
+            // Добавляем новый файл с проблемами
+            const isInmemory = uri.includes('inmemory://');
             
-            // Обновляем коллекцию маркеров
-            markersByUri.set(targetUri, existingMarkers);
-          });
-        }
+            // Определяем имя файла
+            const fileName = isInmemory ? 
+              getInmemoryFileName(uri) : 
+              getReadableFileName(uri);
+            
+            results.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any): Issue => ({
+                severity: marker.severity === 1 ? 'error' as const : 
+                         marker.severity === 2 ? 'warning' as const : 'info' as const,
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'python'
+              }))
+            });
+          }
+        });
+      }
+      
+      // 3. Добавляем маркеры из lastKnownMarkers
+      if (window.lastKnownMarkers && Object.keys(window.lastKnownMarkers).length > 0) {
+        logProblems('Проверяем lastKnownMarkers на наличие исторических маркеров');
         
-        // 3. Проверяем lastKnownMarkers для inmemory файлов
-        if (window.lastKnownMarkers && Object.keys(window.lastKnownMarkers).length > 0) {
-          logProblems('Проверяем lastKnownMarkers на наличие маркеров inmemory файлов');
+        Object.entries(window.lastKnownMarkers).forEach(([uri, markers]) => {
+          if (!Array.isArray(markers) || markers.length === 0) return;
           
-          Object.entries(window.lastKnownMarkers).forEach(([uri, markers]) => {
-            if (!Array.isArray(markers) || markers.length === 0 || !uri.includes('inmemory://')) return;
-            
-            // Преобразуем inmemory URI в реальный путь файла
-            const targetUri = convertInmemoryToRealPath(uri);
-            logProblems(`Преобразован inmemory путь из lastKnownMarkers: ${uri} -> ${targetUri}`);
-            
-            // Проверяем, есть ли уже маркеры для этого URI
-            if (!markersByUri.has(targetUri)) {
-              markersByUri.set(targetUri, []);
-            }
-            
-            // Добавляем маркеры, избегая дубликатов
-            const existingMarkers = markersByUri.get(targetUri) || [];
+          // Проверяем, если файл уже есть в результатах
+          const existingIndex = results.findIndex(item => item.filePath === uri);
+          
+          if (existingIndex !== -1) {
+            // Объединяем маркеры, избегая дубликатов
+            const existingMarkers = results[existingIndex].issues;
             
             markers.forEach((marker: any) => {
-              // Проверяем, есть ли уже такой маркер
-              const isDuplicate = existingMarkers.some((existing: any) => 
-                existing.startLineNumber === marker.startLineNumber && 
-                existing.startColumn === marker.startColumn && 
-                existing.message === marker.message
+              if (!marker) return;
+              
+              const newIssue: Issue = {
+                severity: marker.severity === 1 ? 'error' as const : 
+                         marker.severity === 2 ? 'warning' as const : 'info' as const,
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'monaco-editor'
+              };
+              
+              // Проверяем на дубликаты
+              const isDuplicate = existingMarkers.some(issue => 
+                issue.line === newIssue.line && 
+                issue.column === newIssue.column && 
+                issue.message === newIssue.message
               );
               
               if (!isDuplicate) {
-                logProblems(`Добавляем исторический маркер для ${targetUri}: ${marker.message}`);
-                existingMarkers.push({
-                  ...marker,
-                  resource: { toString: () => targetUri }
-                });
+                existingMarkers.push(newIssue);
               }
             });
+          } else {
+            // Добавляем новый файл с проблемами
+            const isInmemory = uri.includes('inmemory://');
             
-            // Обновляем коллекцию маркеров
-            markersByUri.set(targetUri, existingMarkers);
-          });
-        }
+            // Определяем имя файла
+            const fileName = isInmemory ? 
+              getInmemoryFileName(uri) : 
+              getReadableFileName(uri);
+            
+            results.push({
+              filePath: uri,
+              fileName,
+              issues: markers.map((marker: any): Issue => ({
+                severity: marker.severity === 1 ? 'error' as const : 
+                         marker.severity === 2 ? 'warning' as const : 'info' as const,
+                message: marker.message || 'Неизвестная ошибка',
+                line: marker.startLineNumber || 0,
+                column: marker.startColumn || 0,
+                endLine: marker.endLineNumber || 0,
+                endColumn: marker.endColumn || 0,
+                source: marker.source || 'monaco-editor'
+              }))
+            });
+          }
+        });
+      }
+      
+      // 4. Добавляем реальные файлы с маркерами
+      const realFilesMarkers = getRealFilesMarkers();
+      if (realFilesMarkers.length > 0) {
+        logProblems(`Найдено ${realFilesMarkers.length} реальных файлов с маркерами`);
         
-        // 4. Проверяем декорации в inmemory моделях
-        inmemoryModels.forEach((model: any) => {
+        realFilesMarkers.forEach(fileInfo => {
+          const existingIndex = results.findIndex(item => item.filePath === fileInfo.filePath);
+          
+          if (existingIndex !== -1) {
+            // Объединяем проблемы, избегая дубликатов
+            const existingIssues = results[existingIndex].issues;
+            
+            fileInfo.issues.forEach(issue => {
+              const isDuplicate = existingIssues.some(existing => 
+                existing.line === issue.line && 
+                existing.column === issue.column && 
+                existing.message === issue.message
+              );
+              
+              if (!isDuplicate) {
+                existingIssues.push(issue);
+              }
+            });
+          } else {
+            // Добавляем новый файл
+            results.push(fileInfo);
+          }
+        });
+      }
+      
+      // 5. Проверяем все модели на наличие декораций ошибок
+      if (window.monaco && window.monaco.editor) {
+        const models = window.monaco.editor.getModels();
+        logProblems(`Проверяем ${models.length} моделей на наличие декораций ошибок`);
+        
+        models.forEach((model: any) => {
           if (!model || model.isDisposed()) return;
           
           const uri = model.uri.toString();
           
-          // Преобразуем inmemory URI в реальный путь файла
-          const targetUri = convertInmemoryToRealPath(uri);
-          logProblems(`Проверка декораций для inmemory модели: ${uri} -> ${targetUri}`);
+          // Проверяем, уже есть ли этот файл в результатах
+          const existingIndex = results.findIndex(item => item.filePath === uri);
+          if (existingIndex !== -1 && results[existingIndex].issues.length > 0) {
+            // Если файл уже есть и имеет проблемы, пропускаем
+            return;
+          }
           
           try {
             // Получаем декорации модели
@@ -1068,86 +1124,41 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               };
             });
             
-            // Добавляем в результат через markersByUri
             if (issues.length > 0) {
-              if (!markersByUri.has(targetUri)) {
-                markersByUri.set(targetUri, []);
-              }
-              
-              const existingMarkers = markersByUri.get(targetUri) || [];
-              
-              issues.forEach(issue => {
-                // Проверяем, есть ли уже такой маркер
-                const isDuplicate = existingMarkers.some((existing: any) => 
-                  existing.startLineNumber === issue.line && 
-                  existing.startColumn === issue.column && 
-                  existing.message === issue.message
-                );
+              if (existingIndex !== -1) {
+                // Добавляем проблемы к существующему файлу
+                results[existingIndex].issues.push(...issues);
+              } else {
+                // Добавляем новый файл
+                const isInmemory = uri.includes('inmemory://');
+                const fileName = isInmemory ? getInmemoryFileName(uri) : getReadableFileName(uri);
                 
-                if (!isDuplicate) {
-                  existingMarkers.push({
-                    severity: issue.severity === 'error' ? 1 : 2,
-                    message: issue.message,
-                    startLineNumber: issue.line,
-                    startColumn: issue.column,
-                    endLineNumber: issue.endLine,
-                    endColumn: issue.endColumn,
-                    source: issue.source,
-                    resource: { toString: () => targetUri }
-                  });
-                }
-              });
-              
-              markersByUri.set(targetUri, existingMarkers);
+                results.push({
+                  filePath: uri,
+                  fileName,
+                  issues
+                });
+              }
             }
           } catch (error) {
             console.error(`Ошибка при анализе декораций модели ${uri}:`, error);
           }
         });
-        
-        // 5. Преобразуем сгруппированные маркеры в структуру IssueInfo для отображения
-        markersByUri.forEach((markers, uri) => {
-          if (markers.length === 0) return;
-          
-          // Получаем читаемое имя файла для реального пути
-          const fileName = getReadableFileName(uri);
-          
-          logProblems(`Добавляем ${markers.length} маркеров для ${fileName} (${uri})`);
-          
-          // Создаем объект IssueInfo для этого файла
-          result.push({
-            filePath: uri,
-            fileName,
-            issues: markers.map((marker: any): Issue => ({
-              severity: marker.severity === 1 ? 'error' as const : 
-                       marker.severity === 2 ? 'warning' as const : 'info' as const,
-              message: marker.message || 'Неизвестная ошибка',
-              line: marker.startLineNumber || 0,
-              column: marker.startColumn || 0,
-              endLine: marker.endLineNumber || 0,
-              endColumn: marker.endColumn || 0,
-              source: marker.source || 'monaco-editor'
-            }))
-          });
-          
-          // Сохраняем в lastKnownMarkers для будущего использования
-          if (!window.lastKnownMarkers) {
-            window.lastKnownMarkers = {};
-          }
-          window.lastKnownMarkers[uri] = markers;
-        });
       }
       
-      // 6. Логируем итоговые результаты
-      logProblems(`Итого собрано ${result.length} файлов с проблемами из inmemory файлов:`);
-      result.forEach(file => {
+      // Удаляем файлы без проблем
+      results = results.filter(file => file.issues && file.issues.length > 0);
+      
+      // Логируем итоговые результаты
+      logProblems(`Итого собрано ${results.length} файлов с проблемами:`);
+      results.forEach(file => {
         logProblems(`  - ${file.fileName} (${file.filePath}): ${file.issues.length} проблем`);
       });
       
-      // Обновляем счетчики ошибок и предупреждений на основе собранных данных
-      const totalErrors = result.reduce((count, file) => 
+      // Обновляем счетчики ошибок и предупреждений
+      const totalErrors = results.reduce((count, file) => 
         count + file.issues.filter(i => i.severity === 'error').length, 0);
-      const totalWarnings = result.reduce((count, file) => 
+      const totalWarnings = results.reduce((count, file) => 
         count + file.issues.filter(i => i.severity === 'warning').length, 0);
       
       // Сохраняем значения для глобального доступа
@@ -1155,11 +1166,12 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       window._latestWarningCount = totalWarnings;
       
       logProblems(`Всего ошибок: ${totalErrors}, предупреждений: ${totalWarnings}`);
+      
+      return results;
     } catch (error) {
-      console.error('Ошибка при получении маркеров из inmemory файлов:', error);
+      console.error('Ошибка при получении маркеров:', error);
+      return [];
     }
-    
-    return result;
   };
 
   // Обновляем функцию renderIssues, чтобы она отображала преобразованные inmemory файлы как реальные
