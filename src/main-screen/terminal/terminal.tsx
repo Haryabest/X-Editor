@@ -875,6 +875,12 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
           
           const uri = marker.resource.toString();
           
+          // Исключаем конкретный файл python_file_1.py из панели проблем
+          if (uri.includes('inmemory://') && uri.includes('python_file_1.py')) {
+            logProblems(`Исключаем файл python_file_1.py из списка проблем: ${uri}`);
+            return;
+          }
+          
           if (!markersByUri.has(uri)) {
             markersByUri.set(uri, []);
           }
@@ -885,6 +891,15 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         // Преобразуем маркеры в формат IssueInfo
         markersByUri.forEach((markers, uri) => {
           const isInmemory = uri.includes('inmemory://');
+          
+          // Пропускаем все inmemory файлы с именем python_file_*.py
+          if (isInmemory) {
+            const fileName = getInmemoryFileName(uri);
+            if (fileName.match(/python_file_\d+\.py/)) {
+              logProblems(`Исключаем вспомогательный Python файл: ${fileName}`);
+              return;
+            }
+          }
           
           // Определяем имя файла
           const fileName = isInmemory ? 
@@ -914,6 +929,15 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         
         Object.entries(window.pythonDiagnosticsStore).forEach(([uri, markers]) => {
           if (!Array.isArray(markers) || markers.length === 0) return;
+          
+          // Исключаем inmemory файлы с определенным шаблоном имени
+          if (uri.includes('inmemory://')) {
+            const fileName = getInmemoryFileName(uri);
+            if (fileName.match(/python_file_\d+\.py/)) {
+              logProblems(`Исключаем вспомогательный Python файл из pythonDiagnosticsStore: ${fileName}`);
+              return;
+            }
+          }
           
           // Проверяем, если файл уже есть в результатах
           const existingIndex = results.findIndex(item => item.filePath === uri);
@@ -980,6 +1004,15 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         
         Object.entries(window.lastKnownMarkers).forEach(([uri, markers]) => {
           if (!Array.isArray(markers) || markers.length === 0) return;
+          
+          // Исключаем inmemory файлы с определенным шаблоном имени
+          if (uri.includes('inmemory://')) {
+            const fileName = getInmemoryFileName(uri);
+            if (fileName.match(/python_file_\d+\.py/)) {
+              logProblems(`Исключаем вспомогательный Python файл из lastKnownMarkers: ${fileName}`);
+              return;
+            }
+          }
           
           // Проверяем, если файл уже есть в результатах
           const existingIndex = results.findIndex(item => item.filePath === uri);
@@ -1080,6 +1113,15 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
           
           const uri = model.uri.toString();
           
+          // Исключаем inmemory файлы с определенным шаблоном имени
+          if (uri.includes('inmemory://')) {
+            const fileName = getInmemoryFileName(uri);
+            if (fileName.match(/python_file_\d+\.py/)) {
+              logProblems(`Исключаем вспомогательный Python файл при проверке декораций: ${fileName}`);
+              return;
+            }
+          }
+          
           // Проверяем, уже есть ли этот файл в результатах
           const existingIndex = results.findIndex(item => item.filePath === uri);
           if (existingIndex !== -1 && results[existingIndex].issues.length > 0) {
@@ -1146,8 +1188,18 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         });
       }
       
-      // Удаляем файлы без проблем
-      results = results.filter(file => file.issues && file.issues.length > 0);
+      // Удаляем файлы без проблем и вспомогательные inmemory файлы
+      results = results.filter(file => {
+        // Исключаем файлы без проблем
+        if (!file.issues || file.issues.length === 0) return false;
+        
+        // Исключаем вспомогательные Python файлы
+        if (file.filePath.includes('inmemory://') && file.fileName.match(/python_file_\d+\.py/)) {
+          return false;
+        }
+        
+        return true;
+      });
       
       // Логируем итоговые результаты
       logProblems(`Итого собрано ${results.length} файлов с проблемами:`);
