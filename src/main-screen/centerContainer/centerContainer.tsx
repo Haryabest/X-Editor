@@ -217,27 +217,67 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
               // First try to load from localStorage cache for modified files
               const cachedContent = localStorage.getItem(`file_cache_${selectedFile}`);
               
-              if (cachedContent) {
+              if (cachedContent && modifiedFiles.has(selectedFile)) {
                 console.log(`Загружен кэшированный контент для модифицированного файла ${selectedFile}`);
                 setFileContent(cachedContent);
                 setCode(cachedContent);
                 setImageSrc(null);
                 setVideoSrc(null);
-                
-                // Ensure this file is marked as modified
-                if (!modifiedFiles.has(selectedFile)) {
-                  setModifiedFiles(prev => {
-                    const newSet = new Set(prev);
-                    newSet.add(selectedFile);
-                    return newSet;
-                  });
-                }
               } else {
-                // Load content from disk since there's no cached version
+                // Load content from disk since there's no cached version or file is not modified locally
                 console.log(`Загрузка файла с диска: ${selectedFile}`);
                 const content = await invoke('read_text_file', { path: selectedFile });
-                setFileContent(content);
-                setCode(content);
+                
+                // Проверяем, отличается ли новое содержимое от оригинального
+                const originalContent = originalFileContents.get(selectedFile);
+                if (originalContent !== undefined && originalContent !== content) {
+                  console.log(`Файл ${selectedFile} был изменен вне редактора. Обновляем содержимое.`);
+                  
+                  // Обновляем оригинальное содержимое
+                  setOriginalFileContents(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(selectedFile, content);
+                    return newMap;
+                  });
+                  
+                  // Если файл не был модифицирован в редакторе, обновляем его содержимое
+                  if (!modifiedFiles.has(selectedFile)) {
+                    setFileContent(content);
+                    setCode(content);
+                  } else {
+                    // Если файл был модифицирован, спрашиваем пользователя, что делать
+                    const userChoice = confirm(
+                      `Файл "${selectedFile}" был изменен вне редактора.\n\n` +
+                      `Хотите загрузить новую версию файла? ` +
+                      `(Ваши несохраненные изменения будут потеряны)`
+                    );
+                    
+                    if (userChoice) {
+                      // Пользователь выбрал загрузить новую версию
+                      setFileContent(content);
+                      setCode(content);
+                      
+                      // Удаляем файл из списка модифицированных
+                      setModifiedFiles(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(selectedFile);
+                        return newSet;
+                      });
+                      
+                      // Удаляем кеш файла
+                      localStorage.removeItem(`file_cache_${selectedFile}`);
+                    } else {
+                      // Пользователь выбрал оставить свои изменения
+                      // Оставляем текущее содержимое редактора
+                      console.log('Пользователь предпочел сохранить свои изменения');
+                    }
+                  }
+                } else {
+                  // Файл не изменился или это первая загрузка
+                  setFileContent(content);
+                  setCode(content);
+                }
+                
                 setImageSrc(null);
                 setVideoSrc(null);
                 
@@ -1684,6 +1724,108 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       document.removeEventListener('editor-action', handleEditorAction as EventListener);
     };
   }, [editorRef]);
+
+  // Добавляем функцию проверки файла на изменения
+  const checkFileForChanges = async (filePath: string) => {
+    try {
+      if (!filePath || filePath.startsWith('untitled-')) {
+        return;
+      }
+
+      // Проверяем, существует ли файл
+      const fileExists = await invoke('file_exists', { path: filePath });
+      if (!fileExists) {
+        console.log(`Файл ${filePath} не существует на диске`);
+        return;
+      }
+
+      // Читаем содержимое файла
+      const diskContent = await invoke('read_text_file', { path: filePath });
+      
+      // Получаем оригинальное содержимое
+      const originalContent = originalFileContents.get(filePath);
+      
+      // Если содержимое на диске отличается от оригинального
+      if (originalContent !== undefined && originalContent !== diskContent) {
+        console.log(`Файл ${filePath} был изменен вне редактора. Обновляем информацию.`);
+        
+        // Если файл не открыт сейчас, просто обновляем оригинальное содержимое
+        if (filePath !== selectedFile) {
+          setOriginalFileContents(prev => {
+            const newMap = new Map(prev);
+            newMap.set(filePath, diskContent);
+            return newMap;
+          });
+          return;
+        }
+        
+        // Если файл не был изменен в редакторе, обновляем его содержимое
+        if (!modifiedFiles.has(filePath)) {
+          console.log(`Обновление содержимого для неизмененного файла ${filePath}`);
+          setFileContent(diskContent);
+          setCode(diskContent);
+          
+          // Обновляем оригинальное содержимое
+          setOriginalFileContents(prev => {
+            const newMap = new Map(prev);
+            newMap.set(filePath, diskContent);
+            return newMap;
+          });
+        } else {
+          // Если файл был изменен в редакторе, спрашиваем пользователя
+          const userChoice = confirm(
+            `Файл "${filePath}" был изменен вне редактора.\n\n` +
+            `Хотите загрузить новую версию файла? ` +
+            `(Ваши несохраненные изменения будут потеряны)`
+          );
+          
+          if (userChoice) {
+            // Пользователь выбрал загрузить новую версию
+            setFileContent(diskContent);
+            setCode(diskContent);
+            
+            // Удаляем файл из списка модифицированных
+            setModifiedFiles(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(filePath);
+              return newSet;
+            });
+            
+            // Удаляем кеш файла
+            localStorage.removeItem(`file_cache_${filePath}`);
+            
+            // Обновляем оригинальное содержимое
+            setOriginalFileContents(prev => {
+              const newMap = new Map(prev);
+              newMap.set(filePath, diskContent);
+              return newMap;
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Ошибка при проверке изменений файла ${filePath}:`, error);
+    }
+  };
+
+  // Периодически проверяем файлы на наличие изменений
+  useEffect(() => {
+    // Создаем и сохраняем идентификатор таймера
+    const checkInterval = 5000; // 5 секунд
+    const fileCheckTimer = setInterval(() => {
+      // Проверяем только открытые файлы
+      openedFiles.forEach(file => {
+        if (!file.isFolder && !file.path.startsWith('untitled-')) {
+          checkFileForChanges(file.path);
+        }
+      });
+    }, checkInterval);
+    
+    // Очищаем таймер при размонтировании компонента
+    return () => {
+      clearInterval(fileCheckTimer);
+    };
+  }, [openedFiles, originalFileContents, modifiedFiles, selectedFile]);
 
   return (
     <div className="center-container" style={style}>

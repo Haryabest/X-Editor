@@ -469,7 +469,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
                   if (window.lastActiveFilePath === filePath) {
                     logProblems(`Используем активный Python файл: ${fileNameMatch[1]}`);
                     return fileNameMatch[1];
-                  } else {
+            } else {
                     // Проверяем совпадение содержимого
                     try {
                       const fileModel = models.find((m: any) => m.uri.toString().includes(filePath));
@@ -528,8 +528,8 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               return `html_file_${modelId}.html`;
             } else if (content.includes('function') || content.includes('const ') || content.includes('let ')) {
               return `js_file_${modelId}.js`;
-            }
-          } catch (e) {
+        }
+      } catch (e) {
             console.error('Ошибка при чтении содержимого модели:', e);
           }
         }
@@ -682,7 +682,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     // Обработчик события смены активного файла
     const handleActiveFileChange = (event: Event) => {
       try {
-        const customEvent = event as CustomEvent<{filePath: string}>;
+      const customEvent = event as CustomEvent<{filePath: string}>;
         const filePath = customEvent.detail.filePath;
         logProblems(`Файл активирован: ${filePath}`);
         
@@ -844,7 +844,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       document.removeEventListener('active-file-changed', handleActiveFileChange);
     };
   }, []);
-  
+
   // Функция для принудительного обновления отображения проблем с полной изоляцией по моделям
   const forceUpdateProblemsDisplay = () => {
     try {
@@ -1397,14 +1397,6 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             )}
           </div>
         ))}
-        
-        {/* Информация об общем количестве проблем */}
-        <div className="issues-summary">
-          Всего: {totalErrors > 0 ? `${totalErrors} ошибок` : ''} 
-          {totalErrors > 0 && totalWarnings > 0 ? ', ' : ''} 
-          {totalWarnings > 0 ? `${totalWarnings} предупреждений` : ''}
-          {totalErrors === 0 && totalWarnings === 0 ? 'Нет проблем' : ''}
-        </div>
       </div>
     );
   };
@@ -1857,25 +1849,81 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       if (customEvent.detail && customEvent.detail.filePath) {
         const filePath = customEvent.detail.filePath;
         
+        logProblems(`Закрыт файл: ${filePath}`);
+        
         // Удаляем файл из списка открытых файлов
         if (window.openedFiles) {
           window.openedFiles.delete(filePath);
           logProblems(`Удален файл из списка открытых: ${filePath}`);
         }
         
+        // Удаляем файл из кэша ошибок
+        if (window.errorsCache && window.errorsCache[filePath]) {
+          delete window.errorsCache[filePath];
+          logProblems(`Удален файл из кэша ошибок: ${filePath}`);
+        }
+        
+        // Проверяем и удаляем все связанные с файлом ошибки
+        // Это важно для inmemory-файлов, которые могут иметь разные URI
+        if (window.errorsCache) {
+          Object.keys(window.errorsCache).forEach(key => {
+            const issueInfo = window.errorsCache[key];
+            // Проверяем совпадение имени файла (без пути)
+            const closedFileName = filePath.split(/[\/\\]/).pop();
+            const cachedFileName = issueInfo.fileName;
+            
+            if (closedFileName === cachedFileName) {
+              delete window.errorsCache[key];
+              logProblems(`Удален связанный файл из кэша ошибок: ${key}`);
+            }
+          });
+        }
+        
+        // Очищаем любые Python-диагностики для этого файла
+        if (window.pythonDiagnosticsStore) {
+          Object.keys(window.pythonDiagnosticsStore).forEach(uri => {
+            if (uri !== '_fileMapping' && (uri.includes(filePath) || window.pythonDiagnosticsStore._fileMapping?.[uri] === filePath)) {
+              delete window.pythonDiagnosticsStore[uri];
+              logProblems(`Удалены Python-диагностики для файла: ${uri}`);
+              
+              // Также удаляем запись из маппинга, если есть
+              if (window.pythonDiagnosticsStore._fileMapping) {
+                Object.keys(window.pythonDiagnosticsStore._fileMapping).forEach(inmemoryUri => {
+                  if (window.pythonDiagnosticsStore._fileMapping[inmemoryUri] === filePath) {
+                    delete window.pythonDiagnosticsStore._fileMapping[inmemoryUri];
+                    logProblems(`Удален маппинг для файла: ${inmemoryUri} -> ${filePath}`);
+                  }
+                });
+              }
+            }
+          });
+        }
+        
+        // Если файл был последним активным, очищаем это состояние
+        if (window.lastActiveFilePath === filePath) {
+          window.lastActiveFilePath = undefined;
+        }
+        
         // Обновляем отображение проблем
         setIssuesUpdated(prev => prev + 1);
+        
+        // Обновляем счетчики ошибок для нижнего тулбара
+        updateErrorCountersForStatusBar();
       }
     });
     
     // При монтировании компонента проверяем все открытые редакторы на наличие ошибок
     setTimeout(() => {
       checkAllEditorsForErrors();
+      // Обновляем счетчики ошибок для нижнего тулбара
+      updateErrorCountersForStatusBar();
     }, 1000);
     
     // Устанавливаем интервал для периодической проверки всех редакторов
     const intervalId = setInterval(() => {
       checkAllEditorsForErrors();
+      // Обновляем счетчики ошибок для нижнего тулбара
+      updateErrorCountersForStatusBar();
     }, 10000); // Проверяем каждые 10 секунд
     
     return () => {
@@ -1883,7 +1931,44 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       clearInterval(intervalId);
     };
   }, []);
-  
+
+  // Функция для отправки обновленных счетчиков ошибок в нижний тулбар
+  const updateErrorCountersForStatusBar = () => {
+    try {
+      // Подсчитываем общее количество ошибок и предупреждений
+      let totalErrors = 0;
+      let totalWarnings = 0;
+      
+      // Подсчитываем ошибки из кэша
+      if (window.errorsCache) {
+        Object.values(window.errorsCache).forEach((issueInfo) => {
+          if (issueInfo && issueInfo.issues) {
+            totalErrors += issueInfo.issues.filter(issue => issue.severity === 'error').length;
+            totalWarnings += issueInfo.issues.filter(issue => issue.severity === 'warning').length;
+          }
+        });
+      }
+      
+      // Создаем и отправляем событие markers-updated для нижнего тулбара
+      const event = new CustomEvent('markers-updated', {
+        detail: {
+          errorCount: totalErrors,
+          warningCount: totalWarnings
+        }
+      });
+      
+      document.dispatchEvent(event);
+      
+      // Также сохраняем данные в глобальные переменные для доступа из других компонентов
+      window._latestErrorCount = totalErrors;
+      window._latestWarningCount = totalWarnings;
+      
+      logProblems(`Отправка счетчиков ошибок в тулбар: ${totalErrors} ошибок, ${totalWarnings} предупреждений`);
+    } catch (error) {
+      console.error('Ошибка при обновлении счетчиков ошибок для нижнего тулбара:', error);
+    }
+  };
+
   // Модифицируем функцию handleActiveFileChange для правильной обработки смены активного файла
   const handleActiveFileChange = (event: Event) => {
     const customEvent = event as CustomEvent;

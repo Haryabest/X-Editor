@@ -136,6 +136,47 @@ function createDecorations(markers: monaco.editor.IMarkerData[], model: monaco.e
 }
 
 /**
+ * Удаляет дубликаты ошибок, оставляя только уникальные сообщения для каждой строки
+ */
+function removeDuplicateErrors(errors: ScriptError[]): ScriptError[] {
+  // Если ошибок нет или всего одна, нет смысла обрабатывать
+  if (!errors || errors.length <= 1) return errors;
+  
+  // Используем Map для хранения уникальных ошибок по строкам
+  const uniqueErrors = new Map<number, Map<string, ScriptError>>();
+  
+  // Проходим по всем ошибкам
+  for (const error of errors) {
+    const lineNumber = error.lineNumber;
+    const message = error.message;
+    
+    // Если для этой строки еще нет Map, создаем его
+    if (!uniqueErrors.has(lineNumber)) {
+      uniqueErrors.set(lineNumber, new Map<string, ScriptError>());
+    }
+    
+    // Берем Map для текущей строки
+    const lineErrors = uniqueErrors.get(lineNumber)!;
+    
+    // Если такого сообщения еще нет, добавляем его
+    if (!lineErrors.has(message)) {
+      lineErrors.set(message, error);
+    }
+  }
+  
+  // Преобразуем Map обратно в массив
+  const result: ScriptError[] = [];
+  uniqueErrors.forEach(lineErrors => {
+    lineErrors.forEach(error => {
+      result.push(error);
+    });
+  });
+  
+  console.log(`[Python] Дедупликация: было ${errors.length} ошибок, стало ${result.length}`);
+  return result;
+}
+
+/**
  * Находит простые синтаксические ошибки в Python коде
  * Используется как резервный вариант, если проверка через backend не работает
  */
@@ -216,9 +257,34 @@ function findBasicPythonErrors(code: string): ScriptError[] {
 
   // Проверка противоречивых операций сравнения
   const contradictoryComparison = /\w+\s*[<>=]+\s*\w+\s+and\s+\w+\s*[<>=]+\s*\w+/;
-
-  // Регулярное выражение для обнаружения непарных кавычек
-  const unparedQuotes = /(['"])(?:(?!\1).)*$/;
+  
+  // Регулярное выражение для обнаружения непарных кавычек - удалена по требованию пользователя
+  
+  // Дополнительные проверки для распространенных ошибок Python
+  
+  // Неправильное использование присваивания в условных выражениях
+  const assignmentInCondition = /if\s*\(\s*\w+\s*=\s*[^=]/;
+  
+  // Проверка на попытку изменить кортеж
+  const tupleModificationRegex = /\(\s*[\w\d,\s'"]*\)\s*\[\s*\d+\s*\]\s*=/;
+  
+  // Проверка использования зарезервированных слов как переменных
+  const reservedWordsAsVars = /^\s*(class|def|if|else|elif|for|while|import|from|as|try|except|finally|with|return|yield|raise|assert|break|continue|pass|global|nonlocal|lambda|del)\s*=/;
+  
+  // Проверка неправильного использования lambda
+  const invalidLambdaRegex = /lambda\s+\w+\s+[^:]/;
+  
+  // Проверка неправильного вызова методов объектов None
+  const noneMethodCall = /None\.(append|extend|pop|remove|clear|update|keys|values|items|read|write|close)/;
+  
+  // Проверка обращения к элементам None
+  const noneIndexAccess = /None\s*\[\s*\d+\s*\]/;
+  
+  // Проверка неправильных декораторов
+  const invalidDecoratorRegex = /^\s*@[\w\.]+$/;
+  
+  // Проверка несоответствия аргументов функции
+  const tooManyArgsRegex = /\b(len|print|sorted|int|float|str)\s*\([^()]*,[^()]*\)/;
   
   lines.forEach((line, idx) => {
     const lineNumber = idx + 1;
@@ -244,11 +310,12 @@ function findBasicPythonErrors(code: string): ScriptError[] {
     // Проверка двоеточия в конце строк с def, class, if, else и т.д.
     if (/^\s*(def|class|if|elif|else|for|while|try|except|finally|with)\b/.test(trimmedLine) && 
         !trimmedLine.includes(':')) {
-      errors.push({
-        lineNumber,
-        message: 'Отсутствует двоеточие в конце строки',
-        severity: 'error'
-      });
+      // Пропускаем эту проверку, так как она выдает "Отсутствует двоеточие в конце строки"
+      // errors.push({
+      //   lineNumber,
+      //   message: 'Отсутствует двоеточие в конце строки',
+      //   severity: 'error'
+      // });
     }
     
     // Проверка синтаксиса с двоеточием
@@ -397,6 +464,23 @@ function findBasicPythonErrors(code: string): ScriptError[] {
       }
     }
     
+    // Проверка функциональных вызовов для определения правильности аргументов
+    const funcCallMatch = trimmedLine.match(/(\w+)\s*\((.*)\)/);
+    if (funcCallMatch && funcCallMatch[1]) {
+      const funcName = funcCallMatch[1];
+      const args = funcCallMatch[2].trim();
+      const argsCount = args.length === 0 ? 0 : args.split(',').filter(arg => arg.trim().length > 0).length;
+      
+      // Проверка для встроенных функций с известным количеством аргументов
+      if (funcName === 'len' && argsCount !== 1) {
+        errors.push({
+          lineNumber,
+          message: `Функция len() принимает ровно 1 аргумент, указано ${argsCount}`,
+          severity: 'error'
+        });
+      }
+    }
+    
     // Проверка деления на ноль
     if (divisionByZeroRegex.test(trimmedLine)) {
       errors.push({
@@ -493,17 +577,83 @@ function findBasicPythonErrors(code: string): ScriptError[] {
         severity: 'warning'
       });
     }
-
-    // Проверка непарных кавычек (если не комментарий)
-    if (!trimmedLine.startsWith('#') && unparedQuotes.test(trimmedLine) && 
-        !trimmedLine.includes('"""') && !trimmedLine.includes("'''")) {
+    
+    // Проверка присваивания в условных выражениях
+    if (assignmentInCondition.test(trimmedLine)) {
       errors.push({
         lineNumber,
-        message: 'Непарные кавычки в строке',
+        message: 'Вероятное использование присваивания вместо сравнения в условии',
         severity: 'error'
       });
     }
-
+    
+    // Проверка на попытку изменить кортеж
+    if (tupleModificationRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Попытка изменения элемента кортежа. Кортежи в Python неизменяемы',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка использования зарезервированных слов как переменных
+    if (reservedWordsAsVars.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Использование зарезервированного слова в качестве переменной',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка неправильного использования lambda
+    if (invalidLambdaRegex.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Неправильный синтаксис lambda-выражения',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка неправильного вызова методов объектов None
+    if (noneMethodCall.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Попытка вызова метода у объекта None',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка обращения к элементам None
+    if (noneIndexAccess.test(trimmedLine)) {
+      errors.push({
+        lineNumber,
+        message: 'Попытка индексации объекта None',
+        severity: 'error'
+      });
+    }
+    
+    // Проверка неправильных декораторов
+    if (invalidDecoratorRegex.test(trimmedLine) && idx + 1 < lines.length) {
+      const nextLine = lines[idx + 1].trim();
+      if (!nextLine.startsWith('def') && !nextLine.startsWith('class')) {
+        errors.push({
+          lineNumber,
+          message: 'Декоратор должен быть применен к функции или классу',
+          severity: 'error'
+        });
+      }
+    }
+    
+    // Проверка слишком большого количества аргументов для встроенных функций
+    if (tooManyArgsRegex.test(trimmedLine)) {
+      const functionName = trimmedLine.match(/\b(len|print|sorted|int|float|str)\b/)?.[1];
+      errors.push({
+        lineNumber,
+        message: `Функция '${functionName}' вызвана с неправильным количеством аргументов`,
+        severity: 'error'
+      });
+    }
+    
     // Если строка кончается на двоеточие, запускаем дополнительную проверку
     if (trimmedLine.endsWith(':')) {
       if (idx === lines.length - 1) {
@@ -531,7 +681,7 @@ function findBasicPythonErrors(code: string): ScriptError[] {
         severity: 'error'
       });
     }
-
+    
     // Добавляем отслеживание контекста для циклов
     if (/^\s*(for|while)\b.*:/.test(trimmedLine)) {
       inLoop = true;
@@ -670,13 +820,6 @@ async function checkPythonErrors(code: string, model?: monaco.editor.ITextModel)
       console.warn('Не удалось вызвать backend для проверки Python:', backendError);
       // Если backend недоступен, используем базовую проверку
       errors = findBasicPythonErrors(code);
-      
-      // Добавляем предупреждение о том, что используется упрощенный анализатор
-      errors.push({
-        lineNumber: 1,
-        message: 'Внимание: работает упрощенный анализатор ошибок Python. Некоторые ошибки могут быть не обнаружены.',
-        severity: 'info'
-      });
     }
     
     // Добавляем контекст к сообщениям об ошибках для лучшего понимания пользователем
@@ -689,7 +832,7 @@ async function checkPythonErrors(code: string, model?: monaco.editor.ITextModel)
       } 
       // Улучшаем сообщения для ошибок импорта
       else if (error.message.includes('модуль') || error.message.includes('import')) {
-        enhancedMessage = `📦 ${error.message}`;
+        enhancedMessage = `�� ${error.message}`;
       }
       // Улучшаем сообщения для типовых предупреждений
       else if (error.message.includes('деление на ноль')) {
@@ -845,7 +988,7 @@ async function updateAllPythonDiagnostics(): Promise<IssueInfo[]> {
       console.log(`[Python] Проверка модели ${filePath}`);
       
       await checkPythonErrors(code, model);
-        } catch (error) {
+    } catch (error) {
       console.error(`[Python] Ошибка при проверке модели: ${error}`);
     }
   }
@@ -868,8 +1011,11 @@ function setErrorMarkers(model: monaco.editor.ITextModel, errors: ScriptError[])
   // Сначала очищаем существующие маркеры
   monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, []);
   
+  // Удаляем дубликаты ошибок перед преобразованием
+  const uniqueErrors = removeDuplicateErrors(errors);
+  
   // Преобразуем ScriptError в Monaco маркеры
-  const markers: monaco.editor.IMarkerData[] = errors.map(error => ({
+  const markers: monaco.editor.IMarkerData[] = uniqueErrors.map(error => ({
     severity: mapSeverityToMonaco(error.severity),
     message: error.message,
     startLineNumber: error.lineNumber,
@@ -882,12 +1028,12 @@ function setErrorMarkers(model: monaco.editor.ITextModel, errors: ScriptError[])
   if (markers.length > 0) {
     monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, markers);
     
-    // Сохраняем диагностику в хранилище сразу после установки маркеров
+    // Сохраняем диагностику в хранилище
     const filePath = model.uri.toString();
     const fileName = filePath.split('/').pop() || 'unknown.py';
     
     // Преобразуем ошибки в формат Issue для терминала
-    const issues: Issue[] = errors.map(convertToIssue);
+    const issues: Issue[] = uniqueErrors.map(convertToIssue);
     
     // Добавляем в хранилище диагностики
     pythonDiagnostics.set(filePath, {
@@ -963,14 +1109,59 @@ function showProblemsInEditor(editor: MonacoEditor, errors: ScriptError[]): void
   const model = editor.getModel();
   if (!model) return;
   
-  // Очищаем существующие декорации
+  // Очищаем существующие декорации и маркеры
   editor.deltaDecorations([], []);
+  monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, []);
   
-  // Устанавливаем маркеры ошибок в модель
-  setErrorMarkers(model, errors);
+  // Если ошибок нет, просто выходим
+  if (!errors || errors.length === 0) return;
   
-  // Добавляем стандартные декорации Monaco для линий с ошибками
-  const decorations: monaco.editor.IModelDeltaDecoration[] = errors.map(error => {
+  // Удаляем дубликаты ошибок перед отображением
+  const uniqueErrors = removeDuplicateErrors(errors);
+  
+  // Преобразуем ScriptError в Monaco маркеры (без сообщений при наведении - они будут добавлены как декорации)
+  const markers: monaco.editor.IMarkerData[] = uniqueErrors.map(error => ({
+    severity: mapSeverityToMonaco(error.severity),
+    message: error.message,
+    startLineNumber: error.lineNumber,
+    startColumn: 1,
+    endLineNumber: error.lineNumber,
+    endColumn: model.getLineMaxColumn(error.lineNumber) || 1
+  }));
+  
+  // Устанавливаем маркеры для модели
+  if (markers.length > 0) {
+    monaco.editor.setModelMarkers(model, PYTHON_MARKER_OWNER, markers);
+    
+    // Сохраняем диагностику в хранилище
+    const filePath = model.uri.toString();
+    const fileName = filePath.split('/').pop() || 'unknown.py';
+    
+    // Преобразуем ошибки в формат Issue для терминала
+    const issues: Issue[] = uniqueErrors.map(convertToIssue);
+    
+    // Добавляем в хранилище диагностики
+    pythonDiagnostics.set(filePath, {
+      filePath,
+      fileName,
+      issues
+    });
+    
+    // Обновляем другие глобальные хранилища
+    if (!window.lastKnownMarkers) window.lastKnownMarkers = {};
+    window.lastKnownMarkers[filePath] = markers;
+    
+    if (!window.pythonDiagnosticsStore) window.pythonDiagnosticsStore = {};
+    window.pythonDiagnosticsStore[filePath] = markers;
+    
+    // Отправляем события для обновления интерфейса
+    document.dispatchEvent(new CustomEvent('markers-updated'));
+    document.dispatchEvent(new CustomEvent('force-update-problems'));
+    document.dispatchEvent(new CustomEvent('refresh-problems-panel'));
+  }
+  
+  // Добавляем декорации для выделения ошибок в редакторе
+  const decorations: monaco.editor.IModelDeltaDecoration[] = uniqueErrors.map(error => {
     const isError = error.severity === 'error';
     const lineNumber = error.lineNumber;
     
@@ -980,7 +1171,8 @@ function showProblemsInEditor(editor: MonacoEditor, errors: ScriptError[]): void
         isWholeLine: true,
         className: isError ? 'line-with-error' : 'line-with-warning',
         glyphMarginClassName: isError ? 'glyph-margin-error' : 'glyph-margin-warning',
-        hoverMessage: { value: error.message },
+        // Используем "неразделяемый" хеш для уникальности сообщения с префиксом, который не будет дублироваться
+        hoverMessage: { value: `[VP-EDITOR-${isError ? 'ERROR' : 'WARNING'}-${Date.now() % 1000}] ${error.message}` },
         overviewRuler: {
           color: isError ? '#FF4C4C' : '#FFCC00',
           position: monaco.editor.OverviewRulerLane.Right
@@ -996,6 +1188,184 @@ function showProblemsInEditor(editor: MonacoEditor, errors: ScriptError[]): void
   // Применяем декорации к редактору
   if (decorations.length > 0) {
     editor.deltaDecorations([], decorations);
+  }
+}
+
+/**
+ * Применяет стили для корректного отображения Python кода и ошибок
+ */
+function applyPythonEditorFixes(): void {
+  const style = document.createElement('style');
+  style.id = 'monaco-python-fixes';
+  style.textContent = `
+    /* Скрываем стандартные стили ошибок */
+    .monaco-editor .squiggly-error,
+    .monaco-editor .squiggly-warning,
+    .monaco-editor .squiggly-info,
+    .monaco-editor .squiggly-hint {
+      background: transparent !important;
+      border: none !important;
+    }
+    
+    /* Убираем красные линии - оставляем только подчеркивания */
+    .monaco-editor .view-overlays > div,
+    .monaco-editor .view-overlays .view-line {
+      background: transparent !important;
+      background-color: transparent !important;
+      background-image: none !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    
+    /* Отмена лигатур и прочих украшений, которые могут смещать текст */
+    .monaco-editor .monaco-editor-background,
+    .monaco-editor .margin-view-overlays,
+    .monaco-editor .view-line,
+    .monaco-editor .view-lines {
+      font-variant-ligatures: none !important;
+      font-feature-settings: normal !important;
+      transform: none !important;
+      will-change: auto !important;
+      letter-spacing: normal !important;
+      word-spacing: normal !important;
+    }
+    
+    /* Фиксированный размер строк */
+    .monaco-editor .view-line {
+      white-space: pre !important;
+      overflow: visible !important;
+    }
+    
+    /* Стилизуем подсказки при наведении */
+    .monaco-editor .monaco-hover-content {
+      max-width: 500px !important;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    }
+    
+    /* Скрываем префикс в подсказках */
+    .monaco-editor .monaco-hover-content span[title^="[VP-EDITOR-"] {
+      display: none !important;
+    }
+    
+    /* Удаляем дубликаты сообщений */
+    .monaco-editor .monaco-hover-content > div:not(:first-child) {
+      display: none !important;
+    }
+    
+    /* Наши стили подчеркивания - делаем их очень видимыми */
+    .monaco-editor .thin-error-underline {
+      border-bottom: 2px wavy #FF4C4C !important;
+      padding-bottom: 1px !important;
+      background-color: rgba(255, 76, 76, 0.1) !important;
+      z-index: 100 !important;
+      position: relative !important;
+      pointer-events: auto !important;
+    }
+    
+    .monaco-editor .thin-warning-underline {
+      border-bottom: 2px wavy #FFCC00 !important;
+      padding-bottom: 1px !important;
+      background-color: rgba(255, 204, 0, 0.1) !important;
+      z-index: 100 !important;
+      position: relative !important;
+      pointer-events: auto !important;
+    }
+    
+    /* Стили для подсветки строк с ошибками */
+    .monaco-editor .line-with-error {
+      border-left: 3px solid #FF4C4C !important;
+      padding-left: 3px !important;
+      background-color: rgba(255, 76, 76, 0.05) !important;
+    }
+    
+    .monaco-editor .line-with-warning {
+      border-left: 3px solid #FFCC00 !important;
+      padding-left: 3px !important;
+      background-color: rgba(255, 204, 0, 0.05) !important;
+    }
+    
+    /* Стили для глифов на полях */
+    .monaco-editor .glyph-margin-error {
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="%23FF4C4C"/><path d="M8 4v5" stroke="white" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12" r="1" fill="white"/></svg>') center center no-repeat;
+      background-size: 70%;
+      margin-left: 3px;
+    }
+    
+    .monaco-editor .glyph-margin-warning {
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1L16 15H0L8 1z" fill="%23FFCC00"/><path d="M8 5v5" stroke="black" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="12.5" r="1" fill="black"/></svg>') center center no-repeat;
+      background-size: 70%;
+      margin-left: 3px;
+    }
+    
+    /* Ограничиваем количество сообщений в подсказке */
+    .monaco-editor .hover-row {
+      max-height: 500px !important;
+      overflow-y: auto !important;
+    }
+    
+    /* Монако по умолчанию показывает все подсказки, скрываем дубликаты */
+    .monaco-editor .hover-row > div > div > div:not(:first-child) {
+      display: none !important;
+    }
+  `;
+  
+  // Если стиль уже есть, удаляем его и добавляем новый
+  const existingStyle = document.getElementById('monaco-python-fixes');
+  if (existingStyle) {
+    existingStyle.remove();
+  }
+  
+  // Добавляем стиль с высоким приоритетом
+  document.head.insertBefore(style, document.head.firstChild);
+  
+  // Применяем перехватчик для всех подсказок, чтобы очищать дубликаты
+  window.setTimeout(() => {
+    // Добавляем обработчик для подсказок Monaco
+    document.addEventListener('DOMNodeInserted', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.classList && target.classList.contains('monaco-hover')) {
+        // Найден элемент подсказки
+        cleanupDuplicateMessages(target);
+      }
+    }, false);
+  }, 500);
+}
+
+/**
+ * Очищает дублирующиеся сообщения в подсказке Monaco
+ */
+function cleanupDuplicateMessages(hoverElement: HTMLElement): void {
+  try {
+    // Получаем все сообщения в подсказке
+    const messages = hoverElement.querySelectorAll('.hover-contents .hover-row .codicon-info ~ span');
+    if (!messages || messages.length <= 1) return;
+    
+    // Набор для хранения уникальных сообщений
+    const uniqueMessages = new Set<string>();
+    
+    // Проходим по всем сообщениям и скрываем дубликаты
+    messages.forEach((message) => {
+      const text = message.textContent || '';
+      
+      // Очищаем от возможного префикса идентификатора
+      const cleanText = text.replace(/^\[VP-EDITOR-(ERROR|WARNING)-\d+\]\s*/, '');
+      
+      if (uniqueMessages.has(cleanText)) {
+        // Это дубликат, скрываем элемент
+        const parent = message.closest('.hover-row');
+        if (parent && parent instanceof HTMLElement) {
+          // Теперь TypeScript точно знает, что это HTMLElement
+          parent.style.display = 'none';
+        }
+      } else {
+        // Это новое сообщение, добавляем в набор
+        uniqueMessages.add(cleanText);
+      }
+    });
+    
+    console.log(`[Python] Очищены дублирующиеся сообщения: найдено ${messages.length}, уникальных ${uniqueMessages.size}`);
+  } catch (e) {
+    console.error('[Python] Ошибка при очистке дубликатов:', e);
   }
 }
 
@@ -1036,8 +1406,8 @@ function clearFileDiagnostics(filePath: string): void {
         console.log(`[Python] Маркеры для модели ${modelUri} очищены`);
         break;
       }
-        }
-      } catch (error) {
+    }
+  } catch (error) {
     console.error(`[Python] Ошибка при очистке маркеров: ${error}`);
   }
   
@@ -1176,40 +1546,6 @@ export function registerPython(): boolean {
     window.pythonDiagnostics = pythonDiagnostics;
     
     /**
-     * Функция для применения тонких подчеркиваний вместо красных линий
-     */
-    function applyThinUnderlineDecorations(editor: MonacoEditor): void {
-      if (!editor || !editor.getModel) return;
-      
-      const model = editor.getModel();
-      if (!model) return;
-      
-      // Получаем маркеры для данной модели
-      const markers = monaco.editor.getModelMarkers({ resource: model.uri });
-      
-      // Создаем новые декорации только с подчеркиванием
-      const decorations = markers.map(marker => ({
-        range: new monaco.Range(
-          marker.startLineNumber,
-          marker.startColumn,
-          marker.endLineNumber,
-          marker.endColumn
-        ),
-        options: {
-          inlineClassName: marker.severity === monaco.MarkerSeverity.Error ? 'thin-error-underline' : 'thin-warning-underline',
-          hoverMessage: { value: marker.message },
-          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-          zIndex: 20
-        }
-      }));
-      
-      // Обновляем декорации в редакторе
-      if (decorations.length > 0) {
-        editor.deltaDecorations([], decorations);
-      }
-    }
-
-    /**
      * Применяет стили для корректного отображения Python кода и ошибок
      */
     function applyPythonEditorFixes(): void {
@@ -1254,11 +1590,27 @@ export function registerPython(): boolean {
           overflow: visible !important;
         }
         
+        /* Стилизуем подсказки при наведении */
+        .monaco-editor .monaco-hover-content {
+          max-width: 500px !important;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+        }
+        
+        /* Скрываем префикс в подсказках */
+        .monaco-editor .monaco-hover-content span[title^="[VP-EDITOR-"] {
+          display: none !important;
+        }
+        
+        /* Удаляем дубликаты сообщений */
+        .monaco-editor .monaco-hover-content > div:not(:first-child) {
+          display: none !important;
+        }
+        
         /* Наши стили подчеркивания - делаем их очень видимыми */
         .monaco-editor .thin-error-underline {
           border-bottom: 2px wavy #FF4C4C !important;
           padding-bottom: 1px !important;
-          background: transparent !important;
+          background-color: rgba(255, 76, 76, 0.1) !important;
           z-index: 100 !important;
           position: relative !important;
           pointer-events: auto !important;
@@ -1267,7 +1619,7 @@ export function registerPython(): boolean {
         .monaco-editor .thin-warning-underline {
           border-bottom: 2px wavy #FFCC00 !important;
           padding-bottom: 1px !important;
-          background: transparent !important;
+          background-color: rgba(255, 204, 0, 0.1) !important;
           z-index: 100 !important;
           position: relative !important;
           pointer-events: auto !important;
@@ -1507,5 +1859,58 @@ export function registerPython(): boolean {
   } catch (error) {
     console.error(`[Python] Ошибка инициализации Python: ${error}`);
     return false;
+  }
+}
+
+/**
+ * Применяет тонкие подчеркивания вместо красных линий
+ */
+function applyThinUnderlineDecorations(editor: MonacoEditor): void {
+  if (!editor || !editor.getModel) return;
+  
+  const model = editor.getModel();
+  if (!model) return;
+  
+  // Получаем маркеры для данной модели
+  const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+  
+  // Удаляем дубликаты маркеров перед созданием декораций, используя похожий подход
+  const uniqueMarkers: monaco.editor.IMarkerData[] = [];
+  const seenMessages = new Map<number, Set<string>>();
+  
+  for (const marker of markers) {
+    const lineNumber = marker.startLineNumber;
+    const message = marker.message;
+    
+    if (!seenMessages.has(lineNumber)) {
+      seenMessages.set(lineNumber, new Set<string>());
+    }
+    
+    const lineMessages = seenMessages.get(lineNumber)!;
+    if (!lineMessages.has(message)) {
+      lineMessages.add(message);
+      uniqueMarkers.push(marker);
+    }
+  }
+  
+  // Создаем новые декорации только с подчеркиванием
+  const decorations = uniqueMarkers.map(marker => ({
+    range: new monaco.Range(
+      marker.startLineNumber,
+      marker.startColumn,
+      marker.endLineNumber,
+      marker.endColumn
+    ),
+    options: {
+      inlineClassName: marker.severity === monaco.MarkerSeverity.Error ? 'thin-error-underline' : 'thin-warning-underline',
+      hoverMessage: { value: marker.message },
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+      zIndex: 20
+    }
+  }));
+  
+  // Обновляем декорации в редакторе
+  if (decorations.length > 0) {
+    editor.deltaDecorations([], decorations);
   }
 }

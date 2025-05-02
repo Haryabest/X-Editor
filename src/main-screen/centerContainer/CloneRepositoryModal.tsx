@@ -16,7 +16,13 @@ import {
   FileCode,
   Clock,
   Github,
-  GitCommit
+  GitCommit,
+  Info,
+  Link,
+  Check,
+  Loader2,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 
 interface CloneResponse {
@@ -55,7 +61,27 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
   const [logs, setLogs] = useState<string[]>([]);
   const [cloneStarted, setCloneStarted] = useState<boolean>(false);
   const [useSimulation, setUseSimulation] = useState<boolean>(true);
+  const [isUrlValid, setIsUrlValid] = useState<boolean | null>(null);
+  const [showUrlExamples, setShowUrlExamples] = useState<boolean>(false);
+  const [isUrlChecking, setIsUrlChecking] = useState<boolean>(false);
   const logContentRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  // Примеры репозиториев для подсказки
+  const repoExamples = [
+    { name: 'React', url: 'https://github.com/facebook/react.git', provider: 'github' },
+    { name: 'VS Code', url: 'https://github.com/microsoft/vscode.git', provider: 'github' },
+    { name: 'TensorFlow', url: 'https://github.com/tensorflow/tensorflow.git', provider: 'github' },
+    { name: 'Rust', url: 'https://github.com/rust-lang/rust.git', provider: 'github' },
+    { name: 'GitLab CE', url: 'https://gitlab.com/gitlab-org/gitlab-ce.git', provider: 'gitlab' }
+  ];
+
+  // Фокус на ввод URL при открытии модального окна
+  useEffect(() => {
+    if (urlInputRef.current) {
+      urlInputRef.current.focus();
+    }
+  }, []);
 
   // Эффект для автоскролла логов
   useEffect(() => {
@@ -174,7 +200,7 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
     }
   }, [cloneStarted, isLoading, useSimulation]);
 
-  // Function to browse for the target directory
+  // Функция для выбора директории клонирования
   const handleBrowseDirectory = async () => {
     try {
       const selected = await open({
@@ -225,62 +251,187 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
     return `${targetDir}/${repoName}`;
   };
 
-  // Function to handle form submission
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setLogs([]);
-    setProgress(null);
+  // Функция валидации URL репозитория
+  const validateRepoUrl = (url: string): boolean => {
+    // Проверка на пустой URL
+    if (!url.trim()) return false;
     
-    // Validate inputs
-    if (!repoUrl.trim()) {
-      setError('Пожалуйста, укажите URL репозитория');
+    // Проверяем, соответствует ли URL формату Git-репозитория
+    const gitRepoPatterns = [
+      // GitHub
+      /^(https?:\/\/)(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?$/,
+      // GitLab
+      /^(https?:\/\/)(www\.)?gitlab\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?$/,
+      // Bitbucket
+      /^(https?:\/\/)(www\.)?bitbucket\.org\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?$/,
+      // SSH формат для GitHub, GitLab, и др.
+      /^git@([A-Za-z0-9_.-]+):[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?$/,
+      // Общий HTTP/HTTPS формат с .git в конце
+      /^(https?:\/\/)[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)+(\.git)$/
+    ];
+    
+    return gitRepoPatterns.some(pattern => pattern.test(url));
+  };
+
+  // Обработчик изменения URL репозитория
+  const handleRepoUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrl = e.target.value;
+    setRepoUrl(newUrl);
+    
+    // Если URL пустой, сбрасываем состояние валидации
+    if (!newUrl.trim()) {
+      setIsUrlValid(null);
       return;
     }
     
-    if (!targetDir.trim()) {
+    // Симулируем проверку URL
+    setIsUrlChecking(true);
+    
+    // Симулируем задержку проверки
+    setTimeout(() => {
+      const isValid = validateRepoUrl(newUrl);
+      setIsUrlValid(isValid);
+      setIsUrlChecking(false);
+      
+      if (!isValid) {
+        setError(null); // Сбрасываем ошибку, так как это интерактивная валидация
+      }
+    }, 500);
+  };
+
+  // Обработчик применения примера URL
+  const applyExampleUrl = (url: string) => {
+    setRepoUrl(url);
+    setIsUrlChecking(true);
+    
+    // Симулируем задержку проверки
+    setTimeout(() => {
+      setIsUrlValid(true);
+      setIsUrlChecking(false);
+      setError(null);
+      // Фокусируемся на следующем поле (директории)
+    }, 300);
+  };
+
+  // Проверяем, является ли URL GitHub-репозиторием
+  const isGithubRepo = (url: string): boolean => {
+    return url.includes('github.com');
+  };
+
+  // Проверяем, является ли URL GitLab-репозиторием
+  const isGitlabRepo = (url: string): boolean => {
+    return url.includes('gitlab.com');
+  };
+
+  // Форматируем отображение URL репозитория
+  const formatRepoUrl = (url: string): React.ReactNode => {
+    try {
+      // Получаем имя репозитория
+      const repoName = extractRepoName(url);
+      
+      // Определяем провайдера (GitHub, GitLab и т.д.)
+      let icon = <GitFork size={14} />;
+      if (isGithubRepo(url)) {
+        icon = <Github size={14} />;
+      } else if (isGitlabRepo(url)) {
+        icon = <Link size={14} />;
+      }
+      
+      return (
+        <div className="repo-url-display">
+          {icon}
+          <span className="repo-name">{repoName}</span>
+          <span className="repo-url">{url}</span>
+        </div>
+      );
+    } catch (error) {
+      return url;
+    }
+  };
+
+  // Обработчик формы клонирования репозитория
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    // Валидация URL перед отправкой
+    if (!validateRepoUrl(repoUrl)) {
+      setError('Пожалуйста, введите корректный URL Git-репозитория');
+      setIsUrlValid(false);
+      return;
+    }
+    
+    // Проверяем, что директория выбрана
+    if (!targetDir) {
       setError('Пожалуйста, выберите директорию для клонирования');
       return;
     }
     
-    // Simple URL validation
-    const gitUrlPattern = /^(https?:\/\/)?([\w.-]+@)?([\w.-]+\.[a-z]{2,})(:\d+)?\/.*\.git$/i;
-    if (!gitUrlPattern.test(repoUrl) && !repoUrl.includes('github.com')) {
-      setError('Пожалуйста, введите корректный URL Git репозитория');
-      return;
-    }
-    
     try {
+      setError(null);
       setIsLoading(true);
-      // Запускаем отображение прогресса
       setCloneStarted(true);
+      setLogs([`[Git] Начинаем клонирование из ${repoUrl}`]);
       
-      // Добавляем начальные логи
-      setLogs(['[Git] Начинаем клонирование репозитория...', `[Git] URL: ${repoUrl}`]);
+      // Инициализируем прогресс
+      setProgress({
+        percentage: 0,
+        stage: 'Подготовка...',
+      });
       
-      // Получаем полный путь с именем репозитория
-      const fullTargetPath = getFullTargetPath();
-      setLogs(prev => [...prev, `[Git] Целевая директория: ${fullTargetPath}`]);
+      // Начинаем клонирование через функцию onClone
+      const result = await onClone(repoUrl, getFullTargetPath());
       
-      // Отключаем симуляцию при использовании реального API
-      setUseSimulation(false);
+      // Если используем симуляцию, то дальнейшие обновления прогресса
+      // будут осуществляться useEffect-ом выше
       
-      // Call the parent component's clone function
-      const response = await onClone(repoUrl, fullTargetPath);
-      
-      if (!response.success) {
-        setError(`Ошибка при клонировании: ${response.message}`);
-        setLogs(prev => [...prev, `[Error] ${response.message}`]);
-        setCloneStarted(false);
-        setIsLoading(false);
+      // Если не используем симуляцию и получили результат
+      if (!useSimulation) {
+        if (result.success) {
+          setLogs(prev => [...prev, "[Git] Клонирование завершено успешно!"]);
+          // Устанавливаем 100% прогресс
+          setProgress(prev => {
+            if (prev) {
+              return {
+                ...prev,
+                percentage: 100,
+                stage: 'Завершено',
+              };
+            } else {
+              return {
+                percentage: 100,
+                stage: 'Завершено',
+              };
+            }
+          });
+          setIsLoading(false);
+          setCloneStarted(false);
+        } else {
+          throw new Error(result.message);
+        }
       }
-      // If successful, the modal will be closed by the parent component
-    } catch (error) {
-      console.error('Ошибка при клонировании репозитория:', error);
-      setError(`Ошибка при клонировании: ${error instanceof Error ? error.message : String(error)}`);
-      setLogs(prev => [...prev, `[Error] ${error instanceof Error ? error.message : String(error)}`]);
-      setCloneStarted(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Произошла неизвестная ошибка';
+      setError(errorMessage);
+      setLogs(prev => [...prev, `[Error] ${errorMessage}`]);
       setIsLoading(false);
+      setCloneStarted(false);
+      
+      // Устанавливаем прогресс как прерванный
+      setProgress(prev => {
+        if (prev) {
+          return {
+            ...prev,
+            stage: 'Ошибка',
+          };
+        } else {
+          return {
+            percentage: 0,
+            stage: 'Ошибка',
+          };
+        }
+      });
+      
+      console.error('Ошибка при клонировании:', err);
     }
   };
 
@@ -288,187 +439,247 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
   const ProgressBar = ({ percentage }: { percentage: number }) => (
     <div className="progress-bar-container">
       <div 
-        className="progress-bar-fill"
+        className="progress-bar-fill" 
         style={{ width: `${percentage}%` }}
       />
     </div>
   );
 
-  // Функция для определения, является ли репозиторий GitHub репозиторием
-  const isGithubRepo = (url: string): boolean => {
-    return url.toLowerCase().includes('github.com');
-  };
-
-  // Форматирование URL репозитория для отображения
-  const formatRepoUrl = (url: string): string => {
-    if (!url.trim()) return '';
-    
-    try {
-      const urlObj = new URL(url);
-      return urlObj.hostname + urlObj.pathname;
-    } catch {
-      return url;
-    }
-  };
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-content">
         <div className="modal-header">
-          <h3 className="modal-title">
+          <h2 className="modal-title">
             <GitFork size={18} />
-            Клонировать Git репозиторий
-          </h3>
-          <button className="modal-close" onClick={onClose}><X size={18} /></button>
+            Клонировать репозиторий
+          </h2>
+          <button className="modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
         </div>
         
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="repo-url" className="form-label">URL репозитория</label>
-            <div className="input-with-icon">
-              <input
-                id="repo-url"
-                type="text"
-                className="form-input with-icon"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/username/repository.git"
-                disabled={isLoading}
-              />
-              {isGithubRepo(repoUrl) ? (
-                <Github size={16} className="input-icon" />
-              ) : (
-                <GitBranch size={16} className="input-icon" />
-              )}
-            </div>
-            <div className="form-hint">Например: https://github.com/username/repository.git</div>
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="target-dir" className="form-label">Директория для клонирования</label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div className="input-with-icon" style={{ flex: 1 }}>
-                <input
-                  id="target-dir"
-                  type="text"
-                  className="form-input with-icon"
-                  value={targetDir}
-                  onChange={(e) => setTargetDir(e.target.value)}
-                  placeholder="Выберите директорию..."
-                  disabled={isLoading}
-                  readOnly
-                />
-                <FolderSearch size={16} className="input-icon" />
-              </div>
-              <button
-                type="button"
-                className="form-button"
-                onClick={handleBrowseDirectory}
-                disabled={isLoading}
-              >
-                Обзор...
-              </button>
-            </div>
-            {targetDir && repoUrl && (
-              <div className="form-hint success-hint">
-                <CheckCircle2 size={14} />
-                <span>
-                  Репозиторий будет клонирован в: <strong>{getFullTargetPath().replace(/\//g, '\\')}</strong>
-                </span>
-              </div>
-            )}
-          </div>
-          
-          {error && (
-            <div className="error-message">
-              <AlertCircle size={16} />
-              {error}
-            </div>
-          )}
-          
-          {cloneStarted && progress && (
+        {cloneStarted ? (
+          <div className="cloning-progress">
             <div className="progress-container">
-              <ProgressBar percentage={progress.percentage} />
-              
               <div className="progress-info">
-                <span className="progress-stage">
-                  <GitCommit size={14} style={{ marginRight: '8px', verticalAlign: 'text-bottom' }} />
-                  {progress.stage}
-                </span>
-                <span className="progress-percentage">{progress.percentage}%</span>
+                <div className="progress-stage">
+                  {progress?.stage === 'Завершено' ? (
+                    <CheckCircle2 size={16} color="#4caf50" />
+                  ) : progress?.stage === 'Ошибка' ? (
+                    <AlertCircle size={16} color="#e74c3c" />
+                  ) : (
+                    <span className="spinner">
+                      <Loader2 size={16} className="spinning" />
+                    </span>
+                  )}
+                  {progress?.stage || 'Подготовка...'}
+                </div>
+                <div className="progress-percentage">
+                  {progress?.percentage || 0}%
+                </div>
               </div>
               
-              {progress.currentFile && (
+              <ProgressBar percentage={progress?.percentage || 0} />
+              
+              {progress?.currentFile && (
                 <div className="progress-file">
                   <FileCode size={14} />
-                  <span>{progress.currentFile}</span>
+                  {progress.currentFile}
                 </div>
               )}
               
-              <div className="progress-stats">
-                <span>
-                  <Download size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
-                  Файлы: {progress.filesProcessed}/{progress.totalFiles}
-                </span>
-                <span>
-                  <ArrowRight size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
-                  Скорость: {progress.speed}
-                </span>
-                <span>
-                  <Clock size={14} style={{ marginRight: '6px', verticalAlign: 'text-top' }} />
-                  Осталось: {progress.estimatedTimeLeft}
-                </span>
-              </div>
-              
-              <div className="log-container">
-                <div className="log-header">
-                  <Terminal size={14} />
-                  <span>Лог процесса клонирования</span>
+              {progress && (
+                <div className="progress-stats">
+                  {progress.filesProcessed !== undefined && progress.totalFiles !== undefined && (
+                    <span>
+                      <Download size={14} />
+                      {progress.filesProcessed} / {progress.totalFiles} файлов
+                    </span>
+                  )}
+                  
+                  {progress.speed && (
+                    <span>
+                      <ArrowRight size={14} />
+                      {progress.speed}
+                    </span>
+                  )}
+                  
+                  {progress.estimatedTimeLeft && (
+                    <span>
+                      <Clock size={14} />
+                      Осталось: {progress.estimatedTimeLeft}
+                    </span>
+                  )}
                 </div>
-                <div className="log-content" ref={logContentRef}>
-                  {logs.map((log, index) => (
-                    <div key={index} className={log.includes('[Error]') ? 'log-entry error' : 'log-entry'}>
+              )}
+            </div>
+            
+            <div className="log-container">
+              <div className="log-header">
+                <Terminal size={14} /> Журнал клонирования
+              </div>
+              <div className="log-content" ref={logContentRef}>
+                {logs.map((log, index) => {
+                  const isError = log.includes('[Error]');
+                  return (
+                    <div key={index} className={`log-entry ${isError ? 'error' : ''}`}>
                       {log}
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             </div>
-          )}
-          
-          <div className="form-actions">
-            <button
-              type="button"
-              className="form-button form-button-secondary"
-              onClick={onClose}
-              disabled={isLoading}
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="form-button"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <span className="spinner" style={{ marginRight: '8px' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spinning">
-                      <circle cx="12" cy="12" r="10" opacity="0.25" />
-                      <path d="M12 2C6.5 2 2 6.5 2 12" />
-                    </svg>
-                  </span>
-                  Клонирование...
-                </>
-              ) : (
-                <>
-                  <GitFork size={14} style={{ marginRight: '8px' }} />
-                  Клонировать
-                </>
+            
+            <div className="form-actions">
+              <button 
+                className="form-button form-button-secondary" 
+                onClick={onClose}
+                disabled={isLoading && progress?.percentage !== 100 && progress?.stage !== 'Ошибка'}
+              >
+                Закрыть
+              </button>
+              
+              {(progress?.percentage === 100 || progress?.stage === 'Ошибка') && (
+                <button 
+                  className="form-button" 
+                  onClick={onClose}
+                >
+                  {progress?.stage === 'Ошибка' ? 'Закрыть' : 'Готово'}
+                </button>
               )}
-            </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            {error && (
+              <div className="error-message">
+                <AlertTriangle size={16} />
+                {error}
+              </div>
+            )}
+            
+            <div className="form-group">
+              <label className="form-label" htmlFor="repo-url">URL репозитория</label>
+              <div className="input-with-icon">
+                <input
+                  type="text"
+                  id="repo-url"
+                  className={`form-input with-icon ${isUrlValid === true ? 'is-valid' : isUrlValid === false ? 'is-invalid' : ''}`}
+                  value={repoUrl}
+                  onChange={handleRepoUrlChange}
+                  placeholder="https://github.com/username/repository.git"
+                  required
+                  ref={urlInputRef}
+                />
+                <Link className={`input-icon ${isUrlValid === true ? 'valid-icon' : isUrlValid === false ? 'invalid-icon' : ''}`} size={16} />
+                
+                {isUrlChecking ? (
+                  <Loader2 size={16} className="input-status-icon spinning" />
+                ) : isUrlValid === true ? (
+                  <Check size={16} className="input-status-icon valid" />
+                ) : isUrlValid === false ? (
+                  <AlertTriangle size={16} className="input-status-icon invalid-icon" />
+                ) : null}
+              </div>
+              
+              <div className="url-help-section">
+                <div className="form-hint">
+                  {isUrlValid === true ? 
+                    'URL репозитория корректен' : 
+                    'Введите URL в формате https://github.com/username/repo.git'
+                  }
+                </div>
+                
+                <button 
+                  type="button" 
+                  className="url-examples-toggle"
+                  onClick={() => setShowUrlExamples(!showUrlExamples)}
+                >
+                  {showUrlExamples ? 'Скрыть примеры' : 'Показать примеры'}
+                  <Info size={12} />
+                </button>
+              </div>
+              
+              {showUrlExamples && (
+                <div className="url-examples">
+                  <div className="url-examples-header">
+                    Примеры Git-репозиториев для клонирования:
+                  </div>
+                  <div className="url-examples-list">
+                    {repoExamples.map((example, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className="example-url-button"
+                        onClick={() => applyExampleUrl(example.url)}
+                      >
+                        {example.provider === 'github' ? (
+                          <Github size={14} />
+                        ) : example.provider === 'gitlab' ? (
+                          <GitBranch size={14} />
+                        ) : (
+                          <GitFork size={14} />
+                        )}
+                        <span className="example-name">{example.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label" htmlFor="target-dir">Директория для клонирования</label>
+              <div className="input-with-button">
+                <div className="input-with-icon">
+                  <input
+                    type="text"
+                    id="target-dir"
+                    className="form-input with-icon"
+                    value={targetDir}
+                    onChange={(e) => setTargetDir(e.target.value)}
+                    placeholder="Выберите директорию..."
+                    readOnly
+                    required
+                  />
+                  <FolderSearch size={16} className="input-icon" />
+                </div>
+                <button 
+                  type="button" 
+                  className="form-button browse-button" 
+                  onClick={handleBrowseDirectory}
+                >
+                  Обзор...
+                </button>
+              </div>
+              
+              {repoUrl && targetDir && (
+                <div className="form-hint target-path-preview">
+                  Будет клонировано в: <strong>{getFullTargetPath()}</strong>
+                </div>
+              )}
+            </div>
+            
+            <div className="form-actions">
+              <button 
+                type="button" 
+                className="form-button form-button-secondary"
+                onClick={onClose}
+              >
+                Отмена
+              </button>
+              
+              <button 
+                type="submit" 
+                className="form-button"
+                disabled={isLoading || !repoUrl || !targetDir || isUrlValid === false}
+              >
+                <GitFork size={16} />
+                Клонировать
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

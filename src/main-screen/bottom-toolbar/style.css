@@ -58,6 +58,30 @@
   color: #7d7d7d;
 }
 
+/* Добавляем стили для элементов счетчиков ошибок и предупреждений внутри left-info */
+.left-info .error-counter,
+.left-info .warning-counter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  height: 100%;
+}
+
+.left-info .counter-text {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 1px;
+}
+
+.left-info .error-counter .counter-text {
+  color: #f44336;
+}
+
+.left-info .warning-counter .counter-text {
+  color: #ff9800;
+}
+
 /* Правая часть */
 .right-info {
   display: flex;
@@ -302,4 +326,9 @@
   10% { opacity: 1; transform: translateY(0); }
   90% { opacity: 1; transform: translateY(0); }
   100% { opacity: 0; transform: translateY(-20px); }
+}
+
+/* Удаляем отдельную секцию diagnostics-section, так как переместили счетчики в left-info */
+.diagnostics-section {
+  display: none;
 }

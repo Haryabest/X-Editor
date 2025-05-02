@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User, GitBranch } from "lucide-react";
+import { CircleX, CircleAlert, Bell, Check, GitCommit, GitPullRequest, User, GitBranch, AlertCircle, AlertTriangle } from "lucide-react";
 import { invoke } from '@tauri-apps/api/core';
 import { FaPython } from "react-icons/fa";
 
@@ -33,8 +33,8 @@ type VisibleElementKeys = keyof typeof visibleElementsInitialState;
 
 interface BottomToolbarProps {
   editorInfo?: {
-    errors: number;
-    warnings: number;
+    errors?: number;
+    warnings?: number;
     language: string;
     encoding: string;
     cursorInfo: {
@@ -79,65 +79,57 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
 
   const [visibleElements, setVisibleElements] = useState(visibleElementsInitialState);
 
-  const [errorCount, setErrorCount] = useState(editorInfo?.errors || 0);
-  const [warningCount, setWarningCount] = useState(editorInfo?.warnings || 0);
+  const [errorCount, setErrorCount] = useState(0);
+  const [warningCount, setWarningCount] = useState(0);
   
-  // Обработчик изменений в editorInfo
+  // Слушатель для обновлений счетчиков ошибок
   useEffect(() => {
-    setErrorCount(editorInfo?.errors || 0);
-    setWarningCount(editorInfo?.warnings || 0);
-  }, [editorInfo]);
-  
-  // Слушатель для обновлений маркеров Python
-  useEffect(() => {
-    const updatePythonDiagnostics = () => {
+    const handleMarkersUpdated = (event: CustomEvent) => {
       try {
-        // Получаем Python диагностику, если доступна
-        if ((window as any).getPythonDiagnostics) {
-          const pythonIssues = (window as any).getPythonDiagnostics();
+        if (event.detail) {
+          const { errorCount, warningCount } = event.detail;
           
-          // Подсчитываем количество ошибок и предупреждений
-          let pythonErrors = 0;
-          let pythonWarnings = 0;
-          
-          if (pythonIssues && Array.isArray(pythonIssues)) {
-            pythonIssues.forEach((fileIssue: any) => {
-              fileIssue.issues?.forEach((issue: any) => {
-                if (issue.severity === 'error') {
-                  pythonErrors++;
-                } else if (issue.severity === 'warning') {
-                  pythonWarnings++;
-                }
-              });
-            });
+          if (typeof errorCount === 'number') {
+            setErrorCount(errorCount);
           }
           
-          // Обновляем счетчики, учитывая Python диагностику и диагностику из editorInfo
-          setErrorCount(prevErrors => {
-            const baseErrors = editorInfo?.errors || 0;
-            return baseErrors + pythonErrors;
-          });
+          if (typeof warningCount === 'number') {
+            setWarningCount(warningCount);
+          }
           
-          setWarningCount(prevWarnings => {
-            const baseWarnings = editorInfo?.warnings || 0;
-            return baseWarnings + pythonWarnings;
-          });
+          console.log(`Получено обновление счетчиков: ${errorCount} ошибок, ${warningCount} предупреждений`);
         }
       } catch (e) {
-        console.error('Ошибка при получении Python диагностики для BottomToolbar:', e);
+        console.error('Ошибка при обработке события markers-updated:', e);
       }
     };
     
-    // Обновляем счетчики при первой загрузке
-    updatePythonDiagnostics();
+    // Добавляем слушатель события
+    document.addEventListener('markers-updated', handleMarkersUpdated as EventListener);
     
-    // Подписываемся на обновления маркеров
-    document.addEventListener('markers-updated', updatePythonDiagnostics);
+    // Также проверяем глобальные переменные при монтировании
+    const checkGlobalCounters = () => {
+      const globalErrorCount = (window as any)._latestErrorCount;
+      const globalWarningCount = (window as any)._latestWarningCount;
+      
+      if (typeof globalErrorCount === 'number') {
+        setErrorCount(globalErrorCount);
+      }
+      
+      if (typeof globalWarningCount === 'number') {
+        setWarningCount(globalWarningCount);
+      }
+    };
+    
+    // Проверяем глобальные счетчики сразу и затем периодически
+    checkGlobalCounters();
+    const intervalId = setInterval(checkGlobalCounters, 5000);
     
     return () => {
-      document.removeEventListener('markers-updated', updatePythonDiagnostics);
+      document.removeEventListener('markers-updated', handleMarkersUpdated as EventListener);
+      clearInterval(intervalId);
     };
-  }, [editorInfo]);
+  }, []);
 
   // Синхронизируем localGitInfo с gitInfo из пропсов
   useEffect(() => {
@@ -514,27 +506,24 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({ editorInfo, userLogin, gi
       )}
 
       <div className="bottom-toolbar" onContextMenu={handleRightClick}>
+        {/* Отображение ошибок и предупреждений должно быть в самом начале тулбара */}
         <div className="left-info">
-          <div className={`status-item ${!visibleElements.encoding ? "hidden" : ""}`}>
-            <CircleX width={14} height={14} color={errorCount > 0 ? "#ff0000" : "#858585"} />
-            <span>{errorCount}</span>
+          {/* Счетчики ошибок и предупреждений */}
+          <div className="error-counter" title={`${errorCount} ошибок`}>
+            <AlertCircle size={16} color="#f44336" />
+            <span className="counter-text">{errorCount}</span>
           </div>
-          <div className={`status-item ${!visibleElements.position ? "hidden" : ""}`}>
-            <CircleAlert width={14} height={14} color={warningCount > 0 ? "#FFA500" : "#858585"} />
-            <span>{warningCount}</span>
+          
+          <div className="warning-counter" title={`${warningCount} предупреждений`}>
+            <AlertTriangle size={16} color="#ff9800" />
+            <span className="counter-text">{warningCount}</span>
           </div>
+          
           {localGitInfo.status !== 'none' && (
             <div className="status-item git-branch" onClick={handleGitBranchClick} title="Нажмите, чтобы выбрать ветку">
-              <GitBranch className="icon" />
-              <span 
-                className={`branch-name ${localGitInfo.status}`}
-                onMouseEnter={() => handleMouseEnter("gitBranch")}
-                onMouseLeave={handleMouseLeave}
-              >
-                {localGitInfo.current_branch}
-                {visibleTooltip === "gitBranch" && (
-                  <span className="tooltip">{tooltips.gitBranch}</span>
-                )}
+              <GitBranch size={14} />
+              <span className={`branch-name ${localGitInfo.status}`}>
+                {localGitInfo.current_branch || "нет ветки"}
               </span>
             </div>
           )}
