@@ -1609,14 +1609,13 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     const handleForceUpdateProblems = () => {
       console.log('Получено событие force-update-problems');
       
-      // Переключаем на вкладку проблем, если есть проблемы
+      // Проверяем наличие проблем, но НЕ переключаемся на вкладку проблем автоматически
       const hasIssues = (window.pythonDiagnosticsStore && Object.values(window.pythonDiagnosticsStore).some(
         markers => Array.isArray(markers) && markers.length > 0
       ));
       
-      if (hasIssues && activeTab !== "issues") {
-        console.log('Обнаружены проблемы, переключаем на вкладку проблем');
-      setActiveTab("issues");
+      if (hasIssues) {
+        console.log('Обнаружены проблемы, обновляем данные');
       }
       
       // Принудительно обновляем диагностику
@@ -1626,14 +1625,16 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
           const { errors, warnings } = updateErrorCounters();
           window._latestErrorCount = errors;
           window._latestWarningCount = warnings;
+          setErrorCount(errors);
+          setWarningCount(warnings);
           
           // Триггерим обновление состояния через setTimeout
           setTimeout(() => {
-          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+            setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
           }, 100);
           
-          // Разворачиваем все файлы с ошибками
-          if (window.pythonDiagnosticsStore) {
+          // Разворачиваем все файлы с ошибками, если мы на вкладке проблем
+          if (activeTab === 'issues' && window.pythonDiagnosticsStore) {
             const newExpandedFiles = new Set(expandedFiles);
             Object.keys(window.pythonDiagnosticsStore).forEach(uri => {
               const markers = window.pythonDiagnosticsStore[uri];
@@ -1719,12 +1720,17 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             if (totalMarkers > 0) {
               console.log(`Всего найдено ${totalMarkers} маркеров`);
               
-              // Если есть ошибки, переключаемся на вкладку проблем
+              // Обновляем счетчики, но НЕ переключаемся на вкладку проблем автоматически
               setTimeout(() => {
-                setActiveTab("issues");
-                
                 // Принудительно перерисовываем компонент
                 setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+                
+                // Обновляем счетчики
+                const { errors, warnings } = updateErrorCounters();
+                window._latestErrorCount = errors;
+                window._latestWarningCount = warnings;
+                setErrorCount(errors);
+                setWarningCount(warnings);
               }, 500);
             }
           }
@@ -2005,27 +2011,13 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     }
   };
 
-  // Добавляем слушатель события show-problems-tab
-  useEffect(() => {
-    const handleShowProblemsTab = () => {
-      console.log('Получено событие show-problems-tab, переключаемся на вкладку проблем');
-      // Переключаемся на вкладку проблем
-      setActiveTab('issues');
-    };
-    
-    document.addEventListener('show-problems-tab', handleShowProblemsTab);
-    
-    return () => {
-      document.removeEventListener('show-problems-tab', handleShowProblemsTab);
-    };
-  }, []);
-
   // Чтобы обновлять панель проблем при открытии файла с ошибками, 
-  // добавляем эффект следящий за selectedFile в пропсах
+  // но не переключаться автоматически с терминала на проблемы
   useEffect(() => {
-    const selectedFilePath = props.selectedFile as string; // Приводим к типу string, т.к. мы уже проверили ниже
+    const selectedFilePath = props.selectedFile as string;
     if (selectedFilePath && selectedFilePath.trim() !== '') {
-      // Если есть проблемы для текущего файла, переключаемся на вкладку проблем
+      // Если есть проблемы для текущего файла, обновляем данные,
+      // но не переключаемся автоматически с вкладки терминала на проблемы
       setTimeout(() => {
         if (window.pythonDiagnosticsStore && window.monaco && window.monaco.editor) {
           try {
@@ -2038,12 +2030,13 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             if (markers && markers.length > 0) {
               console.log(`В файле ${selectedFilePath} найдено ${markers.length} проблем`);
               
-              // Если есть ошибки (не только предупреждения), автоматически 
-              // переключаемся на вкладку проблем
-              if (markers.some((m: any) => m.severity === 1)) {
-                console.log('Найдены ошибки, переключаемся на вкладку проблем');
-                setActiveTab('issues');
-              }
+              // Обновляем счетчики ошибок/предупреждений без переключения вкладки
+              const { errors, warnings } = updateErrorCounters();
+              window._latestErrorCount = errors;
+              window._latestWarningCount = warnings;
+              
+              // Триггерим обновление состояния, но не меняем активную вкладку
+              setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
             }
           } catch (error) {
             console.error('Ошибка при проверке маркеров для файла:', error);
@@ -2154,6 +2147,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
 
   // Исправляем функцию handleTabClick
   const handleTabClick = (tab: "issues" | "terminal") => {
+    // Устанавливаем выбранную вкладку - это явное действие пользователя
     setActiveTab(tab);
     
     // При переключении на вкладку проблем, обновляем диагностику
@@ -2256,6 +2250,40 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         return <Info size={14} className="severity-icon info" />;
     }
   };
+
+  // Модифицируем useEffect для обработки события show-problems-tab,
+  // чтобы избежать автоматического переключения
+  useEffect(() => {
+    const handleShowProblemsTab = () => {
+      console.log('Получено событие show-problems-tab');
+      
+      // Переключаемся на вкладку проблем ТОЛЬКО если пользователь не находится 
+      // на вкладке терминала, или если это явный запрос
+      const event = window.event as CustomEvent | undefined;
+      const forceSwitch = event?.detail?.force === true;
+      
+      if (forceSwitch) {
+        console.log('Принудительное переключение на вкладку проблем');
+        setActiveTab('issues');
+        return;
+      }
+      
+      // НЕ переключаемся автоматически, если уже активна вкладка терминала
+      if (activeTab === 'terminal') {
+        console.log('Вкладка терминала активна, игнорируем автоматическое переключение');
+        return;
+      }
+      
+      console.log('Переключаемся на вкладку проблем');
+      setActiveTab('issues');
+    };
+    
+    document.addEventListener('show-problems-tab', handleShowProblemsTab);
+    
+    return () => {
+      document.removeEventListener('show-problems-tab', handleShowProblemsTab);
+    };
+  }, [activeTab]); // Добавляем activeTab в зависимости
 
   return (
     <div className="terminal-container" style={{ height: terminalHeight || 200 }}>

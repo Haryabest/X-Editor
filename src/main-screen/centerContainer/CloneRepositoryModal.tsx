@@ -437,44 +437,44 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
 
   // Компонент прогресс-бара
   const ProgressBar = ({ percentage }: { percentage: number }) => (
-    <div className="progress-bar-container">
+    <div className="git-clone-progress-bar-container">
       <div 
-        className="progress-bar-fill" 
+        className="git-clone-progress-bar-fill" 
         style={{ width: `${percentage}%` }}
       />
     </div>
   );
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <div className="modal-header">
-          <h2 className="modal-title">
+    <div className="git-clone-modal-overlay">
+      <div className="git-clone-modal-content">
+        <div className="git-clone-modal-header">
+          <h2 className="git-clone-modal-title">
             <GitFork size={18} />
             Клонировать репозиторий
           </h2>
-          <button className="modal-close" onClick={onClose}>
+          <button className="git-clone-modal-close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         
         {cloneStarted ? (
-          <div className="cloning-progress">
-            <div className="progress-container">
-              <div className="progress-info">
-                <div className="progress-stage">
+          <div className="git-clone-cloning-progress">
+            <div className="git-clone-progress-container">
+              <div className="git-clone-progress-info">
+                <div className="git-clone-progress-stage">
                   {progress?.stage === 'Завершено' ? (
                     <CheckCircle2 size={16} color="#4caf50" />
                   ) : progress?.stage === 'Ошибка' ? (
                     <AlertCircle size={16} color="#e74c3c" />
                   ) : (
-                    <span className="spinner">
-                      <Loader2 size={16} className="spinning" />
+                    <span className="git-clone-spinner">
+                      <Loader2 size={16} className="git-clone-spinning" />
                     </span>
                   )}
                   {progress?.stage || 'Подготовка...'}
                 </div>
-                <div className="progress-percentage">
+                <div className="git-clone-progress-percentage">
                   {progress?.percentage || 0}%
                 </div>
               </div>
@@ -482,14 +482,14 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               <ProgressBar percentage={progress?.percentage || 0} />
               
               {progress?.currentFile && (
-                <div className="progress-file">
+                <div className="git-clone-progress-file">
                   <FileCode size={14} />
                   {progress.currentFile}
                 </div>
               )}
               
               {progress && (
-                <div className="progress-stats">
+                <div className="git-clone-progress-stats">
                   {progress.filesProcessed !== undefined && progress.totalFiles !== undefined && (
                     <span>
                       <Download size={14} />
@@ -514,15 +514,15 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               )}
             </div>
             
-            <div className="log-container">
-              <div className="log-header">
+            <div className="git-clone-log-container">
+              <div className="git-clone-log-header">
                 <Terminal size={14} /> Журнал клонирования
               </div>
-              <div className="log-content" ref={logContentRef}>
+              <div className="git-clone-log-content" ref={logContentRef}>
                 {logs.map((log, index) => {
                   const isError = log.includes('[Error]');
                   return (
-                    <div key={index} className={`log-entry ${isError ? 'error' : ''}`}>
+                    <div key={index} className={`git-clone-log-entry ${isError ? 'error' : ''}`}>
                       {log}
                     </div>
                   );
@@ -530,9 +530,9 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               </div>
             </div>
             
-            <div className="form-actions">
+            <div className="git-clone-form-actions">
               <button 
-                className="form-button form-button-secondary" 
+                className="git-clone-form-button git-clone-form-button-secondary" 
                 onClick={onClose}
                 disabled={isLoading && progress?.percentage !== 100 && progress?.stage !== 'Ошибка'}
               >
@@ -541,7 +541,7 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               
               {(progress?.percentage === 100 || progress?.stage === 'Ошибка') && (
                 <button 
-                  className="form-button" 
+                  className="git-clone-form-button" 
                   onClick={onClose}
                 >
                   {progress?.stage === 'Ошибка' ? 'Закрыть' : 'Готово'}
@@ -550,40 +550,40 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="git-clone-form">
             {error && (
-              <div className="error-message">
+              <div className="git-clone-error-message">
                 <AlertTriangle size={16} />
                 {error}
               </div>
             )}
             
-            <div className="form-group">
-              <label className="form-label" htmlFor="repo-url">URL репозитория</label>
-              <div className="input-with-icon">
+            <div className="git-clone-form-group">
+              <label className="git-clone-form-label" htmlFor="repo-url">URL репозитория</label>
+              <div className="git-clone-input-with-icon">
                 <input
                   type="text"
                   id="repo-url"
-                  className={`form-input with-icon ${isUrlValid === true ? 'is-valid' : isUrlValid === false ? 'is-invalid' : ''}`}
+                  className={`git-clone-form-input with-icon ${isUrlValid === true ? 'is-valid' : isUrlValid === false ? 'is-invalid' : ''}`}
                   value={repoUrl}
                   onChange={handleRepoUrlChange}
                   placeholder="https://github.com/username/repository.git"
                   required
                   ref={urlInputRef}
                 />
-                <Link className={`input-icon ${isUrlValid === true ? 'valid-icon' : isUrlValid === false ? 'invalid-icon' : ''}`} size={16} />
+                <Link className={`git-clone-input-icon ${isUrlValid === true ? 'git-clone-valid-icon' : isUrlValid === false ? 'git-clone-invalid-icon' : ''}`} size={16} />
                 
                 {isUrlChecking ? (
-                  <Loader2 size={16} className="input-status-icon spinning" />
+                  <Loader2 size={16} className="git-clone-input-status-icon git-clone-spinning" />
                 ) : isUrlValid === true ? (
-                  <Check size={16} className="input-status-icon valid" />
+                  <Check size={16} className="git-clone-input-status-icon valid" />
                 ) : isUrlValid === false ? (
-                  <AlertTriangle size={16} className="input-status-icon invalid-icon" />
+                  <AlertTriangle size={16} className="git-clone-input-status-icon git-clone-invalid-icon" />
                 ) : null}
               </div>
               
-              <div className="url-help-section">
-                <div className="form-hint">
+              <div className="git-clone-url-help-section">
+                <div className="git-clone-form-hint">
                   {isUrlValid === true ? 
                     'URL репозитория корректен' : 
                     'Введите URL в формате https://github.com/username/repo.git'
@@ -592,7 +592,7 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
                 
                 <button 
                   type="button" 
-                  className="url-examples-toggle"
+                  className="git-clone-url-examples-toggle"
                   onClick={() => setShowUrlExamples(!showUrlExamples)}
                 >
                   {showUrlExamples ? 'Скрыть примеры' : 'Показать примеры'}
@@ -601,16 +601,16 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               </div>
               
               {showUrlExamples && (
-                <div className="url-examples">
-                  <div className="url-examples-header">
+                <div className="git-clone-url-examples">
+                  <div className="git-clone-url-examples-header">
                     Примеры Git-репозиториев для клонирования:
                   </div>
-                  <div className="url-examples-list">
+                  <div className="git-clone-url-examples-list">
                     {repoExamples.map((example, index) => (
                       <button
                         key={index}
                         type="button"
-                        className="example-url-button"
+                        className="git-clone-example-url-button"
                         onClick={() => applyExampleUrl(example.url)}
                       >
                         {example.provider === 'github' ? (
@@ -620,7 +620,7 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
                         ) : (
                           <GitFork size={14} />
                         )}
-                        <span className="example-name">{example.name}</span>
+                        <span className="git-clone-example-name">{example.name}</span>
                       </button>
                     ))}
                   </div>
@@ -628,25 +628,25 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               )}
             </div>
             
-            <div className="form-group">
-              <label className="form-label" htmlFor="target-dir">Директория для клонирования</label>
-              <div className="input-with-button">
-                <div className="input-with-icon">
+            <div className="git-clone-form-group">
+              <label className="git-clone-form-label" htmlFor="target-dir">Директория для клонирования</label>
+              <div className="git-clone-input-with-button">
+                <div className="git-clone-input-with-icon">
                   <input
                     type="text"
                     id="target-dir"
-                    className="form-input with-icon"
+                    className="git-clone-form-input with-icon"
                     value={targetDir}
                     onChange={(e) => setTargetDir(e.target.value)}
                     placeholder="Выберите директорию..."
                     readOnly
                     required
                   />
-                  <FolderSearch size={16} className="input-icon" />
+                  <FolderSearch size={16} className="git-clone-input-icon" />
                 </div>
                 <button 
                   type="button" 
-                  className="form-button browse-button" 
+                  className="git-clone-form-button git-clone-browse-button" 
                   onClick={handleBrowseDirectory}
                 >
                   Обзор...
@@ -654,16 +654,16 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               </div>
               
               {repoUrl && targetDir && (
-                <div className="form-hint target-path-preview">
+                <div className="git-clone-form-hint git-clone-target-path-preview">
                   Будет клонировано в: <strong>{getFullTargetPath()}</strong>
                 </div>
               )}
             </div>
             
-            <div className="form-actions">
+            <div className="git-clone-form-actions">
               <button 
                 type="button" 
-                className="form-button form-button-secondary"
+                className="git-clone-form-button git-clone-form-button-secondary"
                 onClick={onClose}
               >
                 Отмена
@@ -671,7 +671,7 @@ const CloneRepositoryModal: React.FC<CloneRepositoryModalProps> = ({ onClose, on
               
               <button 
                 type="submit" 
-                className="form-button"
+                className="git-clone-form-button"
                 disabled={isLoading || !repoUrl || !targetDir || isUrlValid === false}
               >
                 <GitFork size={16} />
