@@ -5641,6 +5641,7 @@ dependencies = [
  "encoding_rs",
  "futures",
  "lazy_static",
+ "open",
  "portable-pty",
  "serde",
  "serde_json",

@@ -18,7 +18,9 @@ import { initializeMonacoLSP, getMonacoLSPInstance } from './monaco-lsp-integrat
 import { debounce } from 'lodash';
 import CloneRepositoryModal from './CloneRepositoryModal';
 import HtmlPreview from '../preview/HtmlPreview';
-import { writeBinaryFile } from '@tauri-apps/plugin-fs';
+import { writeBinaryFile, readBinaryFile } from '@tauri-apps/plugin-fs';
+import ImageViewer from '../../components/ImageViewer';
+import VideoPlayer from '../../components/VideoPlayer';
 
 // Импортируем и инициализируем обработчики ошибок
 import './errors';
@@ -313,11 +315,34 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
                 }
               }
             } else if (supportedImageExtensions.includes(ext)) {
-              const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
-              const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
-              setImageSrc(fileUrl);
-              setFileContent(null);
-              setVideoSrc(null);
+              if (ext === '.png') {
+                console.log(`PNG file detected, will use PngViewer component to display: ${selectedFile}`);
+                // Для PNG просто устанавливаем imageSrc как строку пути,
+                // реальная обработка будет выполнена в компоненте PngViewer
+                setImageSrc('png-file-path'); // Специальный маркер для обозначения PNG
+                setFileContent(null);
+                setVideoSrc(null);
+              } else {
+                // Для других форматов изображений используем текущий метод
+                console.log(`Loading non-PNG image: ${selectedFile}`);
+                try {
+                  const base64Content: string = await invoke('read_binary_file', { path: selectedFile });
+                  
+                  if (base64Content) {
+                    const fileUrl = `data:image/${ext.slice(1)};base64,${base64Content}`;
+                    console.log(`Loaded non-PNG image, data length: ${fileUrl?.length || 0}, data starts with:`, fileUrl?.substring(0, 50));
+                    setImageSrc(fileUrl);
+                  } else {
+                    console.error('read_binary_file returned empty data for non-PNG image');
+                    setImageSrc(null);
+                  }
+                } catch (error) {
+                  console.error('Error loading non-PNG image:', error);
+                  setImageSrc(null);
+                }
+                setFileContent(null);
+                setVideoSrc(null);
+              }
             } else if (supportedVideoExtensions.includes(ext)) {
               const videoUrl: string = await invoke('stream_video', { path: selectedFile });
               setVideoSrc(videoUrl);
@@ -1897,19 +1922,26 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
           </div>
       )}
       
-      {selectedFile && imageSrc !== null && isImageFile(selectedFile) ? (
-            <img src={imageSrc} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+      {selectedFile && (isImageFile(selectedFile)) ? (
+        <React.Fragment>
+          {console.log(`Rendering image for ${selectedFile}`)}
+          <ImageViewer 
+            filePath={selectedFile}
+            onLoad={() => console.log(`Image loaded successfully: ${selectedFile}`)}
+            onError={(error) => console.error(`Error loading image: ${error}`)}
+          />
+        </React.Fragment>
       ) : null}
       
-      {selectedFile && videoSrc !== null && isVideoFile(selectedFile) ? (
-            <ReactPlayer
-              url={videoSrc}
-              controls={true}
-              width="50%"
-              height="50%"
-              playing={false}
-              onError={(e) => console.error('Video playback error:', e)}
-            />
+      {selectedFile && (isVideoFile(selectedFile)) ? (
+        <React.Fragment>
+          {console.log(`Rendering video for ${selectedFile}`)}
+          <VideoPlayer 
+            filePath={selectedFile}
+            onLoad={() => console.log(`Video loaded successfully: ${selectedFile}`)}
+            onError={(error) => console.error(`Error loading video: ${error}`)}
+          />
+        </React.Fragment>
       ) : null}
       
       {selectedFile && !supportedTextExtensions.includes(selectedFile.slice(selectedFile.lastIndexOf('.')).toLowerCase()) && 

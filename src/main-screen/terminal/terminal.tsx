@@ -41,7 +41,7 @@ interface XTermTerminalProps {
   selectedFile?: string;
 }
 
-// Обновляем объявление глобальных интерфейсов с добавлением новых свойств
+// Расширенное объявление глобальных интерфейсов
 declare global {
   interface Window {
     pythonDiagnostics?: Map<string, IssueInfo>;
@@ -64,7 +64,23 @@ declare global {
     openedFiles: Set<string>;
     _renderIssuesErrorCount?: number;
     _renderIssuesWarningCount?: number;
+    _errorsInCurrentFile?: number;
+    _warningsInCurrentFile?: number;
+    updateFileErrorIcon?: (filePath: string, iconType: 'error' | 'warning') => void;
+    _lastKeyPressTime?: number;
+    _isCurrentlyEditing?: boolean;
+    _editingTimer?: ReturnType<typeof setTimeout>;
+    clearFileMarkers?: (filePath: string) => void;
   }
+}
+
+// Интерфейс для моделей Monaco
+interface MonacoModel {
+  uri: { toString: () => string };
+  getValue: () => string;
+  isDisposed: () => boolean;
+  onDidChangeContent: (listener: Function) => { dispose: () => void };
+  _jsonContentHandlerAdded?: boolean;
 }
 
 // Добавлю константу для отладки
@@ -1007,15 +1023,43 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
                   }
                 }
                 
+                // Специальная обработка для JSON файлов
+                let message = marker.message || 'Неизвестная ошибка';
+                if (targetUri.toLowerCase().endsWith('.json')) {
+                  // Улучшаем сообщения об ошибках для JSON файлов
+                  if (message.includes('Expected') || message.includes('Unexpected')) {
+                    // Заменяем технические термины на более понятные
+                    message = message
+                      .replace('Expected', 'Ожидается')
+                      .replace('Unexpected', 'Неожиданный символ')
+                      .replace('comma', 'запятая')
+                      .replace('colon', 'двоеточие')
+                      .replace('property name', 'имя свойства')
+                      .replace('value', 'значение')
+                      .replace('string', 'строка')
+                      .replace('number', 'число')
+                      .replace('boolean', 'логическое значение')
+                      .replace('null', 'null')
+                      .replace('end of file', 'конец файла')
+                      .replace('object', 'объект')
+                      .replace('array', 'массив');
+                  }
+                  
+                  // Добавляем контекст для JSON ошибок
+                  if (!message.includes('JSON')) {
+                    message = `Ошибка JSON: ${message}`;
+                  }
+                }
+                
                 // Создаем объект проблемы
                 const issue: Issue = {
                   severity,
-                  message: marker.message || 'Неизвестная ошибка',
+                  message,
                   line: marker.startLineNumber || 0,
                   column: marker.startColumn || 0,
                   endLine: marker.endLineNumber || 0,
                   endColumn: marker.endColumn || 0,
-                  source: marker.source || 'monaco-editor'
+                  source: marker.source || (targetUri.toLowerCase().endsWith('.json') ? 'json-validator' : 'monaco-editor')
                 };
                 
                 issues.push(issue);
@@ -1630,7 +1674,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
           
           // Триггерим обновление состояния через setTimeout
           setTimeout(() => {
-            setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
           }, 100);
           
           // Разворачиваем все файлы с ошибками, если мы на вкладке проблем
@@ -1760,7 +1804,22 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     });
   }
 
-  // Функция для проверки всех открытых редакторов на наличие ошибок
+  // В начале файла добавляем функцию debounce для оптимизации частых вызовов
+  // Добавим новую утилитарную функцию debounce
+  function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number): (...args: Parameters<F>) => void {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    
+    return function(this: any, ...args: Parameters<F>): void {
+      if (timeout !== null) {
+        clearTimeout(timeout);
+      }
+      timeout = setTimeout(() => {
+        func.apply(this, args);
+      }, waitFor);
+    };
+  }
+
+  // Модифицируем функцию checkAllEditorsForErrors для добавления debounce
   const checkAllEditorsForErrors = () => {
     try {
       logProblems('Принудительная проверка всех открытых редакторов на наличие ошибок');
@@ -1770,6 +1829,9 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
         const models = window.monaco.editor.getModels();
         logProblems(`Найдено ${models.length} моделей для проверки ошибок`);
         
+        // Используем переменную для отслеживания изменений
+        let hasChanges = false;
+        
         models.forEach((model: any) => {
           try {
             const uri = model.uri.toString();
@@ -1778,6 +1840,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
               if (window.forcePythonCheck) {
                 logProblems(`Запуск принудительной проверки Python файла: ${uri}`);
                 window.forcePythonCheck(uri);
+                hasChanges = true;
               }
             }
             
@@ -1785,231 +1848,271 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
             const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
             logProblems(`Получено ${markers.length} маркеров для модели ${uri}`);
             
-            // Принудительно запрашиваем маркеры у языковых сервисов
-            if (window.monaco.editor.getModelMarkers) {
-              const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
-              
-              // Добавляем открытый файл в список проверенных файлов
-              if (!window.openedFiles) {
-                window.openedFiles = new Set<string>();
-              }
-              
-              const realPath = getActualFileFromInmemory(uri) || uri;
-              window.openedFiles.add(realPath);
-              
-              logProblems(`Добавлен файл ${realPath} в список открытых файлов`);
+            // Добавляем открытый файл в список проверенных файлов
+            if (!window.openedFiles) {
+              window.openedFiles = new Set<string>();
             }
+            
+            const realPath = getActualFileFromInmemory(uri) || uri;
+            window.openedFiles.add(realPath);
+            
+            logProblems(`Добавлен файл ${realPath} в список открытых файлов`);
           } catch (e) {
             console.error('Ошибка при проверке модели на ошибки:', e);
           }
         });
+        
+        // Обновляем отображение проблем ТОЛЬКО если есть изменения
+        if (hasChanges) {
+          debouncedUpdateAllProblemCounters();
+        }
       }
-      
-      // Обновляем отображение проблем после проверки всех файлов
-      updateAllProblemCounters();
-      setIssuesUpdated(prev => prev + 1);
     } catch (error) {
       console.error('Ошибка при проверке всех редакторов:', error);
     }
   };
-  
-  // Инициализация редактора и начальная загрузка проблем
-  useEffect(() => {
-    // Инициализируем кэш ошибок и список открытых файлов, если их еще нет
-    if (!window.errorsCache) {
-      window.errorsCache = {};
-    }
-    
-    if (!window.openedFiles) {
-      window.openedFiles = new Set<string>();
-    }
-    
-    // Добавляем обработчик события изменения активного файла
-    window.addEventListener('active-file-changed', handleActiveFileChange);
-    
-    // Добавляем обработчик события открытия файла
-    window.addEventListener('file-opened', (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail && customEvent.detail.filePath) {
-        const filePath = customEvent.detail.filePath;
-        
-        // Добавляем файл в список открытых файлов
-        if (!window.openedFiles) {
-          window.openedFiles = new Set<string>();
-        }
-        
-        window.openedFiles.add(filePath);
-        logProblems(`Добавлен новый файл в список открытых: ${filePath}`);
-        
-        // Принудительно запрашиваем проверку на ошибки для всех открытых файлов
-        // Это обеспечит отображение ошибок из всех открытых файлов
-        setTimeout(() => {
-          checkAllEditorsForErrors();
-        }, 500);
-      }
-    });
-    
-    // Добавляем обработчик события закрытия файла
-    window.addEventListener('file-closed', (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail && customEvent.detail.filePath) {
-        const filePath = customEvent.detail.filePath;
-        
-        logProblems(`Закрыт файл: ${filePath}`);
-        
-        // Удаляем файл из списка открытых файлов
-        if (window.openedFiles) {
-          window.openedFiles.delete(filePath);
-          logProblems(`Удален файл из списка открытых: ${filePath}`);
-        }
-        
-        // Удаляем файл из кэша ошибок
-        if (window.errorsCache && window.errorsCache[filePath]) {
-          delete window.errorsCache[filePath];
-          logProblems(`Удален файл из кэша ошибок: ${filePath}`);
-        }
-        
-        // Проверяем и удаляем все связанные с файлом ошибки
-        // Это важно для inmemory-файлов, которые могут иметь разные URI
-        if (window.errorsCache) {
-          Object.keys(window.errorsCache).forEach(key => {
-            const issueInfo = window.errorsCache[key];
-            // Проверяем совпадение имени файла (без пути)
-            const closedFileName = filePath.split(/[\/\\]/).pop();
-            const cachedFileName = issueInfo.fileName;
-            
-            if (closedFileName === cachedFileName) {
-              delete window.errorsCache[key];
-              logProblems(`Удален связанный файл из кэша ошибок: ${key}`);
-            }
-          });
-        }
-        
-        // Очищаем любые Python-диагностики для этого файла
-        if (window.pythonDiagnosticsStore) {
-          Object.keys(window.pythonDiagnosticsStore).forEach(uri => {
-            if (uri !== '_fileMapping' && (uri.includes(filePath) || window.pythonDiagnosticsStore._fileMapping?.[uri] === filePath)) {
-              delete window.pythonDiagnosticsStore[uri];
-              logProblems(`Удалены Python-диагностики для файла: ${uri}`);
-              
-              // Также удаляем запись из маппинга, если есть
-              if (window.pythonDiagnosticsStore._fileMapping) {
-                Object.keys(window.pythonDiagnosticsStore._fileMapping).forEach(inmemoryUri => {
-                  if (window.pythonDiagnosticsStore._fileMapping[inmemoryUri] === filePath) {
-                    delete window.pythonDiagnosticsStore._fileMapping[inmemoryUri];
-                    logProblems(`Удален маппинг для файла: ${inmemoryUri} -> ${filePath}`);
-                  }
-                });
-              }
-            }
-          });
-        }
-        
-        // Если файл был последним активным, очищаем это состояние
-        if (window.lastActiveFilePath === filePath) {
-          window.lastActiveFilePath = undefined;
-        }
-        
-        // Обновляем отображение проблем
-        setIssuesUpdated(prev => prev + 1);
-        
-        // Обновляем счетчики ошибок для нижнего тулбара
-        updateErrorCountersForStatusBar();
-      }
-    });
-    
-    // При монтировании компонента проверяем все открытые редакторы на наличие ошибок
-    setTimeout(() => {
-      checkAllEditorsForErrors();
-      // Обновляем счетчики ошибок для нижнего тулбара
-      updateErrorCountersForStatusBar();
-    }, 1000);
-    
-    // Устанавливаем интервал для периодической проверки всех редакторов
-    const intervalId = setInterval(() => {
-      checkAllEditorsForErrors();
-      // Обновляем счетчики ошибок для нижнего тулбара
-      updateErrorCountersForStatusBar();
-    }, 10000); // Проверяем каждые 10 секунд
-    
-    return () => {
-      window.removeEventListener('active-file-changed', handleActiveFileChange);
-      clearInterval(intervalId);
-    };
-  }, []);
 
-  // Функция для отправки обновленных счетчиков ошибок в нижний тулбар
-  const updateErrorCountersForStatusBar = () => {
-    try {
-      // Подсчитываем общее количество ошибок и предупреждений
-      let totalErrors = 0;
-      let totalWarnings = 0;
-      
-      // Подсчитываем ошибки из кэша
-      if (window.errorsCache) {
-        Object.values(window.errorsCache).forEach((issueInfo) => {
-          if (issueInfo && issueInfo.issues) {
-            totalErrors += issueInfo.issues.filter(issue => issue.severity === 'error').length;
-            totalWarnings += issueInfo.issues.filter(issue => issue.severity === 'warning').length;
-          }
-        });
-      }
-      
-      // Создаем и отправляем событие markers-updated для нижнего тулбара
-      const event = new CustomEvent('markers-updated', {
-        detail: {
-          errorCount: totalErrors,
-          warningCount: totalWarnings
-        }
-      });
-      
-      document.dispatchEvent(event);
-      
-      // Также сохраняем данные в глобальные переменные для доступа из других компонентов
-      window._latestErrorCount = totalErrors;
-      window._latestWarningCount = totalWarnings;
-      
-      logProblems(`Отправка счетчиков ошибок в тулбар: ${totalErrors} ошибок, ${totalWarnings} предупреждений`);
-    } catch (error) {
-      console.error('Ошибка при обновлении счетчиков ошибок для нижнего тулбара:', error);
-    }
-  };
-
-  // Модифицируем функцию handleActiveFileChange для правильной обработки смены активного файла
+  // Модифицируем функцию handleActiveFileChange для предотвращения багов при переключении файлов
   const handleActiveFileChange = (event: Event) => {
     const customEvent = event as CustomEvent;
     if (customEvent.detail && customEvent.detail.filePath) {
       const filePath = customEvent.detail.filePath;
       
-      // Логируем активный файл
-      logProblems(`Активирован файл: ${filePath}`);
+      // Если файл не изменился или пустой путь, выходим
+      if (!filePath || filePath.trim() === '' || window.lastActiveFilePath === filePath) {
+        return;
+      }
       
       // Сохраняем путь к последнему активному файлу
+      const prevFile = window.lastActiveFilePath;
       window.lastActiveFilePath = filePath;
       
-      // Добавляем файл в список открытых файлов
+      // Добавляем файл в список открытых файлов ОДИН раз
       if (!window.openedFiles) {
         window.openedFiles = new Set<string>();
       }
       
-      window.openedFiles.add(filePath);
-      
-      // Если у нас файл Python, вызываем принудительную проверку
-      if (filePath.endsWith('.py') && window.forcePythonCheck) {
-        logProblems(`Запуск принудительной проверки Python для активного файла`);
-        window.forcePythonCheck(filePath);
+      if (!window.openedFiles.has(filePath)) {
+        window.openedFiles.add(filePath);
+        logProblems(`Добавлен новый файл в список открытых: ${filePath}`);
       }
       
-      // Принудительно запрашиваем проверку на ошибки для ВСЕХ открытых файлов
-      // чтобы обновить и отобразить ошибки из всех файлов
-      setTimeout(() => {
-        checkAllEditorsForErrors();
-      }, 300);
+      // Обработка Python файлов - с задержкой для предотвращения тряски при переключении
+      if (filePath.endsWith('.py')) {
+        // Используем setTimeout для задержки проверки Python файлов
+        debouncedPythonCheck(filePath);
+      }
       
-      // Меняем состояние, чтобы вызвать повторный рендеринг
-      setActiveFile(filePath);
+      // Обновляем activefile ТОЛЬКО ОДИН раз за событие
+      // Это предотвратит множественные ререндеры компонента
+      setActiveFile(prevFile !== filePath ? filePath : prevFile);
     }
   };
+
+  // Стабильная функция обновления счетчиков с минимальным воздействием на состояние
+  const stableUpdateCounters = (errors: number, warnings: number) => {
+    // Обновляем глобальные переменные
+    window._latestErrorCount = errors;
+    window._latestWarningCount = warnings;
+    
+    // Обновляем состояние только если значения действительно изменились
+    // и только через setTimeout для предотвращения частых перерисовок
+    if (errors !== errorCount || warnings !== warningCount) {
+      setTimeout(() => {
+        setErrorCount(errors);
+        setWarningCount(warnings);
+      }, 500);
+    }
+  };
+
+  // Заменяем ВСЕ предыдущие версии checkSingleFile одной оптимизированной функцией
+  const improvedCheckSingleFile = (filePath: string) => {
+    // Если файл не задан или пустой, выходим
+    if (!filePath || filePath.trim() === '') return;
+    
+    try {
+      if (window.monaco && window.monaco.editor) {
+        const fileUri = window.monaco.Uri.file(filePath);
+        
+        // Проверка за пределами асинхронного контекста для большей надежности
+        if (!fileUri) return;
+        
+        // Получаем модель явно только для этого файла
+        const model = window.monaco.editor.getModels().find(
+          (m: any) => {
+            try {
+              // Безопасная проверка - модель может быть невалидна
+              return m && !m.isDisposed() && m.uri.toString() === fileUri.toString();
+            } catch (e) {
+              return false;
+            }
+          }
+        );
+        
+        // Если модель не найдена или утилизирована, выходим
+        if (!model || model.isDisposed()) return;
+        
+        // Получаем маркеры только для этой модели
+        const markers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+        if (!markers) return;
+        
+        logProblems(`Проверка файла ${filePath}: ${markers.length} маркеров`);
+        
+        // Принимаем решение об обновлении счетчиков только при существенных изменениях
+        if (markers.length > 0) {
+          const errorCount = markers.filter((m: any) => m.severity === 1).length;
+          const warningCount = markers.filter((m: any) => m.severity === 2).length;
+          
+          if (errorCount > 0 || warningCount > 0) {
+            // Используем стабильный способ обновления счетчиков
+            stableUpdateCounters(errorCount, warningCount);
+          }
+        }
+      }
+    } catch (error) {
+      // Логируем ошибку но продолжаем работу для стабильности
+      console.error('Ошибка при проверке файла (не критичная):', error);
+    }
+  };
+  
+  // Специальный дебаунсер для Python проверок с более длинной задержкой
+  const debouncedPythonCheck = debounce((filePath: string) => {
+    if (window.forcePythonCheck) {
+      try {
+        window.forcePythonCheck(filePath);
+        
+        // Даем время для проверки Python файла и только потом проверяем маркеры
+        setTimeout(() => {
+          // Проверяем маркеры только для этого конкретного файла
+          improvedCheckSingleFile(filePath);
+        }, 700);
+      } catch (e) {
+        console.error('Ошибка при проверке Python файла:', e);
+      }
+    }
+  }, 500);
+
+  // Создадим debounced версии функций для оптимизации
+  const debouncedUpdateAllProblemCounters = debounce(() => {
+    const { errors, warnings } = updateErrorCounters();
+    window._latestErrorCount = errors;
+    window._latestWarningCount = warnings;
+    
+    // Делаем ЕДИНИЧНОЕ обновление состояния
+    setErrorCount(errors);
+    setWarningCount(warnings);
+    setIssuesUpdated(prev => prev + 1);
+  }, 300);
+
+  const debouncedUpdateErrorCounters = debounce(() => {
+    const { errors, warnings } = updateErrorCounters();
+    window._latestErrorCount = errors;
+    window._latestWarningCount = warnings;
+    
+    // Делаем ЕДИНИЧНОЕ обновление состояния
+    setErrorCount(errors);
+    setWarningCount(warnings);
+  }, 300);
+
+  // Обновленная ссылка на новую функцию
+  const debouncedCheckFile = debounce(improvedCheckSingleFile, 300);
+
+  // Добавляем вспомогательную функцию updateFileIcon
+  const updateFileIcon = (filePath: string, iconType: 'error' | 'warning') => {
+    // Функция для обновления иконки файла в навигаторе
+    // Безопасная обертка для будущей функциональности
+    try {
+      if (window.updateFileErrorIcon) {
+        window.updateFileErrorIcon(filePath, iconType);
+      }
+    } catch (e) {
+      console.error('Ошибка при обновлении иконки файла:', e);
+    }
+  };
+
+  // Оптимизируем функцию checkMarkers, чтобы она обновляла состояние реже
+  const checkMarkers = (monacoData: any, currentModel: any) => {
+    if (!monacoData || !currentModel) return;
+    
+    try {
+      const markers = monacoData.getModelMarkers({ resource: currentModel.uri });
+      
+      // Группируем маркеры по серьезности для избежания повторных вычислений
+      const errors = markers.filter((m: any) => m.severity === 1);
+      const warnings = markers.filter((m: any) => m.severity === 2);
+      
+      // Обновляем иконку файла, только если есть ошибки
+      if (window.lastActiveFilePath && (errors.length > 0 || warnings.length > 0)) {
+        updateFileIcon(window.lastActiveFilePath, errors.length > 0 ? 'error' : 'warning');
+      }
+      
+      // Обновляем глобальные счетчики
+      window._errorsInCurrentFile = errors.length;
+      window._warningsInCurrentFile = warnings.length;
+      
+      // Обрабатываем каждый маркер только один раз
+      if (errors.length > 0 || warnings.length > 0) {
+        // Используем стабильный способ обновления счетчиков
+        stableUpdateCounters(errors.length, warnings.length);
+      }
+    } catch (e) {
+      console.error("Ошибка при проверке маркеров:", e);
+    }
+  };
+
+  // Обновляем initialLoadIssues для использования стабильных функций
+  const initialLoadIssues = (prevTab: string, forceUpdate: boolean = false) => {
+    if (prevTab !== activeTab || forceUpdate) {
+      try {
+        // Используем improvedCheckSingleFile для проверки активного файла
+        if (window.lastActiveFilePath) {
+          improvedCheckSingleFile(window.lastActiveFilePath);
+        }
+        
+        // Обновляем глобальные счетчики через дебаунсер
+        debouncedUpdateAllProblemCounters();
+      } catch (e) {
+        console.error("Ошибка при загрузке проблем:", e);
+      }
+    }
+  };
+
+  // Добавляем новый оптимизированный обработчик обновления проблем
+  const optimizedForceUpdateProblems = debounce((event: Event) => {
+    try {
+      // Пропускаем обновление во время активного редактирования
+      if (window._isCurrentlyEditing === true) {
+        return;
+      }
+      
+      const customEvent = event as CustomEvent;
+      const forceSwitchToIssues = customEvent.detail && customEvent.detail.switchToIssues === true;
+      
+      // Вместо проверки всех файлов сразу, используем отложенную проверку активного файла
+      if (window.lastActiveFilePath) {
+        improvedCheckSingleFile(window.lastActiveFilePath);
+      }
+      
+      // Обновляем общие счетчики с дебаунсингом
+      debouncedUpdateAllProblemCounters();
+      
+      // Переключаемся на вкладку Issues ТОЛЬКО если это явно запрошено и текущая вкладка не issues
+      if (forceSwitchToIssues && activeTab !== "issues") {
+        setActiveTab("issues");
+      }
+    } catch (e) {
+      console.error("Ошибка при принудительном обновлении проблем:", e);
+    }
+  }, 300);
+  
+  // Заменим предыдущую реализацию handleForceUpdateProblems на новую
+  useEffect(() => {
+    document.addEventListener('force-update-problems', optimizedForceUpdateProblems);
+    
+    return () => {
+      document.removeEventListener('force-update-problems', optimizedForceUpdateProblems);
+    };
+  }, [activeTab]);
 
   // Чтобы обновлять панель проблем при открытии файла с ошибками, 
   // но не переключаться автоматически с терминала на проблемы
@@ -2048,88 +2151,144 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
   
   // Регулярная проверка маркеров для всех файлов
   useEffect(() => {
-    // Функция для проверки маркеров
-    const checkMarkers = () => {
-      if (activeTab === 'issues' && window.monaco && window.monaco.editor) {
+    // Используем улучшенную функцию для проверки маркеров
+    const periodicCheckMarkersForAllFiles = () => {
+      if (window.monaco && window.monaco.editor) {
         try {
-          // Получаем все маркеры
-          const markers = window.monaco.editor.getModelMarkers();
-          if (markers && markers.length > 0) {
-            console.log(`Найдено ${markers.length} маркеров в редакторе`);
-            // Триггерим перерисовку компонента
-            setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
+          // Проверяем только если активна вкладка issues или мы не в режиме активной печати
+          const shouldCheck = activeTab === 'issues' || 
+                             (window.lastActiveFilePath && (Date.now() - (window._lastKeyPressTime || 0) > 2000));
+          
+          if (!shouldCheck) return;
+          
+          // Используем стабильный метод получения маркеров
+          const allModels = window.monaco.editor.getModels();
+          
+          // Подсчитываем ошибки и предупреждения из всех моделей
+          let totalErrors = 0;
+          let totalWarnings = 0;
+          
+          // Проходим по каждой модели отдельно для избежания блокировки UI
+          allModels.forEach((model: any) => {
+            if (model && !model.isDisposed()) {
+              try {
+                // Получаем маркеры для конкретной модели
+                const modelMarkers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+                
+                // Проверяем каждый маркер
+                modelMarkers.forEach((marker: any) => {
+                  if (marker.severity === 1) { // Ошибка
+                    totalErrors++;
+                  } else if (marker.severity === 2) { // Предупреждение
+                    totalWarnings++;
+                  }
+                });
+                
+                // Если это активный файл и у него есть ошибки, обновляем иконку
+                if (window.lastActiveFilePath && model.uri.toString().includes(window.lastActiveFilePath)) {
+                  const modelErrors = modelMarkers.filter((m: any) => m.severity === 1).length;
+                  const modelWarnings = modelMarkers.filter((m: any) => m.severity === 2).length;
+                  
+                  if (modelErrors > 0 || modelWarnings > 0) {
+                    updateFileIcon(window.lastActiveFilePath, modelErrors > 0 ? 'error' : 'warning');
+                  }
+                }
+              } catch (e) {
+                // Игнорируем ошибки для одиночной модели
+              }
+            }
+          });
+          
+          // Проверяем, нужно ли обновлять счетчики
+          if (totalErrors !== errorCount || totalWarnings !== warningCount) {
+            stableUpdateCounters(totalErrors, totalWarnings);
           }
         } catch (error) {
-          console.error('Ошибка при проверке маркеров:', error);
+          console.error('Ошибка при периодической проверке маркеров:', error);
         }
       }
     };
     
     // Проверяем маркеры каждые 2 секунды
-    const intervalId = setInterval(checkMarkers, 2000);
+    const intervalId = setInterval(periodicCheckMarkersForAllFiles, 2000);
     
     return () => {
       clearInterval(intervalId);
     };
-  }, [activeTab]);
+  }, [activeTab, errorCount, warningCount]);
 
-  // Исправляем обработчик события refresh-problems-panel
+  // Исправляем обработчик события refresh-problems-panel для использования улучшенной функции
   useEffect(() => {
     const handleRefreshProblemsPanel = (event: Event) => {
       logProblemMessage('Получено событие refresh-problems-panel');
       
-      // Принудительно получаем все маркеры из Monaco
-      const collectAllMarkers = () => {
-      if (!window.monaco || !window.monaco.editor) return;
+      // Принудительно получаем все маркеры из Monaco безопасным способом
+      const safeCollectAllMarkers = () => {
+        if (!window.monaco || !window.monaco.editor) return;
         
         try {
-          // Получаем все маркеры из Monaco
-          const allMarkers = window.monaco.editor.getModelMarkers();
-          logProblemMessage(`Получено ${allMarkers.length} маркеров из Monaco`);
+          // Безопасно получаем все модели
+          const allModels = window.monaco.editor.getModels();
+          let allMarkers: any[] = [];
           
-          // Группируем маркеры по URI
-          const markersMap = new Map<string, any[]>();
-          allMarkers.forEach((marker: any) => {
-            if (marker && marker.resource) {
-              const uri = marker.resource.toString();
-              if (!markersMap.has(uri)) {
-                markersMap.set(uri, []);
+          // Проходим по каждой модели отдельно
+          allModels.forEach((model: any) => {
+            if (model && !model.isDisposed()) {
+              try {
+                // Получаем маркеры для конкретной модели
+                const modelMarkers = window.monaco.editor.getModelMarkers({ resource: model.uri });
+                allMarkers = allMarkers.concat(modelMarkers);
+                
+                // Группируем маркеры по URI для хранения в глобальном объекте
+                const uri = model.uri.toString();
+                
+                // Безопасно обновляем lastKnownMarkers
+                if (!window.lastKnownMarkers) {
+                  window.lastKnownMarkers = {};
+                }
+                
+                window.lastKnownMarkers[uri] = modelMarkers;
+              } catch (e) {
+                // Игнорируем ошибки для одиночной модели
               }
-              markersMap.get(uri)?.push(marker);
             }
           });
           
-          // Обновляем lastKnownMarkers
-          if (!window.lastKnownMarkers) {
-            window.lastKnownMarkers = {};
+          logProblemMessage(`Безопасно получено ${allMarkers.length} маркеров из Monaco`);
+          
+          // Обновляем счетчики ошибок/предупреждений только если есть маркеры
+          if (allMarkers.length > 0) {
+            // Считаем количество ошибок и предупреждений
+            const errors = allMarkers.filter((m: any) => m.severity === 1).length;
+            const warnings = allMarkers.filter((m: any) => m.severity === 2).length;
+            
+            // Обновляем глобальные переменные
+            window._latestErrorCount = errors;
+            window._latestWarningCount = warnings;
+            
+            // Обновляем состояние только если значения изменились
+            if (errors !== errorCount || warnings !== warningCount) {
+              // Используем отложенное обновление для предотвращения тряски интерфейса
+              setTimeout(() => {
+                setErrorCount(errors);
+                setWarningCount(warnings);
+                // Легкое обновление фильтра для инициирования перерисовки
+                setFilterSeverity(prev => prev);
+              }, 100);
+            }
           }
           
-          // Записываем маркеры в глобальное хранилище
-          markersMap.forEach((markers, uri) => {
-            window.lastKnownMarkers[uri] = markers;
-          });
-          
-          // Обновляем счетчики ошибок/предупреждений
-          const { errors, warnings } = updateErrorCounters();
-          window._latestErrorCount = errors;
-          window._latestWarningCount = warnings;
-          
-          // Триггерим обновление состояния через setTimeout
-          setTimeout(() => {
-          setFilterSeverity(prev => prev === 'all' ? 'error' : 'all');
-          }, 100);
-          
           return allMarkers.some((m: any) => m.severity === 1);
-      } catch (error) {
-          console.error('Ошибка при получении маркеров:', error);
+        } catch (error) {
+          console.error('Ошибка при безопасном получении маркеров:', error);
           return false;
-      }
-    };
-    
-      // Запускаем сбор маркеров
-      collectAllMarkers();
-    
-      // Если активна вкладка проблем, обновляем её содержимое
+        }
+      };
+      
+      // Запускаем безопасный сбор маркеров
+      safeCollectAllMarkers();
+      
+      // Если активна вкладка проблем, обновляем её содержимое принудительно
       if (activeTab === 'issues') {
         // Принудительно обновляем маркеры через глобальную функцию
         if (window.forceDiagnosticsRefresh) {
@@ -2143,7 +2302,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
     return () => {
       document.removeEventListener('refresh-problems-panel', handleRefreshProblemsPanel);
     };
-  }, [activeTab]);
+  }, [activeTab, errorCount, warningCount]);
 
   // Исправляем функцию handleTabClick
   const handleTabClick = (tab: "issues" | "terminal") => {
@@ -2233,7 +2392,7 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       
       // Если и это не сработало, вернуть весь URI
       return lastPart || uri;
-    } catch (error) {
+      } catch (error) {
       console.error('Ошибка при получении имени файла из URI:', error);
       return uri;
     }
@@ -2284,6 +2443,981 @@ const Terminal: React.FC<XTermTerminalProps> = (props) => {
       document.removeEventListener('show-problems-tab', handleShowProblemsTab);
     };
   }, [activeTab]); // Добавляем activeTab в зависимости
+
+  // Обновляем handleMarkerEvent для использования улучшенной функции
+  const handleMarkerEvent = (event: Event) => {
+    // Используем смещенный timeout для предотвращения конфликтов с другими обработчиками
+    setTimeout(() => {
+      if (window.lastActiveFilePath) {
+        // Используем оптимизированную функцию для проверки файла
+        improvedCheckSingleFile(window.lastActiveFilePath);
+      }
+      // Обновляем глобальные счетчики только при необходимости
+      debouncedUpdateErrorCounters();
+    }, 100);
+  };
+
+  // Обновляем handleForcePushProblem для использования улучшенной функции
+  const handleForcePushProblem = (event: Event) => {
+    // Используем смещенный timeout для предотвращения конфликтов с другими обработчиками
+    setTimeout(() => {
+      const customEvent = event as CustomEvent;
+      
+      if (customEvent.detail && customEvent.detail.filePath) {
+        // Используем оптимизированную функцию для проверки файла
+        improvedCheckSingleFile(customEvent.detail.filePath);
+      } else if (window.lastActiveFilePath) {
+        // Если нет конкретного файла, проверяем активный
+        improvedCheckSingleFile(window.lastActiveFilePath);
+      }
+      
+      // Обновляем глобальные счетчики только при необходимости
+      debouncedUpdateErrorCounters();
+    }, 100);
+  };
+
+  // Добавляем отслеживание времени последнего нажатия клавиши 
+  // для оптимизации проверки маркеров во время активного ввода
+  useEffect(() => {
+    const handleKeyDown = () => {
+      // Обновляем время последнего нажатия клавиши
+      window._lastKeyPressTime = Date.now();
+    };
+    
+    // Добавляем обработчик нажатия клавиш
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Добавляем обработчик событий изменения модели, чтобы отследить активную печать
+  useEffect(() => {
+    // Используем единый флаг вместо постоянного обновления времени
+    let isEditingNow = false;
+    let editingTimer: ReturnType<typeof setTimeout> | null = null;
+    
+    const handleModelContentChanged = (model: any) => {
+      if (!model) return;
+      
+      try {
+        const uri = model.uri.toString();
+        const filePath = uri.replace(/^file:\/\/\//, '');
+        
+        // Добавляем обработчик изменения контента модели
+        if (!model._contentChangedHandlerAdded) {
+          model._contentChangedHandlerAdded = true;
+          
+          model.onDidChangeContent((event: any) => {
+            // Устанавливаем флаг редактирования и запускаем таймер
+            window._isCurrentlyEditing = true;
+            logProblems(`Модель изменена: ${filePath}`);
+            
+            // Немедленно очищаем маркеры для измененной области
+            clearMarkersForChangedContent(model, event.changes);
+            
+            // Сбрасываем таймер редактирования
+            if (window._editingTimer) {
+              clearTimeout(window._editingTimer);
+            }
+            
+            // Устанавливаем таймер для сброса флага редактирования
+            window._editingTimer = setTimeout(() => {
+              window._isCurrentlyEditing = false;
+              logProblems(`Редактирование завершено: ${filePath}`);
+              
+              // Проверяем маркеры для текущего файла
+              checkSingleFile(filePath);
+              
+              // Обновляем панель проблем
+              setTimeout(() => {
+                forceUpdateProblemsDisplay();
+                setIssuesUpdated(prev => prev + 1);
+              }, 300);
+            }, 1000);
+          });
+        }
+      } catch (e) {
+        console.error('Ошибка в handleModelContentChanged:', e);
+      }
+    };
+    
+      if (window.monaco && window.monaco.editor) {
+      try {
+        // Подписываемся только на события активной модели вместо всех моделей сразу
+        const subscriptions: any[] = [];
+        
+        // Определяем интерфейс для модели Monaco
+        interface IMonacoModel {
+          uri: { toString: () => string };
+          isDisposed: () => boolean;
+          onDidChangeContent: (listener: Function) => { dispose: () => void };
+        }
+        
+        // Слушаем события создания и изменения активной модели
+        const onDidCreateModelSubscription = window.monaco.editor.onDidCreateModel((model: any) => {
+          // Для новой модели добавляем слушатель изменений
+          if (model && typeof model.onDidChangeContent === 'function') {
+            const changeSubscription = model.onDidChangeContent(handleModelContentChanged);
+            subscriptions.push(changeSubscription);
+          }
+        });
+        
+        // Изначально добавляем слушатели к существующим моделям
+        window.monaco.editor.getModels().forEach((model: any) => {
+          try {
+            if (model && !model.isDisposed() && typeof model.onDidChangeContent === 'function') {
+              const changeSubscription = model.onDidChangeContent(handleModelContentChanged);
+              subscriptions.push(changeSubscription);
+            }
+          } catch (e) {
+            // Игнорируем ошибки для отдельных моделей
+          }
+        });
+        
+        subscriptions.push(onDidCreateModelSubscription);
+        
+        return () => {
+          // При размонтировании компонента отписываемся от всех событий
+          subscriptions.forEach(sub => {
+            try {
+              if (sub && typeof sub.dispose === 'function') {
+                sub.dispose();
+            }
+          } catch (e) {
+              // Игнорируем ошибки при очистке
+            }
+          });
+          
+          // Очищаем таймер
+          if (editingTimer) {
+            clearTimeout(editingTimer);
+          }
+        };
+      } catch (e) {
+        console.error('Ошибка при подписке на события Monaco:', e);
+      }
+    }
+  }, []);
+  
+  // Оптимизируем функцию периодической проверки маркеров
+  useEffect(() => {
+    // Значительно улучшенная функция для проверки маркеров
+    const periodicCheckMarkersForAllFiles = debounce(() => {
+      // Пропускаем проверку во время активного редактирования
+      if (window._isCurrentlyEditing === true) {
+        return;
+      }
+      
+      if (window.monaco && window.monaco.editor) {
+        try {
+          // Проверяем только если активна вкладка issues или прошло достаточно времени с момента последнего ввода
+          const shouldCheck = activeTab === 'issues' || 
+                            (window.lastActiveFilePath && (Date.now() - (window._lastKeyPressTime || 0) > 3000));
+          
+          if (!shouldCheck) return;
+          
+          // Проверяем только активную модель вместо всех моделей
+          if (window.lastActiveFilePath) {
+            const activeModelUri = window.monaco.Uri.file(window.lastActiveFilePath);
+            const activeModel = window.monaco.editor.getModel(activeModelUri);
+            
+            if (activeModel && !activeModel.isDisposed()) {
+              try {
+                // Получаем маркеры только для активной модели
+                const modelMarkers = window.monaco.editor.getModelMarkers({ resource: activeModel.uri });
+                
+                // Обновляем счетчики только при реальных изменениях
+                const modelErrors = modelMarkers.filter((m: any) => m.severity === 1).length;
+                const modelWarnings = modelMarkers.filter((m: any) => m.severity === 2).length;
+                
+                if (modelErrors !== window._errorsInCurrentFile || 
+                    modelWarnings !== window._warningsInCurrentFile) {
+                  // Обновляем глобальные счетчики
+                  window._errorsInCurrentFile = modelErrors;
+                  window._warningsInCurrentFile = modelWarnings;
+                  
+                  // Обновляем иконку только при необходимости
+                  if (modelErrors > 0 || modelWarnings > 0) {
+                    updateFileIcon(window.lastActiveFilePath, modelErrors > 0 ? 'error' : 'warning');
+                  }
+                  
+                  // Обновляем общие счетчики только при значительных изменениях
+                  if (activeTab === 'issues') {
+                    // Используем стабильный способ обновления
+                    stableUpdateCounters(modelErrors, modelWarnings);
+                  }
+                }
+              } catch (e) {
+                // Игнорируем ошибки для отдельной модели
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при периодической проверке маркеров:', error);
+        }
+      }
+    }, 1000); // Проверяем только раз в секунду вместо 2 раз
+    
+    // Увеличиваем интервал проверки до 3 секунд для снижения нагрузки
+    const intervalId = setInterval(periodicCheckMarkersForAllFiles, 3000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [activeTab, errorCount, warningCount]);
+
+  // Улучшаем функцию для очистки маркеров при изменении содержимого файла
+  const clearMarkersForFile = (filePath: string) => {
+    if (!filePath || !window.monaco || !window.monaco.editor) return;
+    
+    try {
+      // Получаем URI файла
+      const fileUri = window.monaco.Uri.file(filePath);
+      
+      // Проверяем, есть ли модель для этого файла
+      const model = window.monaco.editor.getModel(fileUri);
+      if (!model) return;
+      
+      // Очищаем маркеры из кэша
+      if (window.errorsCache) {
+        const uriString = fileUri.toString();
+        if (window.errorsCache[uriString]) {
+          delete window.errorsCache[uriString];
+          logProblems(`Очищен кэш ошибок для файла ${filePath}`);
+        }
+      }
+      
+      // Обновляем счетчики и форсируем перерисовку
+      debouncedUpdateAllProblemCounters();
+      setIssuesUpdated(prev => prev + 1);
+    } catch (e) {
+      console.error('Ошибка при очистке маркеров для файла:', e);
+    }
+  };
+
+  // Добавляем подписку на события изменения маркеров в Monaco Editor
+  useEffect(() => {
+    if (window.monaco && window.monaco.editor && typeof window.monaco.editor.onDidChangeMarkers === 'function') {
+      try {
+        // Создаем обработчик события изменения маркеров
+        const handleMarkersChanged = debounce(() => {
+          // Очищаем кэш ошибок для текущего файла
+          if (window.lastActiveFilePath && window.errorsCache) {
+            const fileUri = window.monaco.Uri.file(window.lastActiveFilePath).toString();
+            if (window.errorsCache[fileUri]) {
+              delete window.errorsCache[fileUri];
+              logProblems(`Очищен кэш ошибок для файла ${window.lastActiveFilePath} после изменения маркеров`);
+            }
+          }
+          
+          // Обновляем список проблем
+          forceUpdateProblemsDisplay();
+          
+          // Обновляем счетчики ошибок через дебаунсер
+          debouncedUpdateAllProblemCounters();
+          
+          // Форсируем перерисовку панели проблем
+          setIssuesUpdated(prev => prev + 1);
+        }, 300);
+        
+        // Подписываемся на событие изменения маркеров
+        const disposable = window.monaco.editor.onDidChangeMarkers(handleMarkersChanged);
+        
+        return () => {
+          if (disposable && typeof disposable.dispose === 'function') {
+            disposable.dispose();
+          }
+        };
+      } catch (e) {
+        console.error('Ошибка при подписке на события изменения маркеров:', e);
+      }
+    }
+  }, []);
+
+  // Определяем интерфейс для события изменения модели
+  interface ModelContentChangeEvent {
+    model: {
+      uri: { toString: () => string };
+    };
+  }
+  
+  // Улучшаем обработчик событий изменения модели для активной очистки маркеров
+  useEffect(() => {
+    const clearErrorsOnEdit = debounce((model: any) => {
+      try {
+        if (model && model.uri) {
+          const uri = model.uri.toString();
+          
+          // Определяем путь к файлу
+          let filePath = uri;
+          if (uri.startsWith('file://')) {
+            filePath = uri.replace(/^file:\/\/\//, '');
+          }
+          
+          // Очищаем кэш ошибок для этого файла
+          clearMarkersForFile(filePath);
+          
+          // Если это Python файл, запускаем проверку через 1 секунду
+          // после изменения, чтобы дать время на завершение редактирования
+          if (filePath.endsWith('.py') && window.forcePythonCheck) {
+            setTimeout(() => {
+              if (window.forcePythonCheck) {
+                window.forcePythonCheck(filePath);
+              }
+              
+              // Даем время на обработку и обновляем панель проблем
+              setTimeout(() => {
+                forceUpdateProblemsDisplay();
+                setIssuesUpdated(prev => prev + 1);
+              }, 300);
+            }, 1000);
+          }
+        }
+      } catch (e) {
+        console.error('Ошибка при очистке ошибок для измененной модели:', e);
+      }
+    }, 500);
+    
+    if (window.monaco && window.monaco.editor && typeof window.monaco.editor.onDidChangeModelContent === 'function') {
+      try {
+        // Подписываемся на изменение содержимого всех моделей
+        const disposable = window.monaco.editor.onDidChangeModelContent((event: ModelContentChangeEvent) => {
+          // Получаем модель, которая изменилась
+          const model = event.model;
+          
+          // Запускаем очистку ошибок для этой модели
+          clearErrorsOnEdit(model);
+        });
+        
+        return () => {
+          if (disposable && typeof disposable.dispose === 'function') {
+            disposable.dispose();
+          }
+        };
+      } catch (e) {
+        console.error('Ошибка при подписке на события изменения содержимого моделей:', e);
+      }
+    }
+  }, []);
+
+  // Добавляем функцию для принудительной очистки маркеров
+  const forceMarkersClearForCurrentFile = () => {
+    if (!window.monaco || !window.monaco.editor || !window.lastActiveFilePath) return;
+    
+    try {
+      const fileUri = window.monaco.Uri.file(window.lastActiveFilePath);
+      
+      // Пытаемся очистить маркеры для текущего файла
+      if (typeof window.monaco.editor.setModelMarkers === 'function') {
+        // Очищаем все маркеры для модели (установка пустого массива)
+        window.monaco.editor.setModelMarkers(
+          window.monaco.editor.getModel(fileUri) || null, 
+          'monaco-editor', 
+          []
+        );
+        
+        logProblems(`Принудительно очищены все маркеры для файла ${window.lastActiveFilePath}`);
+      }
+      
+      // Очищаем кэш ошибок для этого файла
+      if (window.errorsCache) {
+        const uriString = fileUri.toString();
+        if (window.errorsCache[uriString]) {
+          delete window.errorsCache[uriString];
+          logProblems(`Очищен кэш ошибок для файла ${window.lastActiveFilePath}`);
+        }
+      }
+      
+      // Обновляем счетчики и форсируем перерисовку
+      updateAllProblemCounters();
+      forceUpdateProblemsDisplay();
+      setIssuesUpdated(prev => prev + 1);
+    } catch (e) {
+      console.error('Ошибка при принудительной очистке маркеров:', e);
+    }
+  };
+  
+  // Улучшаем обработчик события сохранения файла
+  useEffect(() => {
+    const handleFileSaved = (event: Event) => {
+      try {
+        const customEvent = event as CustomEvent;
+        const filePath = customEvent.detail?.filePath;
+        
+        if (filePath) {
+          logProblems(`Файл сохранен: ${filePath}, обновляем проблемы`);
+          
+          // Очищаем предыдущие ошибки для этого файла
+          clearMarkersForFile(filePath);
+          
+          // Запускаем проверку для Python файлов
+          if (filePath.endsWith('.py') && window.forcePythonCheck) {
+            setTimeout(() => {
+              if (window.forcePythonCheck) {
+                window.forcePythonCheck(filePath);
+                
+                // После проверки принудительно обновляем панель проблем
+                setTimeout(() => {
+                  forceUpdateProblemsDisplay();
+                  setIssuesUpdated(prev => prev + 1);
+                }, 300);
+              }
+            }, 300);
+          } else {
+            // Для других файлов просто обновляем панель
+            setTimeout(() => {
+              forceUpdateProblemsDisplay();
+              setIssuesUpdated(prev => prev + 1);
+            }, 300);
+          }
+        }
+      } catch (e) {
+        console.error('Ошибка при обработке события сохранения файла:', e);
+      }
+    };
+    
+    // Подписываемся на событие сохранения файла
+    document.addEventListener('file-saved', handleFileSaved);
+    
+    return () => {
+      document.removeEventListener('file-saved', handleFileSaved);
+    };
+  }, []);
+
+  // Добавляем обработчик события принудительной очистки ошибок
+  useEffect(() => {
+    const handleClearErrors = () => {
+      forceMarkersClearForCurrentFile();
+    };
+    
+    // Подписываемся на событие очистки ошибок
+    document.addEventListener('clear-file-errors', handleClearErrors);
+    
+    return () => {
+      document.removeEventListener('clear-file-errors', handleClearErrors);
+    };
+  }, []);
+
+  // Функция очистки маркеров для измененного контента
+  const clearMarkersForChangedContent = (model: any, changes: any[]) => {
+    if (!model || !changes || !changes.length || !window.monaco) return;
+    
+    try {
+      // Получаем текущие маркеры для модели
+      const currentMarkers = window.monaco.editor.getModelMarkers({
+        resource: model.uri
+      });
+      
+      if (!currentMarkers || currentMarkers.length === 0) return;
+      
+      // Добавляем интерфейс для маркера
+      interface MonacoMarker {
+        startLineNumber: number;
+        endLineNumber: number;
+        startColumn: number;
+        endColumn: number;
+        severity: number;
+        message: string;
+        source?: string;
+        code?: string;
+      }
+      
+      // Проверяем для каждого изменения, какие маркеры затронуты
+      const markersToKeep = currentMarkers.filter((marker: MonacoMarker) => {
+        // Проверяем, находится ли маркер в измененной области
+        for (const change of changes) {
+          // Получаем диапазон измененного текста
+          const startLineNumber = change.range.startLineNumber;
+          const endLineNumber = change.range.endLineNumber;
+          
+          // Если маркер находится в диапазоне изменений, удаляем его
+          if (marker.startLineNumber >= startLineNumber && 
+              marker.endLineNumber <= endLineNumber) {
+            return false;
+          }
+        }
+        return true;
+      });
+      
+      // Если некоторые маркеры были удалены, обновляем модель
+      if (markersToKeep.length < currentMarkers.length) {
+        // Очищаем все маркеры
+        window.monaco.editor.setModelMarkers(model, 'monaco-editor', []);
+        
+        // Устанавливаем только те маркеры, которые не затронуты изменениями
+        if (markersToKeep.length > 0) {
+          window.monaco.editor.setModelMarkers(model, 'monaco-editor', markersToKeep);
+        }
+        
+        // Обновляем кэш ошибок
+        if (window.errorsCache) {
+          const uriString = model.uri.toString();
+          if (window.errorsCache[uriString]) {
+            window.errorsCache[uriString] = markersToKeep;
+          }
+        }
+        
+        updateAllProblemCounters();
+      }
+    } catch (e) {
+      console.error('Ошибка в clearMarkersForChangedContent:', e);
+    }
+  };
+
+  // Добавляем новую функцию для проверки одного файла
+  const checkSingleFile = (filePath: string) => {
+    if (!filePath) return;
+    
+    try {
+      // Если это Python файл, используем специальную проверку
+      if (filePath.endsWith('.py') && window.forcePythonCheck) {
+        window.forcePythonCheck(filePath);
+      }
+      
+      // Получаем URI файла 
+      if (window.monaco) {
+        const uri = window.monaco.Uri.file(filePath);
+        
+        // Проверяем наличие модели
+        const model = window.monaco.editor.getModel(uri);
+        if (model) {
+          // Вызываем проверку с правильным количеством аргументов
+          improvedCheckSingleFile(filePath);
+        }
+      }
+    } catch (e) {
+      console.error(`Ошибка при проверке маркеров для файла ${filePath}:`, e);
+    }
+  };
+
+  // Добавим специальную функцию для очистки JSON-ошибок
+  const clearJsonErrorsForFile = (filePath: string) => {
+    if (!filePath || !filePath.toLowerCase().endsWith('.json') || !window.monaco || !window.monaco.editor) return;
+
+    try {
+      // Получаем URI файла
+      const fileUri = window.monaco.Uri.file(filePath);
+      
+      // Получаем модель для этого файла
+      const model = window.monaco.editor.getModel(fileUri);
+      if (!model) return;
+      
+      // Очищаем маркеры для JSON-модели
+      window.monaco.editor.setModelMarkers(model, 'json', []);
+      
+      // Очищаем запись в кэше ошибок
+      if (window.errorsCache) {
+        const uriString = fileUri.toString();
+        if (window.errorsCache[uriString]) {
+          delete window.errorsCache[uriString];
+          logProblems(`Очищены JSON-ошибки для файла ${filePath}`);
+        }
+      }
+      
+      // Проверяем, валиден ли JSON после правок
+      try {
+        const content = model.getValue();
+        if (content.trim()) {
+          JSON.parse(content);
+          logProblems(`JSON файл ${filePath} валиден после правок`);
+        }
+      } catch (error: any) {
+        // Если JSON невалиден, создаем понятное сообщение об ошибке
+        const errorMessage = error && typeof error.message === 'string' ? error.message : 'Неизвестная ошибка';
+        logProblems(`JSON файл ${filePath} остаётся невалидным: ${errorMessage}`);
+      }
+      
+      // Обновляем счетчики ошибок и предупреждений
+      debouncedUpdateAllProblemCounters();
+      setIssuesUpdated(prev => prev + 1);
+    } catch (e) {
+      console.error('Ошибка при очистке JSON ошибок для файла:', e);
+    }
+  };
+
+  // Улучшаем обработчик события изменения модели
+  useEffect(() => {
+    // Определяем тип для события изменения модели
+    interface JsonModelContentChangeEvent {
+      model: MonacoModel;
+    }
+
+    const handleModelContentChange = (event: JsonModelContentChangeEvent) => {
+      const model = event.model;
+      if (!model) return;
+      
+      try {
+        const uri = model.uri.toString();
+        
+        // Проверяем, является ли файл JSON-файлом
+        if (uri.toLowerCase().endsWith('.json')) {
+          // Для JSON файлов используем специальную функцию очистки
+          let filePath = uri;
+          if (uri.startsWith('file://')) {
+            filePath = uri.replace(/^file:\/\/\//, '');
+          }
+          
+          // Очищаем текущие ошибки JSON
+          clearJsonErrorsForFile(filePath);
+          
+          // Добавляем таймер для проверки валидности JSON после завершения редактирования
+          setTimeout(() => {
+            try {
+              const content = model.getValue();
+              if (content.trim()) {
+                try {
+                  // Пытаемся распарсить JSON
+                  JSON.parse(content);
+                  // Если успешно, очищаем маркеры
+                  window.monaco.editor.setModelMarkers(model, 'json', []);
+                } catch (error: any) {
+                  // Если невалидно, добавляем улучшенный маркер ошибки
+                  const errorMessage = typeof error.message === 'string' 
+                    ? error.message
+                        .replace('Expected', 'Ожидается')
+                        .replace('Unexpected', 'Неожиданный символ')
+                        .replace('comma', 'запятая')
+                        .replace('colon', 'двоеточие')
+                        .replace('property name', 'имя свойства')
+                        .replace('value', 'значение')
+                        .replace('string', 'строка')
+                        .replace('number', 'число')
+                        .replace('end of file', 'конец файла')
+                    : 'Ошибка в синтаксисе JSON';
+                  
+                  // Создаем понятный маркер ошибки
+                  const position = getJsonErrorPosition(content, error);
+                  
+                  const marker = {
+                    severity: 1, // error
+                    message: `Ошибка JSON: ${errorMessage}`,
+                    startLineNumber: position.line,
+                    startColumn: position.column,
+                    endLineNumber: position.line,
+                    endColumn: position.column + 1,
+                    source: 'json-validator'
+                  };
+                  
+                  window.monaco.editor.setModelMarkers(model, 'json', [marker]);
+                }
+              }
+            } catch (e) {
+              console.error('Ошибка при валидации JSON:', e);
+            }
+          }, 500);
+        }
+      } catch (e) {
+        console.error('Ошибка при обработке изменения JSON модели:', e);
+      }
+    };
+    
+    // Подписываемся на изменение содержимого JSON-моделей
+    if (window.monaco && window.monaco.editor) {
+      try {
+        // Получаем все JSON-модели
+        const jsonModels = window.monaco.editor.getModels().filter(
+          (model: any) => model.uri && model.uri.toString().toLowerCase().endsWith('.json')
+        );
+        
+        // Добавляем обработчики изменений для всех JSON-моделей
+        jsonModels.forEach((model: any) => {
+          if (!model._jsonContentHandlerAdded && typeof model.onDidChangeContent === 'function') {
+            model._jsonContentHandlerAdded = true;
+            model.onDidChangeContent(() => handleModelContentChange({ model }));
+          }
+        });
+        
+        // Добавляем обработчик для новых моделей
+        const disposable = window.monaco.editor.onDidCreateModel((model: any) => {
+          if (model.uri && model.uri.toString().toLowerCase().endsWith('.json') && 
+              !model._jsonContentHandlerAdded && typeof model.onDidChangeContent === 'function') {
+            model._jsonContentHandlerAdded = true;
+            model.onDidChangeContent(() => handleModelContentChange({ model }));
+          }
+        });
+        
+        return () => {
+          if (disposable && typeof disposable.dispose === 'function') {
+            disposable.dispose();
+          }
+        };
+      } catch (e) {
+        console.error('Ошибка при подписке на события JSON-моделей:', e);
+      }
+    }
+  }, []);
+
+  // Функция для определения позиции ошибки в JSON файле
+  const getJsonErrorPosition = (content: string, error: any): { line: number, column: number } => {
+    try {
+      // Если это не объект ошибки или у него нет сообщения, используем первую строку
+      if (!error || typeof error.message !== 'string') {
+        return { line: 1, column: 1 };
+      }
+
+      // Пытаемся извлечь информацию о позиции из сообщения об ошибке
+      const positionMatch = error.message.match(/at position (\d+)/);
+      if (positionMatch && positionMatch[1]) {
+        const position = parseInt(positionMatch[1], 10);
+        
+        // Определяем номер строки и столбца по позиции
+        const lines = content.substring(0, position).split('\n');
+        const line = lines.length;
+        const column = lines[lines.length - 1].length + 1;
+        
+        return { line, column };
+      }
+      
+      // Альтернативный способ - поиск строки с ошибкой
+      const lineMatch = error.message.match(/at line (\d+) column (\d+)/);
+      if (lineMatch && lineMatch[1] && lineMatch[2]) {
+        return {
+          line: parseInt(lineMatch[1], 10),
+          column: parseInt(lineMatch[2], 10)
+        };
+      }
+      
+      // Если не удалось определить позицию, возвращаем первую строку
+      return { line: 1, column: 1 };
+    } catch (e) {
+      console.error('Ошибка при определении позиции JSON ошибки:', e);
+      return { line: 1, column: 1 };
+    }
+  };
+
+  // Улучшенная функция для принудительного удаления маркеров у файла при изменении его содержимого
+  const forceClearMarkersOnEdit = (filePath: string) => {
+    if (!filePath || !window.monaco || !window.monaco.editor) return;
+    
+    try {
+      // Получаем URI файла
+      const fileUri = window.monaco.Uri.file(filePath);
+      
+      // Удаляем все маркеры для этого файла
+      window.monaco.editor.setModelMarkers(
+        window.monaco.editor.getModel(fileUri) || null,
+        'monaco-editor',
+        [] // Пустой массив маркеров
+      );
+      
+      // Очищаем кэш ошибок для этого файла
+      if (window.errorsCache && fileUri) {
+        const uriString = fileUri.toString();
+        if (window.errorsCache[uriString]) {
+          delete window.errorsCache[uriString];
+          logProblems(`Принудительно очищен кэш ошибок для файла ${filePath}`);
+        }
+      }
+      
+      // Помечаем файл как измененный, чтобы обновить его статус
+      if (window.openedFiles && !window.openedFiles.has(filePath)) {
+        window.openedFiles.add(filePath);
+      }
+      
+      // Обновляем панель проблем
+      debouncedUpdateAllProblemCounters();
+      setIssuesUpdated(prev => prev + 1);
+    } catch (e) {
+      console.error('Ошибка при принудительной очистке маркеров:', e);
+    }
+  };
+
+  // Оптимизированная функция для обработки изменения содержимого модели
+  const handleModelContentChanged = debounce((model: any) => {
+          if (!model || model.isDisposed()) return;
+          
+    try {
+      // Получаем URI модели и путь к файлу
+          const uri = model.uri.toString();
+      let filePath = uri;
+      if (uri.startsWith('file://')) {
+        filePath = uri.replace(/^file:\/\/\//, '');
+      }
+      
+      // Устанавливаем флаг редактирования
+      window._isCurrentlyEditing = true;
+      window._lastKeyPressTime = Date.now();
+      
+      // Сначала принудительно очищаем все маркеры для модели
+      window.monaco.editor.setModelMarkers(model, 'monaco-editor', []);
+      
+      // Очищаем кэш ошибок для изменённого файла
+      if (window.errorsCache) {
+        if (window.errorsCache[uri]) {
+          delete window.errorsCache[uri];
+          logProblems(`Очищен кэш ошибок для файла ${filePath}`);
+        }
+        // Также проверяем альтернативный URI (c file://)
+        const alternativeUri = uri.startsWith('file://') ? 
+          uri.replace(/^file:\/\/\//, '') : 
+          `file:///${uri}`;
+        if (window.errorsCache[alternativeUri]) {
+          delete window.errorsCache[alternativeUri];
+        }
+      }
+      
+      // Немедленно очищаем счетчики ошибок
+      const totalErrors = 0;
+      const totalWarnings = 0;
+      
+      // Обновляем глобальные переменные
+      window._errorsInCurrentFile = 0;
+      window._warningsInCurrentFile = 0;
+      window._latestErrorCount = totalErrors;
+      window._latestWarningCount = totalWarnings;
+      
+      // Обновляем общие счетчики ошибок
+      setErrorCount(totalErrors);
+      setWarningCount(totalWarnings);
+      
+      // Сбрасываем флаг редактирования через 2 секунды
+      if (window._editingTimer) {
+        clearTimeout(window._editingTimer);
+      }
+      
+      window._editingTimer = setTimeout(() => {
+        window._isCurrentlyEditing = false;
+        
+        // После завершения редактирования выполняем проверку маркеров
+        setTimeout(() => {
+          if (filePath) {
+            // Проверяем, есть ли ошибки после редактирования
+            checkSingleFile(filePath);
+            
+            // Для Python-файлов выполняем дополнительную проверку
+            if (filePath.endsWith('.py') && window.forcePythonCheck) {
+              window.forcePythonCheck(filePath);
+            }
+            
+            // Принудительно обновляем панель проблем
+            setTimeout(() => {
+              forceUpdateProblemsDisplay();
+              setIssuesUpdated(prev => prev + 1);
+            }, 300);
+          }
+        }, 500);
+      }, 2000);
+      
+    } catch (e) {
+      console.error('Ошибка при обработке изменения содержимого:', e);
+    }
+  }, 100);
+
+  // Улучшенная функция проверки маркеров для отдельного файла
+  const enhancedCheckSingleFile = (filePath: string) => {
+    if (!filePath) return;
+    
+    try {
+      if (window.monaco && window.monaco.editor) {
+        const fileUri = window.monaco.Uri.file(filePath);
+        
+        // Сначала принудительно очищаем маркеры для измененного файла
+        const model = window.monaco.editor.getModel(fileUri);
+        if (model) {
+          // Проверяем, существуют ли еще маркеры для этого файла
+          const markers = window.monaco.editor.getModelMarkers({ resource: fileUri });
+          if (markers && markers.length > 0) {
+            // Если содержимое файла изменилось, очищаем устаревшие маркеры
+            if (window._isCurrentlyEditing) {
+              window.monaco.editor.setModelMarkers(model, 'monaco-editor', []);
+              
+              // Очищаем кэш ошибок для этого файла
+              if (window.errorsCache) {
+                const uriString = fileUri.toString();
+                if (window.errorsCache[uriString]) {
+                  delete window.errorsCache[uriString];
+                }
+              }
+              
+              // Немедленно обновляем счетчики
+              updateErrorCounters();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Ошибка при проверке маркеров для файла:', e);
+    }
+  };
+
+  // Добавляем обработку события изменения для всех моделей
+  useEffect(() => {
+    if (window.monaco && window.monaco.editor) {
+      try {
+        // Подписываемся на событие изменения содержимого модели
+        const disposable = window.monaco.editor.onDidChangeModelContent((event: any) => {
+          if (!event || !event.model) return;
+          
+          // Получаем модель, для которой произошло изменение
+          const model = event.model;
+          
+          // Запускаем оптимизированную функцию для обработки изменения
+          handleModelContentChanged(model);
+        });
+        
+        // Подписываемся на событие создания новой модели
+        const createDisposable = window.monaco.editor.onDidCreateModel((model: any) => {
+          if (!model) return;
+          
+          // Добавляем слушатель изменений для новой модели
+          model.onDidChangeContent(() => {
+            handleModelContentChanged(model);
+          });
+        });
+        
+        // Изначально подписываем все существующие модели
+        window.monaco.editor.getModels().forEach((model: any) => {
+          if (model && !model._contentChangeHandlerAdded) {
+            model._contentChangeHandlerAdded = true;
+            model.onDidChangeContent(() => {
+              handleModelContentChanged(model);
+            });
+          }
+        });
+        
+        return () => {
+          // Очищаем слушатели при размонтировании компонента
+          if (disposable && disposable.dispose) {
+            disposable.dispose();
+          }
+          if (createDisposable && createDisposable.dispose) {
+            createDisposable.dispose();
+          }
+        };
+      } catch (e) {
+        console.error('Ошибка при подписке на события изменения содержимого:', e);
+      }
+    }
+  }, []);
+
+  // Добавляем глобальную функцию для принудительной очистки маркеров
+  useEffect(() => {
+    // Регистрируем глобальную функцию для очистки маркеров
+    if (typeof window !== 'undefined') {
+      window.clearFileMarkers = (filePath: string) => {
+        forceClearMarkersOnEdit(filePath);
+      };
+      
+      // Добавляем обработчик события принудительной очистки маркеров
+      const handleForceClearMarkers = (event: CustomEvent) => {
+        const filePath = event.detail?.filePath;
+        if (filePath) {
+          forceClearMarkersOnEdit(filePath);
+        } else if (window.lastActiveFilePath) {
+          forceClearMarkersOnEdit(window.lastActiveFilePath);
+        }
+      };
+      
+      // Регистрируем обработчик события
+      document.addEventListener('force-clear-markers', handleForceClearMarkers as EventListener);
+      
+    return () => {
+        document.removeEventListener('force-clear-markers', handleForceClearMarkers as EventListener);
+    };
+    }
+  }, []);
 
   return (
     <div className="terminal-container" style={{ height: terminalHeight || 200 }}>

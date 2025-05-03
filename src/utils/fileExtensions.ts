@@ -182,7 +182,7 @@ export const supportedTextExtensions = [
 ];
 
 export const supportedImageExtensions = [
-  '.png', '.jpg', '.jpeg', '.gif'
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif'
 ];
 
 export const supportedVideoExtensions = [

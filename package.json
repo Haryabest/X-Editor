@@ -38,6 +38,7 @@
     "react-player": "^2.16.0",
     "react-router-dom": "^7.4.1",
     "react-sortablejs": "^6.1.4",
+    "react-zoom-pan-pinch": "^3.7.0",
     "simple-icons": "^14.10.0",
     "sortablejs": "^1.15.6",
     "video.js": "^8.22.0",
