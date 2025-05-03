@@ -21,6 +21,7 @@ const HtmlPreview: React.FC<HtmlPreviewProps> = ({
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
   const [url, setUrl] = useState(`http://localhost/${filename.split(/[/\\]/).pop()}`);
   const [processedHtml, setProcessedHtml] = useState<string>(htmlContent);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
   
   // Helper function to normalize file paths
   const normalizePath = (path: string): string => {
@@ -34,251 +35,224 @@ const HtmlPreview: React.FC<HtmlPreviewProps> = ({
     return lastSlashIndex !== -1 ? normalizedPath.substring(0, lastSlashIndex) : '';
   };
   
-  // Helper function to resolve a CSS path relative to the HTML file
-  const resolveCssPath = (cssPath: string, htmlFilePath: string): string => {
-    const htmlDir = getDirectoryFromPath(htmlFilePath);
-    
-    // If the CSS path is relative (doesn't start with / or http)
-    if (!cssPath.startsWith('/') && !cssPath.startsWith('http')) {
-      // Join the HTML directory with the CSS path
-      return normalizePath(`${htmlDir}/${cssPath}`);
-    } else if (cssPath.startsWith('/')) {
-      // For paths starting with /, make them relative to the project root
-      return cssPath.substring(1);
-    }
-    
-    // For http URLs, return as-is
-    return cssPath;
-  };
-  
-  // Функция для обработки содержимого HTML и встраивания внешних CSS
-  const processHtmlContent = async (content: string) => {
+  // Создает виртуальный HTML файл для предпросмотра
+  const createVirtualHtmlFile = async () => {
     try {
       setIsLoading(true);
+      console.log('Creating virtual HTML file for preview...');
       
-      // Получаем короткое имя файла для отображения
-      const shortFilename = filename.split(/[/\\]/).pop() || 'preview.html';
-      console.log(`Processing HTML content for file: ${filename}`);
+      // Получаем директорию исходного файла для правильных относительных путей
+      const fileDir = getDirectoryFromPath(filename);
+      console.log(`File directory: ${fileDir}`);
       
-      // Извлекаем ссылки на CSS файлы
-      const cssLinkRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/g;
-      let match;
-      let processedContent = content;
+      // Создаем HTML контент с базовым тегом для правильного разрешения относительных путей
+      const enhancedHtml = await processHtmlContent(htmlContent);
       
-      // Создаем массив промисов для загрузки CSS
-      const cssPromises = [];
-      const cssLinks = [];
+      // Создаем data URL для предпросмотра
+      const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(enhancedHtml)}`;
+      console.log(`Created data URL for HTML preview, length: ${dataUrl.length}`);
       
-      while ((match = cssLinkRegex.exec(content)) !== null) {
-        const cssPath = match[1];
-        cssLinks.push(match[0]); // Сохраняем полный тег link
-        
-        // Получаем полный путь к CSS файлу
-        const fullCssPath = resolveCssPath(cssPath, filename);
-        console.log(`CSS file detected: ${cssPath} -> resolved to: ${fullCssPath}`);
-        
-        // Создаем промис для загрузки файла CSS
-        const cssPromise = invoke('read_text_file', { 
-          path: fullCssPath 
-        }).then((cssContent: unknown) => {
-          console.log(`Successfully loaded CSS file: ${fullCssPath}`);
-          return { path: cssPath, content: cssContent as string };
-        }).catch(error => {
-          console.error(`Ошибка загрузки CSS файла ${fullCssPath}:`, error);
-          
-          // Пытаемся с абсолютным путем из директории HTML
-          const htmlDir = getDirectoryFromPath(filename);
-          const absoluteCssPath = normalizePath(`${htmlDir}/${cssPath.split(/[/\\]/).pop()}`);
-          console.log(`Trying absolute CSS path: ${absoluteCssPath}`);
-          
-          return invoke('read_text_file', { path: absoluteCssPath })
-            .then((cssContent: unknown) => {
-              console.log(`Successfully loaded CSS from absolute path: ${absoluteCssPath}`);
-              return { path: cssPath, content: cssContent as string };
-            })
-            .catch(altError => {
-              console.error(`Also failed with absolute path: ${absoluteCssPath}`, altError);
-              return { path: cssPath, content: '' };
-            });
-        });
-        
-        cssPromises.push(cssPromise);
-      }
+      // Устанавливаем URL для iframe
+      setUrl(dataUrl);
       
-      // Извлекаем ссылки на JavaScript файлы
-      const jsScriptRegex = /<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/g;
-      const jsPromises = [];
-      const jsScripts = [];
-      
-      while ((match = jsScriptRegex.exec(content)) !== null) {
-        const jsPath = match[1];
-        jsScripts.push(match[0]); // Сохраняем полный тег script
-        
-        // Получаем полный путь к JS файлу (аналогично CSS)
-        const fullJsPath = resolveCssPath(jsPath, filename); // Используем ту же функцию для путей
-        console.log(`JavaScript file detected: ${jsPath} -> resolved to: ${fullJsPath}`);
-        
-        // Создаем промис для загрузки файла JavaScript
-        const jsPromise = invoke('read_text_file', { 
-          path: fullJsPath 
-        }).then((jsContent: unknown) => {
-          console.log(`Successfully loaded JavaScript file: ${fullJsPath}`);
-          return { path: jsPath, content: jsContent as string };
-        }).catch(error => {
-          console.error(`Ошибка загрузки JavaScript файла ${fullJsPath}:`, error);
-          
-          // Пытаемся с абсолютным путем из директории HTML
-          const htmlDir = getDirectoryFromPath(filename);
-          const absoluteJsPath = normalizePath(`${htmlDir}/${jsPath.split(/[/\\]/).pop()}`);
-          console.log(`Trying absolute JavaScript path: ${absoluteJsPath}`);
-          
-          return invoke('read_text_file', { path: absoluteJsPath })
-            .then((jsContent: unknown) => {
-              console.log(`Successfully loaded JavaScript from absolute path: ${absoluteJsPath}`);
-              return { path: jsPath, content: jsContent as string };
-            })
-            .catch(altError => {
-              console.error(`Also failed with absolute path for JS: ${absoluteJsPath}`, altError);
-              return { path: jsPath, content: '' };
-            });
-        });
-        
-        jsPromises.push(jsPromise);
-      }
-      
-      // Ждем загрузки всех CSS файлов
-      const cssResults = await Promise.all(cssPromises);
-      
-      // Заменяем ссылки на CSS встроенными стилями
-      for (let i = 0; i < cssLinks.length; i++) {
-        const cssLink = cssLinks[i];
-        const cssResult = cssResults[i];
-        
-        if (cssResult.content) {
-          const inlineStyle = `<style data-href="${cssResult.path}">\n${cssResult.content}\n</style>`;
-          processedContent = processedContent.replace(cssLink, inlineStyle);
-        }
-      }
-      
-      // Ждем загрузки всех JavaScript файлов
-      const jsResults = await Promise.all(jsPromises);
-      
-      // Заменяем ссылки на JavaScript встроенными скриптами
-      for (let i = 0; i < jsScripts.length; i++) {
-        const jsScript = jsScripts[i];
-        const jsResult = jsResults[i];
-        
-        if (jsResult.content) {
-          const inlineScript = `<script data-src="${jsResult.path}">\n${jsResult.content}\n</script>`;
-          processedContent = processedContent.replace(jsScript, inlineScript);
-        }
-      }
-      
-      // Добавляем базовый URL для относительных путей изображений и других ресурсов
-      const htmlDir = getDirectoryFromPath(filename);
-      const baseUrl = htmlDir ? `${htmlDir}/` : '/';
-      const baseTag = `<base href="${baseUrl}" />`;
-      
-      if (processedContent.includes('<head>')) {
-        processedContent = processedContent.replace(/<head>/i, `<head>\n  ${baseTag}`);
-      } else if (processedContent.includes('<html>')) {
-        processedContent = processedContent.replace(/<html>/i, `<html>\n<head>\n  ${baseTag}\n</head>`);
-      } else {
-        processedContent = `<head>\n  ${baseTag}\n</head>\n${processedContent}`;
-      }
-      
-      console.log('HTML processing complete with base URL:', baseUrl);
-      setProcessedHtml(processedContent);
-      return processedContent;
+      return dataUrl;
     } catch (error) {
-      console.error('Ошибка обработки HTML:', error);
-      return content;
+      console.error('Error creating virtual HTML file:', error);
+      return null;
     } finally {
       setIsLoading(false);
     }
   };
   
-  // Функция для обновления содержимого iframe
+  // Обрабатываем HTML-контент для обеспечения правильной загрузки ресурсов
+  const processHtmlContent = async (content: string): Promise<string> => {
+    const baseDir = getDirectoryFromPath(filename);
+    console.log(`Processing HTML content with base directory: ${baseDir}`);
+    
+    // Добавляем базовый тег, который указывает браузеру где искать ресурсы
+    // Используем file:// протокол для прямого доступа к файловой системе
+    const baseUrl = `file:///${baseDir.replace(/^\/+/, '')}/`;
+    let processedContent = content;
+    
+    // Извлекаем и обрабатываем все CSS ссылки в документе
+    const cssLinkRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/g;
+    const cssLinks = [];
+    const cssContents = [];
+    let match;
+    
+    // Находим все ссылки на CSS файлы
+    while ((match = cssLinkRegex.exec(content)) !== null) {
+      const cssPath = match[1];
+      const fullTag = match[0];
+      cssLinks.push({ path: cssPath, tag: fullTag });
+    }
+    
+    // Загружаем все CSS файлы
+    for (const cssLink of cssLinks) {
+      try {
+        // Определяем полный путь к CSS файлу
+        let cssFullPath;
+        
+        // Если путь абсолютный (начинается с / или содержит :// для URL)
+        if (cssLink.path.startsWith('/') || cssLink.path.includes('://')) {
+          if (cssLink.path.startsWith('/')) {
+            // Если начинается с /, считаем это от корня проекта
+            cssFullPath = cssLink.path.substring(1);
+          } else {
+            // Если это внешний URL, пропускаем (не можем загрузить)
+            console.warn(`Skipping external CSS URL: ${cssLink.path}`);
+            cssContents.push({ tag: cssLink.tag, content: null });
+            continue;
+          }
+        } else {
+          // Для относительных путей добавляем базовую директорию
+          cssFullPath = `${baseDir}/${cssLink.path}`;
+        }
+        
+        console.log(`Loading CSS file: ${cssFullPath}`);
+        
+        // Загружаем CSS файл
+        const cssContent = await invoke<string>('read_text_file', { path: cssFullPath });
+        console.log(`Loaded CSS file: ${cssFullPath}, content length: ${cssContent.length}`);
+        
+        cssContents.push({ tag: cssLink.tag, content: cssContent });
+      } catch (error) {
+        console.error(`Error loading CSS file ${cssLink.path}:`, error);
+        
+        // Пробуем альтернативный путь (только имя файла в той же директории)
+        try {
+          const fileName = cssLink.path.split('/').pop();
+          const alternativePath = `${baseDir}/${fileName}`;
+          console.log(`Trying alternative path: ${alternativePath}`);
+          
+          const cssContent = await invoke<string>('read_text_file', { path: alternativePath });
+          console.log(`Loaded CSS from alternative path: ${alternativePath}`);
+          
+          cssContents.push({ tag: cssLink.tag, content: cssContent });
+        } catch (altError) {
+          console.error(`Also failed with alternative path:`, altError);
+          cssContents.push({ tag: cssLink.tag, content: null });
+        }
+      }
+    }
+    
+    // Заменяем CSS ссылки на встроенные стили
+    for (const css of cssContents) {
+      if (css.content) {
+        // Создаем встроенный стиль вместо ссылки
+        const inlineStyle = `<style>/* From ${css.tag} */\n${css.content}\n</style>`;
+        processedContent = processedContent.replace(css.tag, inlineStyle);
+        console.log(`Replaced CSS link with inline style`);
+      }
+    }
+    
+    // Добавляем базовый тег в head
+    if (processedContent.includes('<head>')) {
+      processedContent = processedContent.replace(/<head>/i, `<head>\n<base href="${baseUrl}">\n`);
+    } else if (processedContent.includes('<html>')) {
+      processedContent = processedContent.replace(/<html>/i, `<html>\n<head>\n<base href="${baseUrl}">\n</head>\n`);
+    } else {
+      processedContent = `<head>\n<base href="${baseUrl}">\n</head>\n${processedContent}`;
+    }
+    
+    // Добавляем специальный скрипт для обработки ошибок загрузки ресурсов
+    const errorHandlingScript = `
+    <script>
+      // Обработчик ошибок загрузки ресурсов
+      window.addEventListener('error', function(e) {
+        if (e.target && (e.target.tagName === 'LINK' || e.target.tagName === 'IMG' || e.target.tagName === 'SCRIPT')) {
+          console.error('Ошибка загрузки ресурса:', e.target.src || e.target.href);
+        }
+      }, true);
+    </script>`;
+    
+    // Добавляем скрипт в конец body или в конец документа
+    if (processedContent.includes('</body>')) {
+      processedContent = processedContent.replace('</body>', `${errorHandlingScript}\n</body>`);
+    } else {
+      processedContent += `\n${errorHandlingScript}`;
+    }
+    
+    console.log(`Added base tag with URL: ${baseUrl} and processed ${cssLinks.length} CSS files`);
+    setProcessedHtml(processedContent);
+    return processedContent;
+  };
+  
+  // Функция для обновления предпросмотра
   const updateIframeContent = async () => {
-    if (!iframeRef.current) return;
-    
-    setIsLoading(true);
-    
     try {
-      // Обрабатываем HTML для включения CSS
-      const contentToRender = await processHtmlContent(htmlContent);
+      setIsLoading(true);
+      console.log('Updating HTML preview...');
+      
+      const previewUrl = await createVirtualHtmlFile();
+      if (!previewUrl || !iframeRef.current) {
+        console.error('Failed to create preview URL or iframe reference is missing');
+        return;
+      }
       
       const iframe = iframeRef.current;
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
       
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(contentToRender);
-        iframeDoc.close();
+      // Устанавливаем обработчик загрузки iframe
+      iframe.onload = () => {
+        console.log('iframe loaded successfully');
+        setIsLoading(false);
         
-        // После полной загрузки убираем индикатор загрузки
-        iframe.onload = () => {
-          setIsLoading(false);
-          
-          // Add current content to history if not navigating through history
-          if (currentHistoryIndex === history.length - 1 || history.length === 0) {
-            setHistory(prev => [...prev, contentToRender]);
-            setCurrentHistoryIndex(prev => prev + 1);
-          }
-        };
-      }
+        // Добавляем текущий URL в историю браузера
+        if (currentHistoryIndex === history.length - 1 || history.length === 0) {
+          setHistory(prev => [...prev, previewUrl]);
+          setCurrentHistoryIndex(prev => prev + 1);
+        }
+      };
+      
+      // Устанавливаем URL для iframe
+      iframe.src = previewUrl;
     } catch (error) {
-      console.error('Ошибка обновления предпросмотра HTML:', error);
+      console.error('Error updating iframe content:', error);
       setIsLoading(false);
     }
   };
   
   // Навигация назад
   const goBack = () => {
-    if (currentHistoryIndex > 0) {
-      setCurrentHistoryIndex(prev => prev - 1);
-      
-      // Загружаем предыдущее состояние из истории, без добавления нового элемента в историю
-      const previousContent = history[currentHistoryIndex - 1];
-      if (iframeRef.current) {
-        const iframe = iframeRef.current;
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        
-        if (iframeDoc) {
-          iframeDoc.open();
-          iframeDoc.write(previousContent);
-          iframeDoc.close();
-        }
-      }
+    if (currentHistoryIndex > 0 && iframeRef.current) {
+      const newIndex = currentHistoryIndex - 1;
+      setCurrentHistoryIndex(newIndex);
+      const previousUrl = history[newIndex];
+      iframeRef.current.src = previousUrl;
     }
   };
   
   // Навигация вперед
   const goForward = () => {
-    if (currentHistoryIndex < history.length - 1) {
-      setCurrentHistoryIndex(prev => prev + 1);
-      
-      // Загружаем следующее состояние из истории
-      const nextContent = history[currentHistoryIndex + 1];
-      if (iframeRef.current) {
-        const iframe = iframeRef.current;
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        
-        if (iframeDoc) {
-          iframeDoc.open();
-          iframeDoc.write(nextContent);
-          iframeDoc.close();
-        }
-      }
+    if (currentHistoryIndex < history.length - 1 && iframeRef.current) {
+      const newIndex = currentHistoryIndex + 1;
+      setCurrentHistoryIndex(newIndex);
+      const nextUrl = history[newIndex];
+      iframeRef.current.src = nextUrl;
     }
   };
   
   // Обработчик нажатия Enter в адресной строке
   const handleUrlKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      // В реальном приложении здесь был бы запрос к серверу
-      // В нашем случае просто обновляем текущий контент
-      updateIframeContent();
+    if (e.key === 'Enter' && iframeRef.current) {
+      try {
+        // Проверяем, является ли URL локальным или внешним
+        const inputUrl = url.trim();
+        if (inputUrl.startsWith('http://') || inputUrl.startsWith('https://')) {
+          // Для безопасности внешние URL ограничиваем
+          alert('Внешние URL не поддерживаются в предпросмотре');
+          return;
+        }
+        
+        // Загружаем введенный URL
+        iframeRef.current.src = inputUrl;
+        
+        // Добавляем в историю
+        setHistory(prev => [...prev.slice(0, currentHistoryIndex + 1), inputUrl]);
+        setCurrentHistoryIndex(prev => prev + 1);
+      } catch (error) {
+        console.error('Error navigating to URL:', error);
+      }
     }
   };
   
@@ -286,9 +260,6 @@ const HtmlPreview: React.FC<HtmlPreviewProps> = ({
   useEffect(() => {
     if (isVisible && htmlContent) {
       updateIframeContent();
-      // Обновляем URL в адресной строке (показываем только короткое имя файла)
-      const shortFilename = filename.split(/[/\\]/).pop() || 'preview.html';
-      setUrl(`http://localhost/${shortFilename}`);
     }
   }, [htmlContent, isVisible, filename]);
   
@@ -364,7 +335,7 @@ const HtmlPreview: React.FC<HtmlPreviewProps> = ({
           ref={iframeRef}
           className="html-preview-iframe"
           title="HTML Preview"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
         />
       </div>
     </div>

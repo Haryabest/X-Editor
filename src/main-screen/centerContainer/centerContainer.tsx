@@ -396,8 +396,267 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
       });
   
       if (selected) {
+        // Закрываем все открытые файлы при смене директории
+        setOpenedFiles([]);
+        if (handleFileSelect) {
+          handleFileSelect(null);
+        }
+        
         setSelectedFolder(selected);
         console.log('Открыта папка:', selected);
+        
+        // Сбрасываем счетчик ошибок при открытии новой директории
+        if (onEditorInfoChange) {
+          onEditorInfoChange({
+            errors: 0,
+            warnings: 0,
+            language: '',
+            encoding: 'UTF-8',
+            cursorInfo: {
+              line: 1,
+              column: 1,
+              totalChars: 0
+            }
+          });
+        }
+        
+        // Очищаем список проблем - более радикальный подход
+        if (onIssuesChange) {
+          onIssuesChange([]);
+          
+          // Принудительная очистка через пустой массив проблем
+          setTimeout(() => {
+            onIssuesChange([]);
+          }, 100);
+          
+          // Еще одна попытка очистки
+          setTimeout(() => {
+            onIssuesChange([]);
+          }, 500);
+        }
+        
+        // Очистка моделей и кэша редактора
+        if (editorInstance) {
+          try {
+            // Удаляем все созданные модели
+            if (monacoInstance && monacoInstance.editor) {
+              const allModels = monacoInstance.editor.getModels();
+              if (allModels && allModels.length > 0) {
+                allModels.forEach(model => {
+                  try {
+                    model.dispose();
+                  } catch (err) {
+                    console.error('Ошибка при удалении модели редактора:', err);
+                  }
+                });
+                console.log('Все модели редактора удалены');
+              }
+            }
+          } catch (err) {
+            console.error('Ошибка при очистке моделей редактора:', err);
+          }
+        }
+        
+        // Очищаем маркеры ошибок в Monaco
+        if (monacoInstance && monacoInstance.editor) {
+          // Очищаем все маркеры во всех файлах
+          const allModels = monacoInstance.editor.getModels();
+          if (allModels && allModels.length > 0) {
+            allModels.forEach(model => {
+              if (model && model.uri) {
+                try {
+                  // Устанавливаем пустой массив маркеров для модели
+                  monacoInstance.editor.setModelMarkers(model, 'typescript', []);
+                  monacoInstance.editor.setModelMarkers(model, 'javascript', []);
+                  monacoInstance.editor.setModelMarkers(model, 'python', []);
+                  monacoInstance.editor.setModelMarkers(model, 'lint', []);
+                  
+                  // Пробуем очистить все возможные источники маркеров
+                  const allOwners = [
+                    'typescript', 'javascript', 'python', 'lint', 
+                    'eslint', 'prettier', 'css', 'html', 'json',
+                    'markdown', 'yaml', 'xml', 'lsp'
+                  ];
+                  
+                  allOwners.forEach(owner => {
+                    try {
+                      monacoInstance.editor.setModelMarkers(model, owner, []);
+                    } catch (err) {
+                      // Игнорируем ошибки для несуществующих владельцев маркеров
+                    }
+                  });
+                  
+                  // Очистка для всех других маркеров
+                  monacoInstance.editor.setModelMarkers(model, '', []);
+                } catch (err) {
+                  console.error('Ошибка при очистке маркеров:', err);
+                }
+              }
+            });
+          }
+          
+          // Запрашиваем очистку всех маркеров через глобальный метод
+          if (monacoInstance.editor.removeAllMarkers) {
+            try {
+              monacoInstance.editor.removeAllMarkers();
+            } catch (err) {
+              console.error('Ошибка при удалении всех маркеров:', err);
+            }
+          }
+          
+          console.log('Маркеры ошибок очищены для всех файлов');
+        }
+        
+        // Очищаем все глобальные хранилища ошибок
+        if (window.clearAllErrors && typeof window.clearAllErrors === 'function') {
+          window.clearAllErrors();
+          console.log('Глобальные ошибки очищены');
+        }
+        
+        // Сбрасываем все хранилища
+        setModifiedFiles(new Set());
+        setOriginalFileContents(new Map());
+        localStorage.removeItem('problemsData');
+        
+        // Очищаем localStorage от всех кэшей файлов
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('file_cache_')) {
+            localStorage.removeItem(key);
+          }
+        });
+        
+        // Полная очистка DOM элементов через прямое удаление
+        try {
+          // Находим все элементы, содержащие ошибки
+          const errorElements = document.querySelectorAll('.error-message, .diagnostic-error, .marker-error, .problem-item');
+          errorElements.forEach(element => {
+            try {
+              element.remove();
+            } catch (e) {
+              // Игнорируем ошибки при удалении
+            }
+          });
+          
+          // Проверяем и прямо очищаем содержимое панели проблем через DOM
+          const problemsPanel = document.querySelector('.problems-panel');
+          if (problemsPanel) {
+            const problemsList = problemsPanel.querySelector('.problems-list');
+            if (problemsList) {
+              problemsList.innerHTML = '';
+              console.log('Очищено содержимое панели проблем через DOM');
+            }
+          }
+          
+          // Очищаем счетчики в верхней панели
+          const errorCounters = document.querySelectorAll('.error-counter, .warning-counter, .info-counter');
+          errorCounters.forEach(counter => {
+            try {
+              if (counter instanceof HTMLElement) {
+                counter.textContent = '0';
+                counter.style.display = 'none';
+              }
+            } catch (e) {
+              // Игнорируем ошибки
+            }
+          });
+          
+          // Проверяем и прямо очищаем содержимое терминала через DOM
+          const terminalPanel = document.querySelector('.terminal-container');
+          if (terminalPanel) {
+            const errorMessages = terminalPanel.querySelectorAll('.error-message');
+            errorMessages.forEach(element => {
+              element.remove();
+            });
+            console.log('Очищены сообщения об ошибках в терминале через DOM');
+          }
+        } catch (err) {
+          console.error('Ошибка при прямой очистке DOM элементов:', err);
+        }
+        
+        // Очищаем любые ошибки в терминале через событие
+        const clearTerminalEvent = new CustomEvent('clear-terminal-errors', {
+          detail: { source: 'folder-change', forceClean: true }
+        });
+        window.dispatchEvent(clearTerminalEvent);
+        
+        // Отправляем еще раз через небольшую задержку для надежности
+        setTimeout(() => {
+          const additionalClearEvent = new CustomEvent('clear-terminal-errors', {
+            detail: { source: 'folder-change-delayed', forceClean: true }
+          });
+          window.dispatchEvent(additionalClearEvent);
+        }, 300);
+        
+        // Очищаем панель проблем через событие
+        const clearProblemsEvent = new CustomEvent('clear-problems-panel', {
+          detail: { source: 'folder-change', forceClean: true }
+        });
+        window.dispatchEvent(clearProblemsEvent);
+        
+        // Отправляем еще раз через небольшую задержку для надежности
+        setTimeout(() => {
+          const additionalClearProblemsEvent = new CustomEvent('clear-problems-panel', {
+            detail: { source: 'folder-change-delayed', forceClean: true }
+          });
+          window.dispatchEvent(additionalClearProblemsEvent);
+        }, 300);
+        
+        // Отправляем событие для полной очистки интерфейса
+        const resetUIEvent = new CustomEvent('reset-editor-ui', {
+          detail: { source: 'folder-change' }
+        });
+        window.dispatchEvent(resetUIEvent);
+        
+        // Отправляем событие обновления интерфейса
+        const refreshEvent = new CustomEvent('editor-refresh', {
+          detail: { source: 'folder-change' }
+        });
+        window.dispatchEvent(refreshEvent);
+        
+        // Если доступен setupAllErrorDecorations, вызываем его для сброса глобального хранилища маркеров
+        if (window.setupAllErrorDecorations && typeof window.setupAllErrorDecorations === 'function') {
+          setTimeout(() => {
+            window.setupAllErrorDecorations(true); // Передаем true для очистки
+          }, 300);
+        }
+        
+        // Вызываем принудительную очистку всех кэшей ошибок
+        if (window.monaco) {
+          try {
+            // Очищаем кэш диагностики для всех языковых сервисов
+            const languages = ['typescript', 'javascript', 'html', 'css', 'json', 'python'];
+            languages.forEach(lang => {
+              if (window.monaco.languages[lang]) {
+                try {
+                  if (window.monaco.languages[lang].diagnosticsCollection) {
+                    window.monaco.languages[lang].diagnosticsCollection.clear();
+                  }
+                } catch (e) {
+                  // Игнорируем ошибки для несуществующих коллекций
+                }
+              }
+            });
+          } catch (err) {
+            console.error('Ошибка при очистке кэша диагностики:', err);
+          }
+        }
+        
+        // Обновляем любые счетчики ошибок в различных компонентах через глобальное событие
+        const updateCountersEvent = new CustomEvent('update-error-counters', {
+          detail: { errors: 0, warnings: 0 }
+        });
+        window.dispatchEvent(updateCountersEvent);
+        
+        // Полная перезагрузка состояния редактора
+        setTimeout(() => {
+          // Отправляем еще одно событие очистки с большей задержкой
+          const finalCleanupEvent = new CustomEvent('final-editor-cleanup', {
+            detail: { source: 'folder-change-final' }
+          });
+          window.dispatchEvent(finalCleanupEvent);
+          
+          console.log('Выполнена полная очистка всех ошибок при смене директории');
+        }, 1000);
       }
     } catch (error) {
       console.error('Ошибка открытия папки:', error);
