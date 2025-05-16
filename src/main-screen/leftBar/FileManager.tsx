@@ -825,7 +825,15 @@ const FileManager: React.FC<FileManagerProps> = ({
                 <div
                   className={`file-item ${gitStatusClass} ${issueClass} ${isActive ? 'active' : ''}`}
                   onClick={() => handleFileClick(item.path, false)}
-                  style={{ height: '22px' }}
+                  style={{ 
+                    height: '22px', 
+                    maxHeight: '22px', 
+                    minHeight: '22px',
+                    lineHeight: '22px',
+                    padding: '0 6px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
                 >
                   <span className="icon">
                     {getFileIcon(item.name)}

@@ -5,7 +5,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   border-radius: 4px;
   padding: 10px;
-  width: 450px;
+  width: 500px;
   max-width: 100%;
   position: absolute;
   top: 40px;
@@ -17,7 +17,6 @@
   align-items: center;
   background-color: #2d2d2d;
   border-radius: 4px;
-  padding: 0 10px;
   margin-bottom: 10px;
 }
 
@@ -37,40 +36,49 @@
   width: 100%;
 }
 
-.file-list-container {
+/* Заменяем класс file-list-container на search-results-container */
+.search-results-container {
   max-height: 500px;
+  max-width: calc(100% - 5px);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #444 #2d2d2d;
 }
 
-.file-list-container::-webkit-scrollbar {
+.search-results-container::-webkit-scrollbar {
   width: 6px;
 }
 
-.file-list-container::-webkit-scrollbar-track {
+.search-results-container::-webkit-scrollbar-track {
   background: #2d2d2d;
 }
 
-.file-list-container::-webkit-scrollbar-thumb {
+.search-results-container::-webkit-scrollbar-thumb {
   background-color: #444;
   border-radius: 3px;
 }
 
-.file-item {
+/* Заменяем класс file-item на search-file-item */
+.search-file-item {
   display: flex;
   align-items: center;
+  width: auto;
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.file-item:hover {
+.search-file-item:hover {
   background-color: #383838;
 }
 
-.file-icon {
+.search-file-item.selected {
+  background-color: #3a3d41;
+}
+
+/* Заменяем классы file-icon, file-info, file-name, file-path */
+.search-file-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -78,14 +86,14 @@
   color: #888;
 }
 
-.file-info {
+.search-file-info {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
 }
 
-.file-name {
+.search-file-name {
   color: #f0f0f0;
   font-size: 13px;
   white-space: nowrap;
@@ -93,7 +101,7 @@
   text-overflow: ellipsis;
 }
 
-.file-path {
+.search-file-path {
   color: #888;
   font-size: 11px;
   white-space: nowrap;
@@ -101,7 +109,7 @@
   text-overflow: ellipsis;
 }
 
-.no-results {
+.search-no-results {
   padding: 15px;
   color: #888;
   text-align: center;

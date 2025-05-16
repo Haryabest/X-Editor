@@ -190,4 +190,156 @@
 
 .git-branches-modal .new-branch-button:hover {
   background-color: #1177bb;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000002;
+}
+
+.create-branch-modal {
+  background-color: #252526;
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  width: 400px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #3c3c3c;
+  animation: modalFadeIn 0.2s ease-out;
+  height: 180px;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  background-color: #3c3c3c;
+  color: #fff;
+}
+
+.modal-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  height: 300px;
+  margin-top: 5px;
+}
+
+.modal-content label {
+  color: #d4d4d4;
+  font-size: 13px;
+}
+
+.branch-name-input {
+  width: 90%;
+  padding: 8px 10px;
+  background-color: #3c3c3c;
+  color: #fff;
+  border: 1px solid #4d4d4d;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.branch-name-input:focus {
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+}
+
+.branch-name-error {
+  color: #f85149;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.modal-footer {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background-color: #2d2d2d;
+  border-top: 1px solid #3c3c3c;
+}
+
+.modal-footer button {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.create-button {
+  background-color: #0e639c;
+  color: white;
+  border: none;
+}
+
+.create-button:hover {
+  background-color: #1177bb;
+}
+
+.create-button:disabled {
+  background-color: #14466b;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  background-color: transparent;
+  color: #cccccc;
+  border: 1px solid #3c3c3c;
+}
+
+.cancel-button:hover {
+  background-color: #3c3c3c;
 } 

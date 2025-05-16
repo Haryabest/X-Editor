@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Check, GitMerge, GitBranch, RefreshCcw, Search } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Check, GitMerge, GitBranch, RefreshCcw, Search, X, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import './GitBranches.css';
 
@@ -24,10 +24,20 @@ const GitBranches: React.FC<GitBranchesProps> = ({ currentBranch, onClose, selec
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [projectRoot, setProjectRoot] = useState<string>('');
+  const [isCreateBranchModalOpen, setIsCreateBranchModalOpen] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const newBranchInputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
     fetchBranches();
   }, [selectedFolder]);
+
+  useEffect(() => {
+    if (isCreateBranchModalOpen && newBranchInputRef.current) {
+      newBranchInputRef.current.focus();
+    }
+  }, [isCreateBranchModalOpen]);
 
   const fetchBranches = async () => {
     try {
@@ -151,28 +161,63 @@ const GitBranches: React.FC<GitBranchesProps> = ({ currentBranch, onClose, selec
     fetchBranches();
   };
 
+  const openCreateBranchModal = () => {
+    setIsCreateBranchModalOpen(true);
+    setNewBranchName('');
+    setBranchError(null);
+  };
+
+  const closeCreateBranchModal = () => {
+    setIsCreateBranchModalOpen(false);
+    setBranchError(null);
+  };
+
   const handleCreateBranch = async () => {
-    const branchName = window.prompt('Введите имя новой ветки:');
-    if (!branchName) return;
+    if (!newBranchName.trim()) {
+      setBranchError('Введите имя новой ветки');
+      return;
+    }
+
+    // Валидация имени ветки
+    if (!/^[a-zA-Z0-9_\-./]+$/.test(newBranchName)) {
+      setBranchError('Недопустимые символы в имени ветки');
+      return;
+    }
     
     try {
       setLoading(true);
+      setBranchError(null);
+      
       await invoke('git_command', {
         projectRoot,
         command: 'checkout',
-        args: ['-b', branchName]
+        args: ['-b', newBranchName]
       });
       
       // Обновляем список веток после создания новой
       await fetchBranches();
       
-      // Сообщаем пользователю об успехе
-      alert(`Ветка "${branchName}" успешно создана`);
+      // Закрываем модальное окно
+      setIsCreateBranchModalOpen(false);
+      
+      // Вызываем колбэк для обновления информации в родительском компоненте
+      if (onBranchSwitch) {
+        onBranchSwitch(newBranchName);
+      }
     } catch (err) {
       console.error('Error creating branch:', err);
-      setError(`Ошибка при создании ветки: ${err}`);
+      setBranchError(`Ошибка при создании ветки: ${err}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateBranchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCreateBranch();
+    } else if (e.key === 'Escape') {
+      closeCreateBranchModal();
     }
   };
 
@@ -208,112 +253,156 @@ const GitBranches: React.FC<GitBranchesProps> = ({ currentBranch, onClose, selec
   });
   
   return (
-    <div className="git-branches-modal">
-      <div className="header">
-        <div className="title">
-          <GitBranch className="icon" />
-          <span>Выберите ветку или тег для перехода</span>
+    <>
+      <div className="git-branches-modal">
+        <div className="header">
+          <div className="title">
+            <GitBranch className="icon" />
+            <span>Выберите ветку или тег для перехода</span>
+          </div>
+          <button className="refresh-button" onClick={handleRefresh} title="Обновить">
+            <RefreshCcw size={14} />
+          </button>
         </div>
-        <button className="refresh-button" onClick={handleRefresh} title="Обновить">
-          <RefreshCcw size={14} />
-        </button>
-      </div>
 
-      <div className="search-container">
-        <div className="search-input-wrapper">
-          <Search size={14} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Найти ветку..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
+        <div className="search-container">
+          <div className="search-input-wrapper">
+            <Search size={14} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Найти ветку..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
+        </div>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <div className="branches-list">
+          {loading ? (
+            <div className="loading">Загрузка веток...</div>
+          ) : (
+            <>
+              {/* Локальные ветки */}
+              {groupedBranches.local.length > 0 && (
+                <div className="branch-section">
+                  <div className="branch-section-header">Локальные ветки</div>
+                  {groupedBranches.local.map((branch, index) => (
+                    <div 
+                      key={`local-${index}`} 
+                      className={`branch-item ${branch.isCurrent ? 'active' : ''}`}
+                      onClick={() => handleBranchSwitch(branch)}
+                    >
+                      <GitBranch size={14} className="branch-icon" />
+                      <span className="branch-name">{branch.name}</span>
+                      {branch.isCurrent && <Check size={14} className="check-icon" />}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Отделенный HEAD */}
+              {groupedBranches.detached.length > 0 && (
+                <div className="branch-section">
+                  <div className="branch-section-header">Отделенный HEAD</div>
+                  {groupedBranches.detached.map((branch, index) => (
+                    <div 
+                      key={`detached-${index}`} 
+                      className={`branch-item detached ${branch.isCurrent ? 'active' : ''}`}
+                      onClick={() => handleBranchSwitch(branch)}
+                    >
+                      <GitBranch size={14} className="branch-icon" />
+                      <span className="branch-name">{branch.name}</span>
+                      {branch.isCurrent && <Check size={14} className="check-icon" />}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Удаленные ветки, сгруппированные по репозиторию */}
+              {Object.keys(groupedBranches.remote).length > 0 && (
+                <div className="branch-section">
+                  <div className="branch-section-header">Удаленные ветки</div>
+                  {Object.entries(groupedBranches.remote).map(([remoteName, branches]) => (
+                    <div key={remoteName} className="remote-group">
+                      <div className="remote-name">{remoteName}</div>
+                      {branches.map((branch, index) => (
+                        <div 
+                          key={`remote-${remoteName}-${index}`} 
+                          className={`branch-item remote-branch ${branch.isCurrent ? 'active' : ''}`}
+                          onClick={() => handleBranchSwitch(branch)}
+                        >
+                          <GitBranch size={14} className="branch-icon" />
+                          <span className="branch-name">{branch.name}</span>
+                          {branch.isCurrent && <Check size={14} className="check-icon" />}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {filteredBranches.length === 0 && (
+                <div className="no-branches">
+                  {searchTerm ? `Нет веток, соответствующих "${searchTerm}"` : 'Ветки не найдены'}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="footer">
+          <button className="new-branch-button" onClick={openCreateBranchModal}>
+            <Plus size={14} style={{ marginRight: '5px' }} />
+            Создать новую ветку
+          </button>
+          <button onClick={onClose} className="close-button">Закрыть</button>
         </div>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
-
-      <div className="branches-list">
-        {loading ? (
-          <div className="loading">Загрузка веток...</div>
-        ) : (
-          <>
-            {/* Локальные ветки */}
-            {groupedBranches.local.length > 0 && (
-              <div className="branch-section">
-                <div className="branch-section-header">Локальные ветки</div>
-                {groupedBranches.local.map((branch, index) => (
-                  <div 
-                    key={`local-${index}`} 
-                    className={`branch-item ${branch.isCurrent ? 'active' : ''}`}
-                    onClick={() => handleBranchSwitch(branch)}
-                  >
-                    <GitBranch size={14} className="branch-icon" />
-                    <span className="branch-name">{branch.name}</span>
-                    {branch.isCurrent && <Check size={14} className="check-icon" />}
-                  </div>
-                ))}
+      {isCreateBranchModalOpen && (
+        <div className="modal-overlay" onClick={closeCreateBranchModal}>
+          <div className="create-branch-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <GitBranch className="icon" size={16} />
+                <span>Создать новую ветку</span>
               </div>
-            )}
-            
-            {/* Отделенный HEAD */}
-            {groupedBranches.detached.length > 0 && (
-              <div className="branch-section">
-                <div className="branch-section-header">Отделенный HEAD</div>
-                {groupedBranches.detached.map((branch, index) => (
-                  <div 
-                    key={`detached-${index}`} 
-                    className={`branch-item detached ${branch.isCurrent ? 'active' : ''}`}
-                    onClick={() => handleBranchSwitch(branch)}
-                  >
-                    <GitBranch size={14} className="branch-icon" />
-                    <span className="branch-name">{branch.name}</span>
-                    {branch.isCurrent && <Check size={14} className="check-icon" />}
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {/* Удаленные ветки, сгруппированные по репозиторию */}
-            {Object.keys(groupedBranches.remote).length > 0 && (
-              <div className="branch-section">
-                <div className="branch-section-header">Удаленные ветки</div>
-                {Object.entries(groupedBranches.remote).map(([remoteName, branches]) => (
-                  <div key={remoteName} className="remote-group">
-                    <div className="remote-name">{remoteName}</div>
-                    {branches.map((branch, index) => (
-                      <div 
-                        key={`remote-${remoteName}-${index}`} 
-                        className={`branch-item remote-branch ${branch.isCurrent ? 'active' : ''}`}
-                        onClick={() => handleBranchSwitch(branch)}
-                      >
-                        <GitBranch size={14} className="branch-icon" />
-                        <span className="branch-name">{branch.name}</span>
-                        {branch.isCurrent && <Check size={14} className="check-icon" />}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {filteredBranches.length === 0 && (
-              <div className="no-branches">
-                {searchTerm ? `Нет веток, соответствующих "${searchTerm}"` : 'Ветки не найдены'}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="footer">
-        <button className="new-branch-button" onClick={handleCreateBranch}>
-          + Создать новую ветку...
-        </button>
-        <button onClick={onClose} className="close-button">Закрыть</button>
-      </div>
-    </div>
+              <button className="modal-close" onClick={closeCreateBranchModal}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-content">
+              <label htmlFor="new-branch-name">Введите имя новой ветки:</label>
+              <input
+                ref={newBranchInputRef}
+                id="new-branch-name"
+                type="text"
+                className="branch-name-input"
+                value={newBranchName}
+                onChange={e => setNewBranchName(e.target.value)}
+                onKeyDown={handleCreateBranchKeyDown}
+              />
+              {branchError && <div className="branch-name-error">{branchError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="cancel-button" onClick={closeCreateBranchModal}>
+                Отмена
+              </button>
+              <button 
+                className="create-button" 
+                onClick={handleCreateBranch}
+                disabled={loading}
+              >
+                {loading ? 'Создание...' : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

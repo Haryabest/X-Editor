@@ -21,6 +21,7 @@ import HtmlPreview from '../preview/HtmlPreview';
 import { writeBinaryFile, readBinaryFile } from '@tauri-apps/plugin-fs';
 import ImageViewer from '../../components/ImageViewer';
 import VideoPlayer from '../../components/VideoPlayer';
+import CreateFolderModal from '../../components/modal/CreateFolderModal';
 
 // Импортируем и инициализируем обработчики ошибок
 import './errors';
@@ -1633,15 +1634,22 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
         
         if (selected) {
           setSelectedFolder(selected);
-        } else {
-          return; // Пользователь отменил выбор
+          // Открываем модальное окно после выбора директории
+          setIsCreateFolderModalOpen(true);
         }
+      } else {
+        // Если директория уже выбрана, просто открываем модальное окно
+        setIsCreateFolderModalOpen(true);
       }
-      
-      // Запрашиваем имя новой папки через диалог
-      const newFolderName = prompt('Введите имя новой папки');
-      
-      if (!newFolderName || !selectedFolder) return;
+    } catch (error) {
+      console.error('Ошибка при выборе директории:', error);
+    }
+  };
+
+  // Обработчик подтверждения создания папки
+  const handleConfirmCreateFolder = async (newFolderName: string) => {
+    try {
+      if (!selectedFolder || !newFolderName) return;
       
       // Полный путь новой папки
       const newFolderPath = `${selectedFolder}/${newFolderName}`;
@@ -2111,6 +2119,8 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
     };
   }, [openedFiles, originalFileContents, modifiedFiles, selectedFile]);
 
+  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState<boolean>(false);
+
   return (
     <div className="center-container" style={style}>
       {!selectedFile && (
@@ -2156,6 +2166,13 @@ const CenterContainer: React.FC<CenterContainerProps> = ({
           onClone={handleCloneRepository} 
         />
       )}
+      
+      {/* Модальное окно для создания папки */}
+      <CreateFolderModal
+        isOpen={isCreateFolderModalOpen}
+        onClose={() => setIsCreateFolderModalOpen(false)}
+        onConfirm={handleConfirmCreateFolder}
+      />
       
       {/* Разделим контейнер на две части, если нужен предпросмотр */}
       <div className={`editor-container ${isHtmlPreviewVisible ? 'with-preview' : ''}`}>

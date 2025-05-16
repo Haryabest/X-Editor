@@ -7,6 +7,7 @@ use tauri::{
     async_runtime::{spawn, Mutex},
     AppHandle, Emitter, State,
 };
+use std::process::Command;
 
 pub struct PtyState {
     pub master: Arc<Mutex<Option<Box<dyn portable_pty::MasterPty + Send>>>>,
@@ -164,5 +165,33 @@ pub async fn kill_process(state: State<'_, PtyState>) -> Result<(), String> {
         Ok(())
     } else {
         Err("PTY writer not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn run_python_file(state: State<'_, PtyState>, file_path: String) -> Result<(), String> {
+    let mut writer_guard = state.writer.lock().await;
+    if let Some(writer) = writer_guard.as_mut() {
+        // Очищаем терминал перед запуском
+        writer.write_all(b"\x1b[2J\x1b[1;1H")
+            .map_err(|e| format!("Ошибка при очистке терминала: {}", e))?;
+        writer.flush()
+            .map_err(|e| format!("Ошибка при очистке терминала: {}", e))?;
+
+        // Формируем команду для запуска Python файла
+        let escaped_path = file_path.replace("/", "\\");
+        let command = format!("& python \"{}\"; if ($?) {{ Write-Host \"`nПрограмма успешно завершена\" }} else {{ Write-Host \"`nПрограмма завершилась с ошибкой\" }}; pause\r\n", escaped_path);
+        
+        println!("Executing command: {}", command);
+        
+        // Отправляем команду в терминал
+        writer.write_all(command.as_bytes())
+            .map_err(|e| format!("Ошибка при запуске Python: {}", e))?;
+        writer.flush()
+            .map_err(|e| format!("Ошибка при записи в терминал: {}", e))?;
+        
+        Ok(())
+    } else {
+        Err("Терминал не инициализирован".to_string())
     }
 }

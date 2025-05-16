@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
+import CreateFolderModal from '../../../components/modal/CreateFolderModal';
 
 import "./style.css";
 
@@ -15,6 +16,7 @@ interface FolderContextMenuProps {
   onDelete?: (path: string) => void;
   workspaceRoot?: string;
   onSetTerminalPath?: (path: string) => void;
+  onReloadDirectory?: () => void;
 }
 
 const FolderContextMenu: React.FC<FolderContextMenuProps> = ({ 
@@ -27,9 +29,11 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
   onRename,
   onDelete,
   workspaceRoot = "",
-  onSetTerminalPath
+  onSetTerminalPath,
+  onReloadDirectory
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -74,7 +78,7 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
                     (event.altKey && !event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'd')) {
             // Для Ctrl+Shift+N или Alt+D
             event.preventDefault();
-            handleCreateDirectory(event);
+            handleCreateDirectory();
           }
           break;
         case 'c':
@@ -99,7 +103,7 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
         case 'D':
           if (event.altKey && !event.ctrlKey && !event.shiftKey) {
             event.preventDefault();
-            handleCreateDirectory(event);
+            handleCreateDirectory();
           }
           break;
         default:
@@ -153,12 +157,41 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
     onClose();
   };
 
-  const handleCreateDirectory = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
-    event.stopPropagation();
-    if (onCreateDirectory) {
-      onCreateDirectory(path);
-    }
+  const handleCreateDirectory = () => {
+    setIsCreateFolderModalOpen(true);
     onClose();
+  };
+
+  const handleConfirmCreateFolder = async (folderName: string) => {
+    try {
+      if (!path || !folderName) return;
+      
+      // Полный путь новой папки
+      const newFolderPath = `${path}/${folderName}`;
+      
+      // Вызываем функцию создания папки
+      await invoke("create_folder", {
+        path: newFolderPath
+      });
+      
+      console.log(`Создана новая папка: ${newFolderPath}`);
+      
+      // Обновляем директорию если есть обработчик
+      if (onReloadDirectory) {
+        onReloadDirectory();
+      }
+    } catch (error) {
+      console.error('Ошибка при создании папки:', error);
+      try {
+        // Показываем ошибку пользователю
+        await invoke('show_error_message', { 
+          title: 'Ошибка', 
+          message: `Ошибка при создании папки: ${error}`
+        });
+      } catch (e) {
+        console.error('Не удалось показать сообщение об ошибке:', e);
+      }
+    }
   };
 
   const handleCopyPath = (event: React.MouseEvent<HTMLButtonElement> | KeyboardEvent) => {
@@ -192,45 +225,54 @@ const FolderContextMenu: React.FC<FolderContextMenuProps> = ({
 
   // Создаем контент меню
   const menuContent = (
-    <div 
-      ref={menuRef}
-      className="context-menu-left2"
-      style={{ 
-        top: y, 
-        left: x, 
-        position: 'fixed', 
-        zIndex: 2147483647 // Максимально возможный z-index
-      }}
-      tabIndex={0} // Добавлено для возможности получать фокус
-    >
-      <button onClick={handleOpenInExplorer}>
-        Открыть в проводнике <span className="shortcut">Ctrl+E</span>
-      </button>
-      <button onClick={handleOpenInTerminal}>
-        Открыть в терминале <span className="shortcut">Ctrl+T</span>
-      </button>
-      <div className="seperator"></div>
-      <button onClick={handleCreateFile}>
-        Новый файл <span className="shortcut">Ctrl+N / Alt+N</span>
-      </button>
-      <button onClick={handleCreateDirectory}>
-        Новая папка <span className="shortcut">Ctrl+Shift+N / Alt+D</span>
-      </button>
-      <div className="seperator"></div>
-      <button onClick={handleCopyPath}>
-        Копировать путь <span className="shortcut">Ctrl+Shift+C</span>
-      </button>
-      <button onClick={handleCopyRelativePath}>
-        Копировать относительный путь <span className="shortcut">Ctrl+Alt+C</span>
-      </button>
-      <div className="seperator"></div>
-      <button onClick={handleRename}>
-        Переименовать <span className="shortcut">F2</span>
-      </button>
-      <button onClick={handleDelete}>
-        Удалить <span className="shortcut">Del</span>
-      </button>
-    </div>
+    <>
+      <div 
+        ref={menuRef}
+        className="context-menu-left2"
+        style={{ 
+          top: y, 
+          left: x, 
+          position: 'fixed', 
+          zIndex: 2147483647 // Максимально возможный z-index
+        }}
+        tabIndex={0} // Добавлено для возможности получать фокус
+      >
+        <button onClick={handleOpenInExplorer}>
+          Открыть в проводнике <span className="shortcut">Ctrl+E</span>
+        </button>
+        <button onClick={handleOpenInTerminal}>
+          Открыть в терминале <span className="shortcut">Ctrl+T</span>
+        </button>
+        <div className="seperator"></div>
+        <button onClick={handleCreateFile}>
+          Новый файл <span className="shortcut">Ctrl+N / Alt+N</span>
+        </button>
+        <button onClick={handleCreateDirectory}>
+          Новая папка <span className="shortcut">Ctrl+Shift+N / Alt+D</span>
+        </button>
+        <div className="seperator"></div>
+        <button onClick={handleCopyPath}>
+          Копировать путь <span className="shortcut">Ctrl+Shift+C</span>
+        </button>
+        <button onClick={handleCopyRelativePath}>
+          Копировать относительный путь <span className="shortcut">Ctrl+Alt+C</span>
+        </button>
+        <div className="seperator"></div>
+        <button onClick={handleRename}>
+          Переименовать <span className="shortcut">F2</span>
+        </button>
+        <button onClick={handleDelete}>
+          Удалить <span className="shortcut">Del</span>
+        </button>
+      </div>
+      
+      {/* Модальное окно создания папки */}
+      <CreateFolderModal
+        isOpen={isCreateFolderModalOpen}
+        onClose={() => setIsCreateFolderModalOpen(false)}
+        onConfirm={handleConfirmCreateFolder}
+      />
+    </>
   );
 
   // Используем портал для рендеринга меню в конец body

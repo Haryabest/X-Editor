@@ -251,7 +251,7 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
       {/* Контейнер списка файлов */}
       <div 
         ref={resultsContainerRef}
-        className="file-list-container"
+        className="search-results-container"
         onScroll={handleScroll}
         style={{ maxHeight: '500px', overflowY: 'auto' }}
       >
@@ -276,16 +276,16 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
             {displayedFiles.map((file, index) => (
               <div 
                 key={`${file.path}-${index}`} 
-                className={`file-item ${selectedIndex === index ? 'selected' : ''}`}
+                className={`search-file-item ${selectedIndex === index ? 'selected' : ''}`}
                 onClick={() => onFileSelect(file.path)}
                 onMouseEnter={() => setSelectedIndex(index)}
               >
-                <div className="file-icon">
+                <div className="search-file-icon">
                   {getIcon(file.name)}
                 </div>
-                <div className="file-info">
-                  <span className="file-name">{file.name}</span>
-                  <span className="file-path">{file.path.replace(/\\/g, '/')}</span>
+                <div className="search-file-info">
+                  <span className="search-file-name">{file.name}</span>
+                  <span className="search-file-path">{file.path.replace(/\\/g, '/')}</span>
                 </div>
               </div>
             ))}
@@ -302,8 +302,8 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
             )}
           </>
         ) : (
-          <div className="no-results">
-            <p>Ничего не найдено по запросу "{searchQuery}"</p>
+          <div className="search-no-results">
+            Ничего не найдено для "{searchQuery}"
           </div>
         )}
       </div>

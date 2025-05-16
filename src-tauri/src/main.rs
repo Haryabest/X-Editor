@@ -293,6 +293,7 @@ fn main() {
             commands::fs_commands::editor_get_current_file_path,
             commands::fs_commands::get_all_files_in_directory,
             commands::fonts::get_system_fonts,
+            commands::terminal::run_python_file,
         ])
         .setup(|app| {
             let args = std::env::args().collect::<Vec<String>>();

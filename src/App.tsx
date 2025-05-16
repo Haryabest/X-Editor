@@ -16,6 +16,7 @@ import { GitChanges } from './main-screen/lefttoolbar/GitChanges';
 import Repositories from './main-screen/lefttoolbar/repositories/Repositories';
 import AboutModal from './components/about/AboutModal';
 import DocumentationModal from './components/documentation/DocumentationModal';
+import Settings from './main-screen/lefttoolbar/settings/Settings';
 import { initializeSettings, getUISettings, saveUISettings } from './utils/settingsManager';
 
 import './App.css';
@@ -152,6 +153,7 @@ function App() {
   const [issues, setIssues] = useState<IssueInfo[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [gitInfo, setGitInfo] = useState<GitInfo>({
     current_branch: '---',
     status: 'none'
@@ -719,6 +721,8 @@ function App() {
   const closeAboutModal = () => setIsAboutModalOpen(false);
   const openDocModal = () => setIsDocModalOpen(true);
   const closeDocModal = () => setIsDocModalOpen(false);
+  const openSettings = () => setIsSettingsOpen(true);
+  const closeSettings = () => setIsSettingsOpen(false);
 
   const handleViewChange = (viewName: string) => {
     setActiveLeftPanel(viewName);
@@ -883,31 +887,54 @@ function App() {
   }, [selectedFile]);
 
   return (
-    <FontSizeContext.Provider value={{ fontSize: editorFontSize, setFontSize: setEditorFontSize }}>
+    <FontSizeContext.Provider value={{ 
+      fontSize: editorFontSize, 
+      setFontSize: () => {
+        // Reread font size from localStorage
+        const saved = localStorage.getItem('editor-font-size');
+        if (saved) {
+          const size = parseInt(saved, 10);
+          if (size && !isNaN(size)) {
+            setEditorFontSize(size);
+          }
+        }
+      } 
+    }}>
       <div className="app-container">
-        <TopToolbar 
-          currentFiles={currentFiles.map(file => ({
-            ...file, 
-            icon: file.isFolder ? 'folder' : 'file',
-            isFolder: file.isFolder || false
-          }))} 
+        <TopToolbar
+          currentFiles={currentFiles}
           setSelectedFile={handleSetSelectedFile}
-          selectedFolder={selectedFolder}
           selectedFile={selectedFile}
+          selectedFolder={selectedFolder}
+          lastOpenedFolder={lastOpenedFolder}
+          currentContent={openedFiles.find(f => f.path === selectedFile)?.content}
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onResetZoom={handleResetZoom}
+          onCreateNewFile={() => handleCreateFile()}
           onSelectAll={() => editorRef.current?.selectAll()}
           onDeselect={() => editorRef.current?.deselect()}
           onInvertSelection={() => editorRef.current?.invertSelection()}
           onSelectParagraph={() => editorRef.current?.selectParagraph()}
           onExpandSelection={() => editorRef.current?.expandSelection()}
+          onShowTerminal={openTerminal}
           onOpenConsole={openTerminal}
           onClearConsole={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'clear' } }))}
-          onCloseConsole={() => setIsTerminalVisible(false)}
+          onCloseConsole={toggleTerminal}
           onConsoleSettings={() => document.dispatchEvent(new CustomEvent('terminal-command', { detail: { command: 'settings' } }))}
+          onOpenSettings={openSettings}
           onOpenAboutModal={openAboutModal}
           onOpenDocModal={openDocModal}
+          onRunPythonDiagnostics={() => {
+            window.updateAllPythonDiagnostics && window.updateAllPythonDiagnostics();
+            document.dispatchEvent(new CustomEvent('notification', { 
+              detail: { 
+                message: 'Python диагностика запущена', 
+                type: 'info',
+                duration: 3000 
+              } 
+            }));
+          }}
         />
 
         <div className="main-content">
@@ -1008,6 +1035,7 @@ function App() {
         {/* Modal components */}
         <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
         <DocumentationModal isOpen={isDocModalOpen} onClose={closeDocModal} />
+        <Settings isVisible={isSettingsOpen} onClose={closeSettings} />
         
         {/* Notification component */}
         {notification && (

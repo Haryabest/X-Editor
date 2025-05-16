@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Play } from 'lucide-react';
 import SearchTrigger from './components/SearchTrigger';
 import SearchDropdown from './components/SearchDropdown';
+import './TopToolbar.css';
 
 interface FileItem {
   name: string;
@@ -12,16 +14,21 @@ interface FileItem {
 interface TopToolbarProps {
   selectedFolder: string | null;
   setSelectedFile?: (path: string | null) => void;
+  currentFile?: string | null;
+  onShowTerminal?: () => void;
 }
 
 const TopToolbar: React.FC<TopToolbarProps> = ({
   selectedFolder,
-  setSelectedFile
+  setSelectedFile,
+  currentFile,
+  onShowTerminal
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
   
   // Получаем файлы из выбранной директории
   useEffect(() => {
@@ -71,6 +78,29 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
     }
   };
 
+  const handleRunPython = async () => {
+    if (!currentFile || !currentFile.toLowerCase().endsWith('.py')) return;
+    
+    try {
+      setIsRunning(true);
+      
+      // Показываем терминал перед запуском
+      if (onShowTerminal) {
+        onShowTerminal();
+      }
+      
+      // Запускаем Python файл
+      await invoke('run_python_file', { filePath: currentFile });
+      
+    } catch (error) {
+      console.error('Ошибка при запуске Python файла:', error);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const isPythonFile = currentFile?.toLowerCase().endsWith('.py');
+
   return (
     <div className="top-toolbar">
       <div className="left-section">
@@ -92,6 +122,17 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
           />
         )}
       </div>
+      {isPythonFile && (
+        <button 
+          className={`run-python-button ${isRunning ? 'running' : ''}`}
+          onClick={handleRunPython}
+          disabled={isRunning}
+          title="Запустить Python файл"
+        >
+          <Play size={16} />
+          {isRunning ? 'Выполняется...' : 'Запустить'}
+        </button>
+      )}
     </div>
   );
 };

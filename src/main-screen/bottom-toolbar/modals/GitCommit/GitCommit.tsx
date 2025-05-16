@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GitCommit as GitCommitIcon } from 'lucide-react';
 import './GitCommit.css';
+import { GitCommit as GitCommitIcon, X } from 'lucide-react';
 
 interface GitCommitProps {
   onClose: () => void;
-  selectedFolder: string | null;
+  selectedFolder?: string;
   onSuccess?: () => void;
 }
 
@@ -59,9 +59,12 @@ const GitCommit: React.FC<GitCommitProps> = ({ onClose, selectedFolder, onSucces
     <div className="git-commit-modal">
       <div className="header">
         <div className="title">
-          <GitCommitIcon className="icon" />
+          <GitCommitIcon size={16} className="icon" />
           <span>Создать коммит</span>
         </div>
+        <button onClick={onClose} className="close-button">
+          <X size={16} />
+        </button>
       </div>
 
       <div className="commit-form">
@@ -71,20 +74,21 @@ const GitCommit: React.FC<GitCommitProps> = ({ onClose, selectedFolder, onSucces
           value={commitMessage}
           onChange={(e) => setCommitMessage(e.target.value)}
           rows={4}
+          autoFocus
         />
         
         {error && <div className="error-message">{error}</div>}
         
         <div className="buttons">
+          <button className="cancel-button" onClick={onClose}>
+            Отмена
+          </button>
           <button 
             className="commit-button" 
             onClick={handleCommit}
             disabled={loading}
           >
-            {loading ? 'Создание коммита...' : 'Создать коммит'}
-          </button>
-          <button className="cancel-button" onClick={onClose}>
-            Отмена
+            {loading ? 'Создание...' : 'Создать коммит'}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Window } from '@tauri-apps/api/window';
 import { save , open } from '@tauri-apps/plugin-dialog';
 import { 
   Square, 
@@ -573,22 +574,17 @@ const TopToolbar: React.FC<TopToolbarProps> = ({
         onOpenConsole();
       }
       
-      // Создаем событие для отправки команды в терминал
-      setTimeout(() => {
-        // Формируем команду для запуска Python файла
-        const runCommand = `python "${selectedFile}"`;
-        
-        // Отправляем команду в терминал через событие
-        const event = new CustomEvent('terminal-execute-command', { 
-          detail: { command: runCommand }
-        });
-        
-        // Диспатчим событие для терминала
-        document.dispatchEvent(event);
-        console.log('Sent Python run command to terminal:', runCommand);
-      }, 500); // Небольшая задержка, чтобы терминал успел открыться
+      // Запускаем Python файл через команду run_python_file
+      await invoke('run_python_file', { filePath: selectedFile });
+      
     } catch (error) {
       console.error('Error running Python file:', error);
+      // Показываем ошибку в терминале
+      document.dispatchEvent(new CustomEvent('terminal-write-text', { 
+        detail: { 
+          text: `\r\nОшибка при запуске Python файла: ${error}\r\n` 
+        } 
+      }));
     }
   };
 

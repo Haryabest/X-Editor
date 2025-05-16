@@ -12,8 +12,8 @@ const LanguageDropdown = () => {
         icon: (
           <img
             src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg"
-            width="14"
-            height="14"
+            width="12"
+            height="12"
           />
         ),
       },
@@ -23,8 +23,8 @@ const LanguageDropdown = () => {
         icon: (
           <img
             src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/javascript/javascript-original.svg"
-            width="14"
-            height="14"
+            width="12"
+            height="12"
           />
         ),
       },
@@ -72,8 +72,8 @@ const LanguageDropdown = () => {
           />
         ),
       },
-      { name: "Batch", ext: ".bat", icon: <File width={14} height={14} /> }, // Иконка CSV отсутствует, используем общую
-      { name: "BibTeX", ext: ".bibtex", icon: <File width={14} height={14} /> }, // Иконка CSV отсутствует, используем общую
+      { name: "Batch", ext: ".bat", icon: <File width={12} height={12} /> },
+      { name: "BibTeX", ext: ".bibtex", icon: <File width={12} height={12} /> },
       {
         name: "C",
         ext: ".c",
@@ -84,7 +84,7 @@ const LanguageDropdown = () => {
             height="14"
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "C#",
         ext: ".csharp",
@@ -95,7 +95,7 @@ const LanguageDropdown = () => {
             height="14"
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "C++",
         ext: ".cpp",
@@ -106,8 +106,8 @@ const LanguageDropdown = () => {
             height="14"
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
-      { name: "CSV", ext: ".csv", icon: <File width={14} height={14} /> }, // Иконка CSV отсутствует, используем общую
+      },
+      { name: "CSV", ext: ".csv", icon: <File width={12} height={12} /> },
       {
         name: "Dart",
         ext: ".dart",
@@ -118,12 +118,12 @@ const LanguageDropdown = () => {
             height="14"
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "Databse",
         ext: ".db",
-        icon: <Database width={14} height={14} />,
-      }, // Иконка CSV отсутствует, используем общую
+        icon: <Database width={12} height={12} />,
+      },
       {
         name: "F#",
         ext: ".fsharp",
@@ -134,7 +134,7 @@ const LanguageDropdown = () => {
             height={14}
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "Git",
         ext: ".git",
@@ -145,7 +145,7 @@ const LanguageDropdown = () => {
             height={14}
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "Go",
         ext: ".go",
@@ -156,7 +156,7 @@ const LanguageDropdown = () => {
             height={14}
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "Gradle",
         ext: ".gradle",
@@ -167,7 +167,7 @@ const LanguageDropdown = () => {
             height={14}
           />
         ),
-      }, // Иконка CSV отсутствует, используем общую
+      },
       {
         name: "Gradle build",
         ext: ".gradle build",
@@ -189,7 +189,7 @@ const LanguageDropdown = () => {
             height={14}
           />
         ),
-      }, // Иконка XML отсутствует
+      },
       { name: "Groovy", ext: ".groovy", icon: <File width={14} height={14} /> },
       { name: "HLSL", ext: ".hlsl", icon: <File width={14} height={14} /> },
       {
@@ -411,7 +411,7 @@ const LanguageDropdown = () => {
         <div className="language-list-container">
           <ul>
             {filteredLanguages.map((lang) => (
-        <li key={lang.name} className="language-item">
+        <li key={lang.name} className="language-item1">
         <div className="language-content">
 <span className="file-icons">          {lang.icon}
 </span>          {lang.name}

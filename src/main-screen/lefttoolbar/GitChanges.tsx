@@ -389,18 +389,20 @@ export const GitChanges: React.FC<{selectedFolder?: string | null}> = ({ selecte
         <div className="error-message">{error}</div>
       )}
       
-      <div className="tab-container">
+      <div className="minimal-button-container">
         <button 
-          className={`tab-button ${activeTab === 'changes' ? 'active' : ''}`}
+          className={`minimal-button ${activeTab === 'changes' ? 'active' : ''}`}
           onClick={() => setActiveTab('changes')}
         >
-          Изменения
+          <FileEdit size={10} className="button-icon" />
+          <span>Изменения</span>
         </button>
         <button 
-          className={`tab-button ${activeTab === 'commits' ? 'active' : ''}`}
+          className={`minimal-button ${activeTab === 'commits' ? 'active' : ''}`}
           onClick={() => setActiveTab('commits')}
         >
-          Коммиты
+          <MessageSquare size={10} className="button-icon" />
+          <span>Коммиты</span>
         </button>
       </div>
       

@@ -302,7 +302,7 @@
 
 .search-container {
   position: relative;
-  margin-bottom: 12px;
+  
 }
 
 .search-container input {
@@ -331,11 +331,11 @@
 
 /* Список файлов */
 .file-list-container {
-  max-height: 400px;
+  max-height: 100%;
   overflow-y: auto;
 }
 
-.file-item {
+.file-list-container .file-item {
   display: flex;
   align-items: center;
   padding: 12px 12px;
@@ -347,11 +347,11 @@
   min-height: 50px;
 }
 
-.file-item.selected {
+.file-list-container .file-item.selected {
   background-color: #575757; /* Фон для выделенного элемента */
 }
 
-.file-item:hover {
+.file-list-container .file-item:hover {
   background-color: #575757;
 }
 

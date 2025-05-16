@@ -430,10 +430,20 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
                 <div className="settings-group">
                   <div className="setting-item">
                     <label>Тема</label>
-                    <div className="setting-control">
+                    <div className="setting-control" style={{ width: "100%" }}>
                       <select 
                         value={themeSettings.theme}
                         onChange={(e) => handleThemeSettingChange('theme', e.target.value as 'dark' | 'light' | 'auto')}
+                        style={{ 
+                          width: "100%", 
+                          maxWidth: "280px",
+                          padding: "8px 10px",
+                          height: "32px",
+                          backgroundColor: "#2d2d2d",
+                          border: "1px solid #444",
+                          borderRadius: "4px",
+                          color: "#fff"
+                        }}
                       >
                         <option value="dark">Темная</option>
                         <option value="light">Светлая</option>
@@ -444,11 +454,12 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
                   
                   <div className="setting-item">
                     <label>Тема редактора кода</label>
-                    <div className="setting-control">
+                    <div className="setting-control" style={{ width: "100%" }}>
                       <select 
                         value={themeSettings.monacoTheme}
                         onChange={(e) => handleThemeSettingChange('monacoTheme', e.target.value)}
                         className="monaco-theme-select"
+                        style={{ width: "100%", maxWidth: "280px" }}
                       >
                         {MONACO_THEMES.map(theme => (
                           <option key={theme.id} value={theme.id}>
@@ -457,7 +468,7 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
                         ))}
                       </select>
                       
-                      <div className={`theme-preview ${themeSettings.monacoTheme}`}>
+                      <div className={`theme-preview ${themeSettings.monacoTheme}`} style={{ width: "100%", maxWidth: "460px" }}>
                         <div>
                           <span className="comment-token">// {MONACO_THEMES.find(t => t.id === themeSettings.monacoTheme)?.name}</span>
                         </div>
@@ -503,12 +514,22 @@ const Settings = forwardRef<HTMLDivElement, SettingsProps>(({ isVisible, onClose
                   
                   <div className="setting-item">
                     <label>Путь к пользовательской теме</label>
-                    <div className="setting-control">
+                    <div className="setting-control" style={{ width: "100%" }}>
                       <input 
                         type="text"
                         value={themeSettings.customThemePath}
                         onChange={(e) => handleThemeSettingChange('customThemePath', e.target.value)}
                         placeholder="Путь к JSON файлу темы"
+                        style={{ 
+                          width: "40%", 
+                          maxWidth: "600px",
+                          padding: "8px 10px",
+                          height: "32px",
+                          backgroundColor: "#2d2d2d",
+                          border: "1px solid #444",
+                          borderRadius: "4px",
+                          color: "#fff"
+                        }}
                       />
                     </div>
                   </div>
